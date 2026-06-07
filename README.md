@@ -2,187 +2,409 @@
 
 ### AKASHA thinks while you dream.
 
-**Akasha** is a local-first semantic substrate that thinks while you sleep.  
-No cloud. No dependencies. Runs on an iPad in the middle of an archaeological dig site.  
+**Akasha** is a local-first semantic operating system for building living knowledge systems.
 
-At the intersection of cognitive sciences, digital humanities, and edge computing, Akasha is an open, local-first operating system designed to weave human thoughts, structured research, and physical environments into a self-organizing semantic network.  
+It is designed for a new era of work:
 
-Whether you are a historian tracing ancient manuscripts, an ecologist modeling complex bio-network interdependencies, or a qualitative researcher seeking a serene space to connect disparate ideas—Akasha welcomes you. It is a warm, friction-free harbor designed for minds that explore, built on a foundation of absolute technical rigor.  
+experts design concepts,  
+LLMs synthesize operators,  
+and the graph becomes a living cognitive substrate.
+
+No cloud. No external dependencies.  
+Runs locally — even on an iPad in the middle of an archaeological dig site.
+
+Akasha is built on:
+
+- content-addressed atoms
+- graph relations
+- set-based indexing
+- typed Concept Models
+- session-scoped semantic state
+
+Instead of starting from tables, APIs, or ORM schemas, Akasha starts from **meaning itself**.
+
+At the intersection of cognitive sciences, digital humanities, qualitative research, and edge computing, Akasha is an open semantic substrate designed to weave human thoughts, structured research, and physical environments into a self-organizing knowledge network.
+
+Whether you are:
+
+- a historian tracing ancient manuscripts,
+- an ecologist modeling bio-network interdependencies,
+- a fiction writer maintaining a living universe,
+- a qualitative researcher synthesizing interviews,
+- or simply someone trying to think more clearly,
+
+Akasha welcomes you.
+
+It is designed as a warm, local-first environment for minds that explore —  
+built on top of rigorous semantic engineering principles.
 
 ---
 
-## 📐 Architectural Manifesto: Concepts-Oriented Design (COD)
+## 🧠 Concepts First. Code Second.
 
-Akasha is not engineered through traditional, ad-hoc procedural scaffolding. It is forged under a defiant architectural paradigm: **Concepts-Oriented Design (COD)**. 
+Akasha is built around a simple principle:
 
-> **In plain terms:** Define what things mean first. The code writes itself.
+> Define what things mean first.  
+> The code writes itself.
 
-* **Deterministic Operator Synthesis**: Instead of writing brittle reactive glue-code, COD mandates that you manifest the core **Conceptual Model** first. When your fluid, real-world use cases are mapped onto this pristine domain geometry, the necessary **Operators (functions)** materialize naturally. This approach guarantees the absolute shortest developmental path from raw intuition to complete application synthesis.
-* **The Dual Nature of COD Artifacts**: Applications built on Akasha are not fragile prototypes. Because the conceptual layer maps directly to low-level hardware constraints, any system born from COD behaves simultaneously as an elegant high-level conceptual model and an ultra-scalable, high-concurrency production asset.
-* **Liberation from Inhuman Boilerplate**: Traditional development forces the human mind to drown in stateless session handling, ephemeral work variables, and volatile global states. Akasha introduces **Semantic Session Management**. By anchoring state directly to the active cognitive and linguistic scope, the substrate handles state inherently. Developers are permanently liberated from the tedious, machine-centric plumbery that fractures human thought.
+Traditional software development begins with implementation details: database schemas, API routes, state containers, glue code.
+
+Akasha begins somewhere else entirely: **Concept Models**.
+
+A Concept Model is a semantic structure describing how a domain actually behaves:
+
+- a field journal
+- a historical archive
+- a fictional world
+- a research synthesis
+- a cast of characters
+- a survey universe
+- an ecological network
+
+Once the conceptual topology becomes clear, operators emerge naturally.
+
+This approach is called: **📐 Concepts-Oriented Design (COD)**
+
+COD treats software not as procedural scaffolding, but as the materialization of conceptual structures.
+
+In practice:
+
+| Traditional Approach | Akasha Approach |
+| :--- | :--- |
+| Design tables first | Design concepts first |
+| Write APIs manually | Derive operators from topology |
+| State scattered through code | State lives in the graph |
+| ORM migration cycles | Evolving semantic structures |
+| Human adapts to software | Software adapts to human thought |
+
+The result is surprisingly powerful:
+
+- researchers can build tools without becoming full-time engineers
+- domain experts remain the primary designers
+- LLMs can generate large portions of implementation safely
+- systems remain extensible without architectural collapse
+
+---
+
+## 🌱 Turning Concepts Into Code
+
+Akasha was designed around a fundamental belief:
+
+> Your knowledge, concepts, and experience as an expert are paramount in the design process.  
+> You are the main actor in the design work.
+
+**The LLM is not the architect. You are.**
+
+The role of the LLM is to help materialize your conceptual structures into executable operators, graph topologies, and semantic workflows.
+
+This dramatically changes software development.
+
+Instead of spending months writing boilerplate infrastructure, experts can directly shape systems around:
+
+- how archaeologists actually think
+- how ethnographers actually work
+- how writers actually build worlds
+- how researchers actually synthesize ideas
+- how organizations actually reason about knowledge
+
+By having the LLM write the implementation layer, Akasha rapidly becomes a reliable research and practical assistant.
+
+The remarkable part is this: **the platform for building living knowledge systems is already in your hands.**
+
+Akasha is lightweight Python code released under the MIT license. You can design entirely new semantic systems conversationally with an LLM, even on a tablet device in the field — without cloud infrastructure, without enterprise tooling, and without becoming a full-time software engineer.
+
+→ **Start here:** [Turning Concepts Into Code](TURNING_CONCEPTS_INTO_CODE.md) — a practical guide to designing knowledge systems with Akasha and an LLM.
+
+---
+
+## 🤝 Working with LLMs Without Falling into "Vibe Programming"
+
+Akasha is intentionally designed to avoid one of the largest problems in modern AI-assisted development: systems that feel intelligent, but collapse under real-world complexity.
+
+We call this trap: **"Vibe Programming"**
+
+Vibe Programming happens when:
+
+- the conceptual structure is unclear
+- the ontology is unstable
+- the data topology is accidental
+- operators are generated before the domain model exists
+
+The result is fragile software: inconsistent semantics, exploding complexity, hidden state bugs, endless rewrites.
+
+Akasha avoids this by forcing conceptual clarity first.
+
+The workflow becomes:
+
+1. Define the domain concepts
+2. Define relationships and topology
+3. Define operator semantics
+4. Let the LLM synthesize implementation
+
+In other words:
+
+> **The LLM should generate code from concepts —  
+> not generate concepts from code.**
+
+This single inversion changes everything.
+
+---
+
+## 🧩 A Living Concept Model Ecosystem
+
+Akasha does not treat all knowledge as generic documents. Instead, it provides typed semantic lenses called **Concept Models**.
+
+Each Concept Model defines:
+
+- topology
+- operators
+- semantic relations
+- traversal rules
+- structural constraints
+- session behavior
+
+All Concept Models are auto-discovered through a plugin registry. Adding a new model requires no kernel modifications.
+
+| Model | Purpose |
+| :--- | :--- |
+| **Note** | Hierarchical structured notes with granular span annotations |
+| **FieldNote** | Field observation journals for qualitative data capture |
+| **Survey** | Structured questionnaires with typed responses and respondents |
+| **Aggregation** | Statistical summaries, group comparisons, and correlations |
+| **Synthesis** | Qualitative coding, theme development, and interpretive claims |
+| **Presentation** | Structured argument decks assembled from synthesis outputs |
+| **Cast** | Persona and character modeling — identity, traits, wounds, bonds, masks |
+| **World** | Topology of fictional or conceptual worlds — places, laws, events, history |
+| **Map** | Cartographic depiction — editions, map features, labels, geometry, projection, grounding |
+
+Any number of these can coexist simultaneously inside a Semantic Session:
+
+```
+instance.mount model=cast  slot=protagonist  name="Dr. Aiko"
+instance.mount model=world slot=site         name="Unit B7 Site"
+instance.mount model=note  slot=diary        name="Excavation Notes"
+```
+
+Three models. One graph. One cognitive workspace.
+
+→ Full ontology reference: [`docs/ontology/`](docs/ontology/)
+
+---
+
+## 🌌 Why Akasha Exists
+
+Traditional databases treat knowledge like dead cargo.
+
+They flatten meaning into rows and tables, forcing human thought into rigid industrial structures originally designed for accounting systems.
+
+But researchers, writers, historians, ecologists, and qualitative analysts do not think in tables.
+
+They think in:
+
+- relationships
+- tensions
+- narratives
+- hierarchies
+- transformations
+- conceptual worlds
+
+Akasha exists because brilliant people were drowning in tools built for machines instead of minds.
+
+We wanted to build something else: **a semantic substrate that behaves more like living memory than dead storage.**
+
+---
+
+## ⚙️ The Engineering Foundation
+
+Underneath the philosophical language, Akasha is an extremely practical system.
+
+The engineering foundation includes:
+
+- content-addressed atoms
+- immutable semantic chunks
+- graph-based relations
+- high-speed set intersections
+- typed concept dispatchers
+- session-scoped semantic state
+- plugin auto-discovery
+- local SQLite persistence
+- transactional staging
+- multidimensional IAM scopes
+
+No ORM. No schema migrations. No giant dependency stack.
+
+**State lives in the graph, not in code.**
+
+→ Architecture deep-dive: [`docs/concept-model/concept-model-spec.md`](docs/concept-model/concept-model-spec.md)
+
+---
+
+## ⚙️ Small Core, Large Worlds
+
+Akasha was not originally designed inside a well-funded laboratory or enterprise innovation program.
+
+Much of the early system was written incrementally on an iPad mini — often from trains, cafés, quiet diners, and bars after ordinary engineering work had already consumed the day.
+
+At first, this was simply a practical constraint.
+
+There was no infrastructure budget.  
+No DevOps team.  
+No Kubernetes cluster waiting in the background.
+
+The system had to survive under difficult conditions:
+
+- intermittent connectivity
+- limited hardware
+- small screens
+- unpredictable environments
+- fragmented work sessions
+- long-term maintainability by a very small number of people
+
+Those constraints became architectural principles.
+
+To remain usable everywhere, Akasha was pushed toward:
+
+- minimal dependencies
+- primitive composable operators
+- explicit semantic topology
+- graph-centered state management
+- lightweight local persistence
+- aggressively simple deployment
+- self-contained semantic tooling
+
+Ironically, these same constraints made the system far more scalable conceptually.
+
+Like early Unix systems, Akasha avoids unnecessary complexity not because complexity is impossible, but because dependency gravity eventually overwhelms conceptual clarity.
+
+Much of modern software scales operationally while collapsing semantically.
+
+Akasha attempts the opposite:
+
+> a very small semantic core capable of supporting increasingly large conceptual worlds.
+
+The result is unusual.
+
+The same system can:
+
+- run quietly on a field tablet with no internet connection,
+- power personal semantic notebooks,
+- support ontology-heavy research workflows,
+- coordinate multi-model semantic sessions,
+- and evolve into larger distributed knowledge environments.
+
+The architecture was not designed cloud-first.
+
+It was designed survival-first.
+
+And that turned out to matter.
 
 ---
 
 ## 🌱 Cryptobiosis: The Resurrection of the Seed
 
-Akasha is not "installed" through bloated package managers, Docker containers, or Git clones. True to its biological philosophy, it is deployed via **Cryptobiosis** (suspended animation).  
+Akasha is not installed through Docker containers or heavy package managers.
 
-The entire operating system—including its directory tree, libraries, and core DNA—is compressed and dormant within a single, lightweight bootstrap file: `akasha_seed.py`.  
+Instead, the entire operating system can exist as a dormant single-file seed.
 
-When you run this seed, it detects its "dry" environment, self-extracts its internal payload into a fully structured local Cell, and materializes `akasha.py`—your permanent local gateway.  
-
-### Quick Start: Bring the Substrate to Life
-
-To germinate your first Akasha Cell, grab the dormant seed and let it sprout:
+When executed, the seed self-materializes into a complete local semantic environment.
 
 ```bash
-# 1. Download the single-file seed
-curl -O [https://akasha.network/akasha_seed.py](https://akasha.network/akasha_seed.py)
-
-# 2. Resurrect and germinate the system
-python akasha_seed.py
-
-# 3. Enter your newly sprouted local OS console
-python akasha.py
+# Download the latest Seeds file from:
+# https://github.com/akashicmaster/AkashaSeeds/releases
+python3 akasha_seeds_seeds10.py   # unpacks and launches immediately
 ```
 
-**What happens behind the scenes during germination:**
+This design philosophy matters.
 
-```bash
-$ python akasha_seed.py
-[Akasha] Initiating Anabiosis (Resurrecting dormant seed)...
-[Akasha] Self-extracting file trees (lib/, api/, remote/) from internal DNA payload...
-[Akasha] Materializing local SQLite database 'data/cells/guest/l_cortex.db'...
-[Akasha] Unfolding primal DNA sequences into scope:sys:universal.
-[Akasha] Sprout complete. 'akasha.py' has successfully materialized.
-
-$ python akasha.py
-[Akasha] Soma is active. Accessing local neural pathways.
-
-akasha://guest/active_resonance $ _
-```
-
-From this moment on, running `python akasha.py` serves as your direct, local CLI to communicate with your cognitive graph.  
+Researchers in remote locations, field scientists, writers, students, and independent thinkers should not need enterprise infrastructure to build meaningful knowledge systems.
 
 ---
 
-## ⚡ Developer Walkthrough: Harnessing the Soma
+## 🌌 Example Use Cases
 
-You don't need to learn a complex graph database. Thanks to **Concepts-Oriented Design**, here is how you initialize your newly germinated local brain cell, create a structured note, and let Akasha's self-organizing compiler handle the underlying state, meaning, and citations seamlessly in plain Python:
+Akasha was intentionally designed to support domains where meaning, relationships, and evolving structures matter more than rigid records.
 
-```python
-from lib.akasha.session import AkashaManager
-from lib.akasha.concepts.note import NoteConcept
+**📜 Digital Humanities & Philology**  
+manuscript comparison · semantic annotation layers · translation lineage tracking · historical concept evolution · marginalia networks · citation topology analysis
 
-# 1. Start the Session Manager (Initializes local SQLite databases instantly)
-manager = AkashaManager(series_name="seeds")
+**🌿 Ecology & Field Research**  
+ecosystem observation logs · species interaction networks · longitudinal field journals · climate-event correlation mapping · indigenous knowledge synthesis · environmental interview analysis
 
-# 2. Awaken a Semantic Session for "henri" 
-#    (State, IAM, and language scopes are resolved inherently; no global or work variables needed)
-session = manager.get_session(client_id="henri")
+**🎭 Fiction Writing & Worldbuilding**  
+character psychology graphs · political faction dynamics · fictional geography · historical timelines · law systems · event causality · hidden-world revelation systems
 
-# 3. Mount the Note Concept Layer over your active session
-note_engine = NoteConcept(session)
+**🧠 Qualitative Research**  
+interview coding · thematic synthesis · grounded theory workflows · interpretive claim tracking · evidence-chain tracing · multi-source argument construction
 
-# 4. Generate a new Note Book (Roots all elements inside a physical Set Package)
-note_engine.op_new(title="Excavation Diary", isbn="978-4-00-123456")
+**🏛️ Organizational Knowledge**  
+institutional memory systems · semantic project archives · cross-team synthesis · decision rationale tracking · research repository construction · strategic narrative mapping
 
-# 5. Build the spatial-narrative sequence (Operators mapped cleanly from the concept model)
-note_engine.op_chap(title="Shogunal Era Stratum")
-note_engine.op_sec(title="Unit B7 Excavation")
+**🛰️ Air-Gapped Knowledge Systems**  
+offline-first research environments · DTN semantic capsules · expeditionary data collection · disaster-zone information continuity · local sovereign knowledge systems
 
-# 6. Append paragraph content (Inline ((annotations)) are parsed on the fly)
-result = note_engine.op_add(
-    text="Found a wooden tablet inscribed with ((Kanji characters)) in Unit B7."
-)
-
-print(f"Paragraph Hash: {result['paragraph_id']}")
-print(f"Annotations Self-Organized: {result['annotations_extracted']}")  # Output: 1
-print(f"Synaptic Citations linked: {result['citations_extracted']}")   # Output: 1
-
-# 7. Render a beautifully sorted Table of Contents respecting your Locale & View Scopes
-for entry in note_engine.op_toc():
-    print("  " * entry["depth"] + f"- {entry['title']} ({entry['role']})")
-```
+**🧬 Experimental Cognitive Systems**  
+semantic operating systems · memory substrates · hybrid human–LLM workflows · concept-driven agent systems · reflective reasoning environments · long-term synthetic cognition experiments
 
 ---
 
-## 🌌 Dive Through Your Mind: The 3D Cosmos Visualizer
+## 🧠 The Central Idea
 
-Memory isn't flat, and your dashboard shouldn't be either. Akasha includes an immersive, hardware-accelerated spatial interface running entirely locally.
+Akasha is built on a very simple belief:
 
-[![Akasha 3D Cosmos Visualizer Preview](https://akasha.network/assets/visualizer_preview.gif)](https://akasha.network/assets/visualizer_demo.mp4)
-*Click to watch the visualizer in action.*
+> Human beings already know how to think.  
+> Software should help structure thought — not replace it.
 
-Open **`index.html`** in any browser to instantly "dive" through your local memory constellation. The engine renders semantic gravity, emotional auras, and parent-child structural strings in real-time using WebGL—requiring zero external server dependencies or cloud connection.
+The role of Akasha is not to automate human meaning away.
 
----
+Its role is to provide:
 
-## 🧠 Under the Hood: Elegant Mathematical Mechanics
+- semantic structure,
+- conceptual continuity,
+- living memory,
+- and a stable substrate for thought itself.
 
-While Akasha offers a peaceful, distraction-free environment for humanists and researchers, beneath its surface lies an elegant, high-octane computing substrate.
-
-### 1. Multidimensional Scopes as Physical Set Intersections
-
-Access control (IAM) and language comprehension are not managed by bloated middleware or conditional loops. They are treated as unified physical dimensions. Using hardware-accelerated set operations directly inside our local SQLite engine:
-
-* **Dark Matter Privacy**: Chunks of memory you do not own or have permission to see behave as physical dark matter. They exist in the database, but they are completely invisible during graph traversals.
-* **Linguistic Filtering**: Your active languages are treated as a combined scope (e.g., `["lang:en", "lang:ja"]`). During query times, Akasha performs a hardware-level set intersection:
-
-$$S_{visible} = S_{total} \cap S_{IAM} \cap S_{lang}$$
-
-Inaccessible or incomprehensible memories are filtered out at the O(1) database read-phase, keeping your cognitive field of view pristine.
-
-### 2. Operand-First Morphic Projections
-
-We believe that **Operators (functions) are trivial if the Operand (the data structure, subsets, and topology) is designed with mathematical beauty.** To generate a structured glossary or alphabetical index, Akasha does not run heavy text-scanning loops or regex parsers. Because the Weaver automatically slices and links concepts upon ingestion, generating a Glossary is simply a **Morphic Projection**—a direct mathematical mapping of pre-existing token subsets onto a sequence topology.
+The expert remains the source of meaning.  
+The graph preserves it.  
+The LLM helps materialize it.
 
 ---
 
-## 🌌 The Crossroads of Wisdom: Interdisciplinary Use Cases
+## 📚 Documentation
 
-Akasha is built to bridge the gap between qualitative intuition and quantitative analysis:
-
-* 📜 **Digital Humanities & Philology**
-    * **The Challenge**: Mapping the evolution of ideas, translations, and marginalia across centuries without losing historical context.
-    * **The Akasha Solution**: Utilizing **Granular Span Annotations** (`annotate_span`), researchers can attach structured thoughts directly to specific character offsets in a text. Because these annotations are modeled as independent nodes, they link back to a universal "Concept Hub," allowing scholars to see how a single concept (like *Areté* or **縁起**) was interpreted differently across various manuscripts and languages.
-* 🌿 **Ecosystem & Qualitative Synthesis**
-    * **The Challenge**: Connecting raw field notes, ecological indicators, and community interviews into a cohesive systems-model.
-    * **The Akasha Solution**: As field data is inputted, Akasha parses structural containers while concurrently building a **Narrative Subset** (`narrative`). This automatically clusters actors, geographical coordinates, and emotional resonance vectors, projecting them into a navigable spatial constellation.
-* 🛰️ **Field Research & Air-Gapped Environments**
-    * **The Challenge**: Collecting and synchronizing dense knowledge graphs in remote, offline areas (e.g., rainforests, polar stations, or deep-sea vessels) without internet connection.
-    * **The Akasha Solution**: Researchers can seal their local graphs into a **Delay-Tolerant Knowledge Capsule (DTN)**. These lightweight, unidirectional files can be sent asynchronously via email, physical drives, or radio waves. Upon reaching a peer, the capsule safely "decapsulates," placing new thoughts in an isolated pending quarantine scope for the local admin to review and merge.
-
----
-
-## 👤 The Genesis: Why We Built Akasha
-
-Traditional databases treat knowledge like dead cargo. They slice human experiences into flat, rectangular tables and force them into rigid schemas. When you turn off the computer, the data sits cold and inert.
-
-We built Akasha because **brilliant researchers were drowning in tools built for accountants, not thinkers**. We needed a medium that mirrors the biological architecture of human memory.
-
-### How Akasha "Dreams" (The Self-Reconciliation)
-
-In Akasha, the system is designed to "dream." Programmatically, when the active user session goes quiet, Akasha triggers its background **Jataka Engine**.
-
-During this **Dream State**:
-
-1. **Topological Pruning**: The system looks at loose, newly added paragraphs and runs background semantic distance calculations using the TensorEngine.
-2. **Synaptic Consolidation**: It collapses redundant relational links, applies fuzzy logic implication weights, and reinforces pathways that have high emotional or structural gravity.
-3. **Cyber-Physical Reflex Run**: Through the **Replicaware Cell**, Akasha can safely run simulations of physical IoT actuators (like dry-running a robotic arm or checking climate controls) inside a virtual container. It ensures that the system's "beliefs" align with physical limits before applying actions to real-world hardware.
-
----
-
-## 📈 Feature Landscape
-
-| Category | Current Release (Available Now) | The Horizon (Upcoming Features) |
+| Document | Audience | Contents |
 | :--- | :--- | :--- |
-| **Core Engine** | Local Soma & Composite Engine (Fast SQLite network) | On-Device Deep Tensor Space (Native vector embeddings) |
-| **Security & Identity** | Active Identity & Multidimensional Scopes (IAM & filtering) | Swarm Intelligence Telemetry (Anonymous intentionality scoring) |
-| **Data Structure** | Note Concept & Granular Annotations (Hierarchical engine) | Boundary Import/Export Plugins (Native Markdown bidirection) |
-| **State Management** | Transactional Staging (Multi-level undo/redo) & Universal Save/Load | Beautifully typeset PDF compiler |
-| **Architectural Paradigms** | Concepts-Oriented Design (COD) & Semantic Session Management | Advanced distributed aggregation across Replicaware peers |
-| **Spatial Interface** | Local WebGL 3D Engine (`index.html` pipeline) | Immersive VR/AR Topology Explorer |
+| [**Quick Start**](docs/quick-start.md) | New users | Installation, first session, CSL walkthrough, browser apps |
+| [**Turning Concepts Into Code**](TURNING_CONCEPTS_INTO_CODE.md) | Everyone | Designing semantic systems with Akasha and LLMs |
+| [`docs/users/user-manual.md`](docs/users/user-manual.md) | General users | CLI workflows and Session Instance Layer |
+| [`docs/users/csl-manual.md`](docs/users/csl-manual.md) | CSL users | Full CSL command reference |
+| [`docs/users/admin-manual.md`](docs/users/admin-manual.md) | Administrators | User management, scopes, server setup |
+| [`docs/ontology/ontology-spec.md`](docs/ontology/ontology-spec.md) | Ontology designers | Built-in ontology and Concept Model extensions |
+| [`docs/concept-model/concept-model-spec.md`](docs/concept-model/concept-model-spec.md) | Plugin developers | BaseConcept API and implementation guide |
+| [`docs/developer/api-spec.md`](docs/developer/api-spec.md) | App developers | Full RPC API reference |
+| [`docs/for-llm/akasha-spec-compact.md`](docs/for-llm/akasha-spec-compact.md) | LLMs | Compact single-file Akasha reference for LLM context |
 
-*Join us in dreaming a better intelligence. One atom at a time.*  
-**© 2026 Akasha Protocol Project.**
+---
+
+## 🌌 Final Thought
+
+Akasha is not trying to become another productivity application.
+
+It is an attempt to build a more humane computational substrate for thought itself.
+
+A system where:
+
+- concepts come before code,
+- meaning comes before infrastructure,
+- and knowledge is allowed to remain alive.
+
+*One atom at a time.*
+
+---
+
+## 🚀 Ready to Begin?
+
+**[→ docs/quick-start.md](docs/quick-start.md)**
+
+From installation to a working knowledge graph in 20 minutes.
+
+**© 2026 Akasha Protocol Project**
