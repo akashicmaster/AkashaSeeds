@@ -1,0 +1,61 @@
+Akasha
+SEEDS
+	•	What is Akasha?
+	•	Philosophy
+	•	Start Here
+
+	•	README 竊�
+	•	Quick Start 竊�
+	•	Cookbook 竊�
+	•	Turning Concepts Into Code 竊�
+	•	Releases 竊�
+	•	GitHub 竊�
+light / dark
+THE SUBSTRATE
+Your notes shouldn't be dead files.
+Akasha is a local-first, concept-oriented operating system. It was built on a simple observation: humans rarely think in files. We think in meaningful chunks.
+A remembered sentence. A field observation. A scientific hypothesis. A fragment of a story. Most software organises these into documents and records. Akasha organises them into atoms 窶� content-addressed nodes that carry meaning independently of any container.
+Each atom can be linked to any other. Those links are typed 窶� they carry a relationship label, a direction, and a weight. The result is not a document. It is a semantic space that grows and evolves as you think.
+Traditional systems ask: how should this data be stored? Akasha asks: what kind of thing is this?
+Local-first. No cloud, no account, no mandatory dependencies. Runs on a laptop, a Raspberry Pi, or an iPad in the middle of an archaeological dig site. Your knowledge stays yours.
+DESIGN PRINCIPLES
+Operand ﾂｷ Operator ﾂｷ Agent
+Every action in Akasha is governed by one organising principle: data, operation, and subject are kept strictly separate.
+Operand
+An Atom is immutable, content-addressed data. It has no behaviour. It is not owned by any model.
+Operator
+Operations are defined independently of the data they transform. Adding a new operator is a new class file. Nothing else changes.
+Agent
+Any client 窶� a human, an LLM, a sensor, a script 窶� applies operators to atoms. The operator does not know or care which.
+This is deliberately different from object-oriented design, where behaviour is embedded inside data objects. In Akasha, atoms remain immutable. Concept Models 窶� structured representations of meaningful human activities like research, observation, storytelling, or analysis 窶� are operators. They act on atoms from outside.
+The consequence: you are the expert. The system structures what you already know. The LLM helps translate your thinking into structure and code. Meaning remains under human control.
+	•	Structure knowledge without designing databases Preserve relationships that evolve over time Work with LLMs without losing conceptual control Build tools shaped around your own practice, not generic templates
+INSTALLATION
+Start Here
+Akasha Seeds is a single Python file. No install required. Python 3.9 or later.
+01
+Download the seed
+Get akasha_seeds_seeds.py from the Releases page.
+02
+Extract
+Run the seed once. It unpacks itself into a working directory.
+03
+Start
+Launch Akasha. The built-in ontology loads automatically.
+
+
+
+shell
+# Step 1 窶� extract the seed
+$
+python akasha_seeds_seeds.py
+# Step 2 窶� enter the extracted directory
+$
+cd akasha/
+# Step 3 窶� start Akasha
+$
+python akasha.py
+# Now write your first atom
+akasha>
+w "My first observation."
+No mandatory dependencies. Akasha runs on the standard Python library. Optional: TFLite and SpaCy install automatically on first launch when available, enabling semantic vector search and NLP features.
