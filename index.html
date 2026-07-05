@@ -5,7 +5,7 @@
 :root {
   --bg:          #f4f0e8;
   --surface:     #ede9de;
-  --text:        #1c1a17;
+  --text:        #2a1a0c;
   --text-muted:  #7a7468;
   --accent:      #3d6b4f;
   --accent-hi:   #2e5039;
@@ -13,11 +13,17 @@
   --terminal-bg: #10140f;
   --terminal-fg: #c8d8c2;
   --terminal-pr: #5a9470;
-  --sidebar-w:   200px;
+  --sidebar-w:   215px;
   --content-max: 660px;
   --mono: 'Courier New', Courier, monospace;
   --serif: Georgia, 'Times New Roman', serif;
   --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --h-crimson:   #8c1a28;
+  --h-green:     #1b4a2e;
+  --leather:     #2e1a06;
+  --leather-mid: #5a3410;
+  --leather-hi:  #8b5520;
+  --nav-ink:     #7a5020;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -28,25 +34,63 @@
     --accent:     #5a9470;
     --accent-hi:  #7ab58e;
     --border:     #242820;
+    --h-crimson:  #c46070;
+    --h-green:    #4e9868;
+    --leather:    #4a2808;
+    --leather-mid:#7a4818;
+    --leather-hi: #a8682a;
+    --nav-ink:    #c09038;
   }
 }
 :root[data-theme="light"] {
   --bg: #f4f0e8; --surface: #ede9de; --text: #1c1a17; --text-muted: #7a7468;
   --accent: #3d6b4f; --accent-hi: #2e5039; --border: #d0c9b8;
+  --h-crimson: #8c1a28; --h-green: #1b4a2e;
+  --leather: #2e1a06; --leather-mid: #5a3410; --leather-hi: #8b5520; --nav-ink: #7a5020;
 }
 :root[data-theme="dark"] {
   --bg: #0c0e10; --surface: #131618; --text: #ddd8cc; --text-muted: #6a6560;
   --accent: #5a9470; --accent-hi: #7ab58e; --border: #242820;
+  --h-crimson: #c46070; --h-green: #4e9868;
+  --leather: #4a2808; --leather-mid: #7a4818; --leather-hi: #a8682a; --nav-ink: #c09038;
 }
 
 /* ── Reset ───────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; }
+
+/* ── Right navy rail ─────────────────────────────────────────────────────── */
+body::before {
+  content: '';
+  position: fixed;
+  right: 11px;
+  top: 11px;
+  bottom: 11px;
+  width: 22px;
+  background: #1c2132;
+  z-index: 100;
+  pointer-events: none;
+}
+
+/* ── Aged leather frame ──────────────────────────────────────────────────── */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  border: 11px solid var(--leather);
+  box-shadow:
+    inset 0 0 0 1px var(--leather-hi),
+    inset 0 0 0 2px var(--leather-mid),
+    inset 0 0 28px rgba(46,26,6,.45),
+    inset 0 0 70px rgba(30,15,3,.2);
+}
 body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--sans);
-  font-size: 15px;
+  font-size: 17px;
   line-height: 1.65;
   display: flex;
   min-height: 100vh;
@@ -66,36 +110,19 @@ body {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  padding: 2.5rem 1.5rem 2rem;
-  border-right: 1px solid var(--border);
+  padding: 2.5rem 0.75rem 2rem 2.5rem;
+  background: #1c2132;
+  border-right: 1px solid rgba(255,255,255,.06);
   overflow-y: auto;
 }
 .sidebar-brand {
-  margin-bottom: 2.5rem;
+  margin-bottom: 1.2rem;
 }
 .sidebar-logo {
   display: block;
-  width: 72px;
-  height: 72px;
-  margin-bottom: .9rem;
-}
-.sidebar-brand-name {
-  font-family: var(--serif);
-  font-size: 1.35rem;
-  font-weight: normal;
-  color: var(--text);
-  letter-spacing: -.01em;
-  line-height: 1;
-  display: block;
-}
-.sidebar-brand-series {
-  font-family: var(--mono);
-  font-size: .7rem;
-  letter-spacing: .12em;
-  text-transform: uppercase;
-  color: var(--accent);
-  display: block;
-  margin-top: .35rem;
+  width: 136px;
+  height: auto;
+  margin-bottom: .5rem;
 }
 
 .sidebar-nav {
@@ -103,24 +130,25 @@ body {
   flex-direction: column;
   gap: 0;
   list-style: none;
-  margin-bottom: 2rem;
+  margin-bottom: 1rem;
+  margin-left: 1rem;
 }
 .sidebar-nav li { line-height: 1; }
 .sidebar-nav a {
   display: block;
   padding: .42rem 0;
-  color: var(--text-muted);
+  color: #9a8a6a;
   text-decoration: none;
   font-size: .82rem;
   transition: color .15s;
 }
-.sidebar-nav a:hover { color: var(--accent); }
-.sidebar-nav a.active { color: var(--text); }
+.sidebar-nav a:hover { color: #e8dcc8; }
+.sidebar-nav a.active { color: #e8dcc8; font-style: italic; }
 
 .sidebar-divider {
   height: 1px;
-  background: var(--border);
-  margin: 1rem 0 1.25rem;
+  background: rgba(255,255,255,.1);
+  margin: .5rem 0 .7rem;
 }
 
 .sidebar-links {
@@ -128,18 +156,19 @@ body {
   flex-direction: column;
   gap: 0;
   list-style: none;
+  margin-left: 1rem;
 }
 .sidebar-links a {
   display: flex;
   align-items: center;
   gap: .4rem;
   padding: .38rem 0;
-  color: var(--text-muted);
+  color: #9a8a6a;
   text-decoration: none;
   font-size: .78rem;
   transition: color .15s;
 }
-.sidebar-links a:hover { color: var(--accent); }
+.sidebar-links a:hover { color: #e8dcc8; }
 .sidebar-links .link-arrow {
   font-size: .65rem;
   opacity: .5;
@@ -148,11 +177,13 @@ body {
 .sidebar-theme {
   margin-top: auto;
   padding-top: 1.5rem;
+  display: flex;
+  justify-content: center;
 }
 .theme-btn {
   background: none;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
+  border: 1px solid rgba(255,255,255,.2);
+  color: #9a8a6a;
   font-family: var(--mono);
   font-size: .68rem;
   letter-spacing: .06em;
@@ -160,62 +191,98 @@ body {
   cursor: pointer;
   transition: color .15s, border-color .15s;
 }
-.theme-btn:hover { color: var(--accent); border-color: var(--accent); }
-.theme-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.theme-btn:hover { color: #e8dcc8; border-color: #e8dcc8; }
+.theme-btn:focus-visible { outline: 2px solid #e8dcc8; outline-offset: 2px; }
 
 /* ── Main ────────────────────────────────────────────────────────────────── */
 .main {
   flex: 1;
   min-width: 0;
-  padding: 3.5rem 3rem 6rem;
-  max-width: calc(var(--content-max) + 6rem);
+  padding: 3.5rem 4rem 6rem 3rem;
 }
 
 /* ── Sections ────────────────────────────────────────────────────────────── */
 .section {
-  padding-bottom: 4rem;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 4rem;
+  position: relative;
+  padding-bottom: 2.8rem;
+  margin-bottom: 2.8rem;
+}
+.section:not(:last-of-type)::after {
+  content: '✦';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: .8rem;
+  color: var(--leather-mid);
+  letter-spacing: .6em;
+  padding-left: .6em;
 }
 .section:last-of-type {
-  border-bottom: none;
   margin-bottom: 0;
   padding-bottom: 0;
 }
 
 .section-eyebrow {
   font-family: var(--mono);
-  font-size: .68rem;
-  letter-spacing: .14em;
+  font-size: .72rem;
+  letter-spacing: .16em;
   text-transform: uppercase;
   color: var(--accent);
-  margin-bottom: 1rem;
+  margin-bottom: 1.1rem;
   display: block;
 }
 .section-heading {
   font-family: var(--serif);
-  font-size: 2rem;
   font-weight: normal;
-  line-height: 1.15;
-  color: var(--text);
+  line-height: 1.1;
   text-wrap: balance;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.6rem;
 }
+h1.section-heading { font-size: 2.8rem; color: var(--h-crimson); }
+h2.section-heading { font-size: 2.2rem; color: var(--h-green); }
 
 .section-lead {
-  font-size: 1.05rem;
-  line-height: 1.7;
+  font-size: 1.12rem;
+  line-height: 1.75;
   color: var(--text);
-  max-width: 58ch;
-  margin-bottom: 1.5rem;
+  max-width: 64ch;
+  margin-bottom: 1rem;
 }
-.section-lead em {
-  font-style: italic;
+.section-lead em { font-style: italic; }
+
+/* ── Drop caps (illuminated manuscript style) ────────────────────────────── */
+#what .section-lead::first-letter {
+  font-family: var(--serif);
+  font-size: 5.2em;
+  float: left;
+  line-height: 0.82;
+  margin: 0.04em 0.1em -0.04em 0;
+  color: var(--h-crimson);
+  font-weight: normal;
+}
+#philosophy .section-lead::first-letter {
+  font-family: var(--serif);
+  font-size: 5.2em;
+  float: left;
+  line-height: 0.82;
+  margin: 0.04em 0.1em -0.04em 0;
+  color: var(--h-green);
+  font-weight: normal;
+}
+#start .section-lead::first-letter {
+  font-family: var(--serif);
+  font-size: 5.2em;
+  float: left;
+  line-height: 0.82;
+  margin: 0.04em 0.1em -0.04em 0;
+  color: var(--leather-hi);
+  font-weight: normal;
 }
 
 /* ── Body prose ──────────────────────────────────────────────────────────── */
 .prose { max-width: 62ch; }
-.prose p { margin-bottom: 1rem; }
+.prose p { margin-bottom: .65rem; }
 .prose p:last-child { margin-bottom: 0; }
 
 /* ── Concept row ─────────────────────────────────────────────────────────── */
@@ -396,7 +463,7 @@ code {
 
 <aside class="sidebar" role="complementary" aria-label="Navigation">
   <div class="sidebar-brand">
-    <svg class="sidebar-logo" xmlns="http://www.w3.org/2000/svg" viewBox="44 69 152 152" aria-label="Akasha logo" role="img">
+    <svg class="sidebar-logo" xmlns="http://www.w3.org/2000/svg" viewBox="44 65 152 212" aria-label="Akasha logo" role="img">
       <defs>
         <radialGradient id="bg" cx="50%" cy="40%" r="60%">
           <stop offset="0%" stop-color="#2a1f0e"/>
@@ -442,7 +509,17 @@ code {
           <stop offset="0%" stop-color="#8b6508" stop-opacity="0.2"/>
           <stop offset="100%" stop-color="#8b6508" stop-opacity="0"/>
         </radialGradient>
+        <radialGradient id="logo-bg" cx="120" cy="138" r="82" gradientUnits="userSpaceOnUse">
+          <stop offset="0%"   stop-color="#000000" stop-opacity="0.28"/>
+          <stop offset="65%"  stop-color="#000000" stop-opacity="0.12"/>
+          <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+        </radialGradient>
+        <filter id="text-glow" x="-40%" y="-100%" width="180%" height="400%">
+          <feGaussianBlur stdDeviation="2.8" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
       </defs>
+      <ellipse cx="120" cy="148" rx="84" ry="84" fill="url(#logo-bg)"/>
       <ellipse cx="120" cy="155.0" rx="55" ry="55" fill="url(#pG)"/>
       <circle cx="120" cy="155.0" r="50" fill="none" stroke="#8b6508" stroke-width="0.7" opacity="0.35"/>
       <circle cx="120" cy="155.0" r="36" fill="none" stroke="#8b6508" stroke-width="0.3" opacity="0.2" stroke-dasharray="3,5"/>
@@ -492,9 +569,27 @@ code {
       <circle cx="151" cy="134.0" r="1.4" fill="#00ddaa" opacity="0.3"/>
       <circle cx="93" cy="148.0" r="1.1" fill="#00bbaa" opacity="0.2"/>
       <circle cx="147" cy="148.0" r="1.1" fill="#00bbaa" opacity="0.2"/>
+      <!-- separator -->
+      <line x1="88" y1="218" x2="152" y2="218" stroke="#8b6508" stroke-width="0.5" opacity="0.35"/>
+      <circle cx="85" cy="218" r="1.3" fill="#8b6508" opacity="0.35"/>
+      <circle cx="155" cy="218" r="1.3" fill="#8b6508" opacity="0.35"/>
+      <!-- wordmark AKASHA -->
+      <text x="120" y="242"
+        text-anchor="middle"
+        font-family="Georgia, 'Times New Roman', serif"
+        font-size="19"
+        fill="#00c896"
+        filter="url(#text-glow)"
+        letter-spacing="5.5">AKASHA</text>
+      <!-- series label -->
+      <text x="120" y="263"
+        text-anchor="middle"
+        font-family="'Courier New', Courier, monospace"
+        font-size="14"
+        fill="#e8c030"
+        filter="url(#text-glow)"
+        letter-spacing="4">SEEDS</text>
     </svg>
-    <span class="sidebar-brand-name">Akasha</span>
-    <span class="sidebar-brand-series">Seeds</span>
   </div>
 
   <ul class="sidebar-nav" aria-label="Page sections">
@@ -523,7 +618,7 @@ code {
     </li>
     <li>
       <a href="docs/concepts.html" target="_blank" rel="noopener">
-        <span>Turning Concepts Into Code</span><span class="link-arrow" aria-hidden="true">↗</span>
+        <span>Turning Concepts<br>Into Code</span><span class="link-arrow" aria-hidden="true">↗</span>
       </a>
     </li>
     <li>
