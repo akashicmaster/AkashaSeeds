@@ -1,0 +1,664 @@
+
+<title>Akasha Seeds</title>
+<style>
+/* ── Tokens ──────────────────────────────────────────────────────────────── */
+:root {
+  --bg:          #f4f0e8;
+  --surface:     #ede9de;
+  --text:        #1c1a17;
+  --text-muted:  #7a7468;
+  --accent:      #3d6b4f;
+  --accent-hi:   #2e5039;
+  --border:      #d0c9b8;
+  --terminal-bg: #10140f;
+  --terminal-fg: #c8d8c2;
+  --terminal-pr: #5a9470;
+  --sidebar-w:   200px;
+  --content-max: 660px;
+  --mono: 'Courier New', Courier, monospace;
+  --serif: Georgia, 'Times New Roman', serif;
+  --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:         #0c0e10;
+    --surface:    #131618;
+    --text:       #ddd8cc;
+    --text-muted: #6a6560;
+    --accent:     #5a9470;
+    --accent-hi:  #7ab58e;
+    --border:     #242820;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #f4f0e8; --surface: #ede9de; --text: #1c1a17; --text-muted: #7a7468;
+  --accent: #3d6b4f; --accent-hi: #2e5039; --border: #d0c9b8;
+}
+:root[data-theme="dark"] {
+  --bg: #0c0e10; --surface: #131618; --text: #ddd8cc; --text-muted: #6a6560;
+  --accent: #5a9470; --accent-hi: #7ab58e; --border: #242820;
+}
+
+/* ── Reset ───────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.65;
+  display: flex;
+  min-height: 100vh;
+  opacity: 0;
+  animation: fadein .4s ease .05s forwards;
+}
+@keyframes fadein { to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { body { animation: none; opacity: 1; } }
+
+/* ── Sidebar ─────────────────────────────────────────────────────────────── */
+.sidebar {
+  width: var(--sidebar-w);
+  min-height: 100vh;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 2.5rem 1.5rem 2rem;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+.sidebar-brand {
+  margin-bottom: 2.5rem;
+}
+.sidebar-brand-name {
+  font-family: var(--serif);
+  font-size: 1.35rem;
+  font-weight: normal;
+  color: var(--text);
+  letter-spacing: -.01em;
+  line-height: 1;
+  display: block;
+}
+.sidebar-brand-series {
+  font-family: var(--mono);
+  font-size: .7rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  display: block;
+  margin-top: .35rem;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  list-style: none;
+  margin-bottom: 2rem;
+}
+.sidebar-nav li { line-height: 1; }
+.sidebar-nav a {
+  display: block;
+  padding: .42rem 0;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: .82rem;
+  transition: color .15s;
+}
+.sidebar-nav a:hover { color: var(--accent); }
+.sidebar-nav a.active { color: var(--text); }
+
+.sidebar-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 1rem 0 1.25rem;
+}
+
+.sidebar-links {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  list-style: none;
+}
+.sidebar-links a {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .38rem 0;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: .78rem;
+  transition: color .15s;
+}
+.sidebar-links a:hover { color: var(--accent); }
+.sidebar-links .link-arrow {
+  font-size: .65rem;
+  opacity: .5;
+}
+
+.sidebar-theme {
+  margin-top: auto;
+  padding-top: 1.5rem;
+}
+.theme-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: .68rem;
+  letter-spacing: .06em;
+  padding: .3rem .6rem;
+  cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+.theme-btn:hover { color: var(--accent); border-color: var(--accent); }
+.theme-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── Main ────────────────────────────────────────────────────────────────── */
+.main {
+  flex: 1;
+  min-width: 0;
+  padding: 3.5rem 3rem 6rem;
+  max-width: calc(var(--content-max) + 6rem);
+}
+
+/* ── Sections ────────────────────────────────────────────────────────────── */
+.section {
+  padding-bottom: 4rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4rem;
+}
+.section:last-of-type {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.section-eyebrow {
+  font-family: var(--mono);
+  font-size: .68rem;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 1rem;
+  display: block;
+}
+.section-heading {
+  font-family: var(--serif);
+  font-size: 2rem;
+  font-weight: normal;
+  line-height: 1.15;
+  color: var(--text);
+  text-wrap: balance;
+  margin-bottom: 1.5rem;
+}
+
+.section-lead {
+  font-size: 1.05rem;
+  line-height: 1.7;
+  color: var(--text);
+  max-width: 58ch;
+  margin-bottom: 1.5rem;
+}
+.section-lead em {
+  font-style: italic;
+}
+
+/* ── Body prose ──────────────────────────────────────────────────────────── */
+.prose { max-width: 62ch; }
+.prose p { margin-bottom: 1rem; }
+.prose p:last-child { margin-bottom: 0; }
+
+/* ── Concept row ─────────────────────────────────────────────────────────── */
+.concept-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+.concept-block {
+  border-top: 2px solid var(--accent);
+  padding-top: .75rem;
+}
+.concept-block-label {
+  font-family: var(--serif);
+  font-size: 1rem;
+  font-style: italic;
+  color: var(--text);
+  display: block;
+  margin-bottom: .3rem;
+}
+.concept-block-body {
+  font-size: .82rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* ── Philosophy list ─────────────────────────────────────────────────────── */
+.phil-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  margin: 1.5rem 0;
+}
+.phil-list li {
+  display: flex;
+  gap: .75rem;
+  align-items: baseline;
+  font-size: .9rem;
+  color: var(--text);
+  line-height: 1.5;
+}
+.phil-list li::before {
+  content: '—';
+  color: var(--accent);
+  flex-shrink: 0;
+  font-family: var(--mono);
+}
+
+/* ── Terminal block ──────────────────────────────────────────────────────── */
+.terminal {
+  background: var(--terminal-bg);
+  border: 1px solid #2a3028;
+  padding: 1.5rem 1.5rem 1.5rem;
+  margin: 2rem 0;
+  overflow-x: auto;
+}
+.terminal-bar {
+  display: flex;
+  gap: .4rem;
+  margin-bottom: 1.25rem;
+  align-items: center;
+}
+.terminal-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #3a3a3a;
+}
+.terminal-title {
+  font-family: var(--mono);
+  font-size: .65rem;
+  letter-spacing: .08em;
+  color: #4a5048;
+  margin-left: .4rem;
+}
+.terminal-line {
+  font-family: var(--mono);
+  font-size: .82rem;
+  line-height: 1.7;
+  color: var(--terminal-fg);
+  display: flex;
+  gap: .5rem;
+}
+.terminal-line.comment {
+  color: #4a6048;
+  font-style: normal;
+}
+.terminal-line.gap {
+  height: .5rem;
+}
+.terminal-prompt {
+  color: var(--terminal-pr);
+  flex-shrink: 0;
+  user-select: none;
+}
+.terminal-cmd { color: var(--terminal-fg); }
+
+/* ── Steps ───────────────────────────────────────────────────────────────── */
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin: 1.5rem 0;
+}
+.step {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+.step-num {
+  font-family: var(--mono);
+  font-size: .72rem;
+  color: var(--accent);
+  flex-shrink: 0;
+  width: 1.5rem;
+  padding-top: .05rem;
+  letter-spacing: .04em;
+}
+.step-body { flex: 1; }
+.step-body strong {
+  display: block;
+  font-size: .9rem;
+  color: var(--text);
+  margin-bottom: .2rem;
+}
+.step-body span {
+  font-size: .82rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* ── Inline code ─────────────────────────────────────────────────────────── */
+code {
+  font-family: var(--mono);
+  font-size: .82em;
+  background: var(--surface);
+  padding: .1em .35em;
+  border: 1px solid var(--border);
+  color: var(--accent);
+}
+
+/* ── Note block ──────────────────────────────────────────────────────────── */
+.note {
+  border-left: 2px solid var(--border);
+  padding: .75rem 1rem;
+  margin: 1.5rem 0;
+  font-size: .82rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+.note strong { color: var(--text); font-weight: 600; }
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 700px) {
+  body { flex-direction: column; }
+  .sidebar {
+    width: 100%;
+    min-height: auto;
+    height: auto;
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar-brand { margin-bottom: 0; }
+  .sidebar-nav, .sidebar-links, .sidebar-divider { display: none; }
+  .sidebar-theme { padding-top: 0; margin-top: 0; margin-left: auto; }
+  .main { padding: 2rem 1.25rem 4rem; }
+  .concept-row { grid-template-columns: 1fr; gap: 1rem; }
+}
+</style>
+
+<aside class="sidebar" role="complementary" aria-label="Navigation">
+  <div class="sidebar-brand">
+    <span class="sidebar-brand-name">Akasha</span>
+    <span class="sidebar-brand-series">Seeds</span>
+  </div>
+
+  <ul class="sidebar-nav" aria-label="Page sections">
+    <li><a href="#what">What is Akasha?</a></li>
+    <li><a href="#philosophy">Philosophy</a></li>
+    <li><a href="#start">Start Here</a></li>
+  </ul>
+
+  <div class="sidebar-divider" role="separator"></div>
+
+  <ul class="sidebar-links" aria-label="External resources">
+    <li>
+      <a href="https://github.com/akashicmaster/AkashaSeeds#readme" target="_blank" rel="noopener">
+        <span>README</span><span class="link-arrow" aria-hidden="true">↗</span>
+      </a>
+    </li>
+    <li>
+      <a href="docs/quick-start.html" target="_blank" rel="noopener">
+        <span>Quick Start</span><span class="link-arrow" aria-hidden="true">↗</span>
+      </a>
+    </li>
+    <li>
+      <a href="docs/cookbook/" target="_blank" rel="noopener">
+        <span>Cookbook</span><span class="link-arrow" aria-hidden="true">↗</span>
+      </a>
+    </li>
+    <li>
+      <a href="docs/concepts.html" target="_blank" rel="noopener">
+        <span>Turning Concepts Into Code</span><span class="link-arrow" aria-hidden="true">↗</span>
+      </a>
+    </li>
+    <li>
+      <a href="https://github.com/akashicmaster/AkashaSeeds/releases" target="_blank" rel="noopener">
+        <span>Releases</span><span class="link-arrow" aria-hidden="true">↗</span>
+      </a>
+    </li>
+    <li>
+      <a href="https://github.com/akashicmaster/AkashaSeeds" target="_blank" rel="noopener">
+        <span>GitHub</span><span class="link-arrow" aria-hidden="true">↗</span>
+      </a>
+    </li>
+  </ul>
+
+  <div class="sidebar-theme">
+    <button class="theme-btn" id="theme-toggle" aria-label="Toggle colour theme">
+      light / dark
+    </button>
+  </div>
+</aside>
+
+<main class="main" id="main-content">
+
+  <!-- ── What is Akasha? ──────────────────────────────────────────── -->
+  <section class="section" id="what">
+    <span class="section-eyebrow">The substrate</span>
+    <h1 class="section-heading">Your notes shouldn't be dead files.</h1>
+
+    <p class="section-lead">
+      Akasha is a local-first, concept-oriented operating system.
+      It was built on a simple observation: humans rarely think in files.
+      We think in <em>meaningful chunks</em>.
+    </p>
+
+    <div class="prose">
+      <p>
+        A remembered sentence. A field observation. A scientific hypothesis.
+        A fragment of a story. Most software organises these into documents and records.
+        Akasha organises them into <strong>atoms</strong> — content-addressed nodes
+        that carry meaning independently of any container.
+      </p>
+      <p>
+        Each atom can be linked to any other. Those links are typed — they carry
+        a relationship label, a direction, and a weight. The result is not a document.
+        It is a <em>semantic space</em> that grows and evolves as you think.
+      </p>
+      <p>
+        Traditional systems ask: <em>how should this data be stored?</em><br>
+        Akasha asks: <em>what kind of thing is this?</em>
+      </p>
+    </div>
+
+    <div class="note">
+      <strong>Local-first.</strong> No cloud, no account, no mandatory dependencies.
+      Runs on a laptop, a Raspberry Pi, or an iPad in the middle of an archaeological dig site.
+      Your knowledge stays yours.
+    </div>
+  </section>
+
+  <!-- ── Philosophy ───────────────────────────────────────────────── -->
+  <section class="section" id="philosophy">
+    <span class="section-eyebrow">Design principles</span>
+    <h2 class="section-heading">Operand · Operator · Agent</h2>
+
+    <p class="section-lead">
+      Every action in Akasha is governed by one organising principle:
+      data, operation, and subject are kept strictly separate.
+    </p>
+
+    <div class="concept-row">
+      <div class="concept-block">
+        <span class="concept-block-label">Operand</span>
+        <p class="concept-block-body">
+          An Atom is immutable, content-addressed data.
+          It has no behaviour. It is not owned by any model.
+        </p>
+      </div>
+      <div class="concept-block">
+        <span class="concept-block-label">Operator</span>
+        <p class="concept-block-body">
+          Operations are defined independently of the data they transform.
+          Adding a new operator is a new class file. Nothing else changes.
+        </p>
+      </div>
+      <div class="concept-block">
+        <span class="concept-block-label">Agent</span>
+        <p class="concept-block-body">
+          Any client — a human, an LLM, a sensor, a script — applies operators
+          to atoms. The operator does not know or care which.
+        </p>
+      </div>
+    </div>
+
+    <div class="prose">
+      <p>
+        This is deliberately different from object-oriented design, where behaviour
+        is embedded inside data objects. In Akasha, atoms remain immutable.
+        Concept Models — structured representations of meaningful human activities
+        like research, observation, storytelling, or analysis — are operators.
+        They act on atoms from outside.
+      </p>
+      <p>
+        The consequence: <em>you are the expert</em>. The system structures what you
+        already know. The LLM helps translate your thinking into structure and code.
+        Meaning remains under human control.
+      </p>
+    </div>
+
+    <ul class="phil-list">
+      <li>Structure knowledge without designing databases</li>
+      <li>Preserve relationships that evolve over time</li>
+      <li>Work with LLMs without losing conceptual control</li>
+      <li>Build tools shaped around your own practice, not generic templates</li>
+    </ul>
+  </section>
+
+  <!-- ── Start Here ───────────────────────────────────────────────── -->
+  <section class="section" id="start">
+    <span class="section-eyebrow">Installation</span>
+    <h2 class="section-heading">Start Here</h2>
+
+    <p class="section-lead">
+      Akasha Seeds is a single Python file. No install required.
+      Python 3.9 or later.
+    </p>
+
+    <div class="steps">
+      <div class="step">
+        <span class="step-num">01</span>
+        <div class="step-body">
+          <strong>Download the seed</strong>
+          <span>Get <code>akasha_seeds_seeds.py</code> from the
+            <a href="https://github.com/akashicmaster/AkashaSeeds/releases" style="color:var(--accent)">Releases page</a>.
+          </span>
+        </div>
+      </div>
+      <div class="step">
+        <span class="step-num">02</span>
+        <div class="step-body">
+          <strong>Extract</strong>
+          <span>Run the seed once. It unpacks itself into a working directory.</span>
+        </div>
+      </div>
+      <div class="step">
+        <span class="step-num">03</span>
+        <div class="step-body">
+          <strong>Start</strong>
+          <span>Launch Akasha. The built-in ontology loads automatically.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="terminal" role="region" aria-label="Terminal commands">
+      <div class="terminal-bar" aria-hidden="true">
+        <span class="terminal-dot"></span>
+        <span class="terminal-dot"></span>
+        <span class="terminal-dot"></span>
+        <span class="terminal-title">shell</span>
+      </div>
+
+      <div class="terminal-line comment"><span class="terminal-cmd"># Step 1 — extract the seed</span></div>
+      <div class="terminal-line">
+        <span class="terminal-prompt">$</span>
+        <span class="terminal-cmd">python akasha_seeds_seeds.py</span>
+      </div>
+      <div class="terminal-line gap"></div>
+
+      <div class="terminal-line comment"><span class="terminal-cmd"># Step 2 — enter the extracted directory</span></div>
+      <div class="terminal-line">
+        <span class="terminal-prompt">$</span>
+        <span class="terminal-cmd">cd akasha/</span>
+      </div>
+      <div class="terminal-line gap"></div>
+
+      <div class="terminal-line comment"><span class="terminal-cmd"># Step 3 — start Akasha</span></div>
+      <div class="terminal-line">
+        <span class="terminal-prompt">$</span>
+        <span class="terminal-cmd">python akasha.py</span>
+      </div>
+      <div class="terminal-line gap"></div>
+
+      <div class="terminal-line comment"><span class="terminal-cmd"># Now write your first atom</span></div>
+      <div class="terminal-line">
+        <span class="terminal-prompt">akasha&gt;</span>
+        <span class="terminal-cmd">w "My first observation."</span>
+      </div>
+    </div>
+
+    <div class="note">
+      <strong>No mandatory dependencies.</strong>
+      Akasha runs on the standard Python library.
+      Optional: TFLite and SpaCy install automatically on first launch when available,
+      enabling semantic vector search and NLP features.
+    </div>
+  </section>
+
+</main>
+
+<script>
+(function () {
+  var STORAGE_KEY = 'akasha-theme';
+  var root = document.documentElement;
+
+  function applyTheme(t) {
+    root.setAttribute('data-theme', t);
+    localStorage.setItem(STORAGE_KEY, t);
+  }
+
+  // Restore saved preference
+  var saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) applyTheme(saved);
+
+  // Toggle button
+  document.getElementById('theme-toggle').addEventListener('click', function () {
+    var current = root.getAttribute('data-theme');
+    if (!current) {
+      // Detect from media query
+      current = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    applyTheme(current === 'dark' ? 'light' : 'dark');
+  });
+
+  // Highlight active nav section on scroll
+  var sections = document.querySelectorAll('.section[id]');
+  var navLinks = document.querySelectorAll('.sidebar-nav a');
+
+  function onScroll() {
+    var scrollY = window.scrollY + 80;
+    var active = null;
+    sections.forEach(function (s) {
+      if (s.offsetTop <= scrollY) active = s.id;
+    });
+    navLinks.forEach(function (a) {
+      a.classList.toggle('active', a.getAttribute('href') === '#' + active);
+    });
+  }
+
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+})();
+</script>
