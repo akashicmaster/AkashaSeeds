@@ -1,0 +1,8 @@
+{
+  "label": "Notable Historical Figures",
+  "description": "Occupation/field taxonomy (philosopher, scientist, military leader, statesman, artist, writer, religious figure, explorer, mathematician, architect, composer, inventor, etc.) with era anchors. Import scripts cover Pantheon 2.0 (HPI-ranked notable figures, MIT/Harvard) and Wikidata humans with 10+ Wikipedia language editions born before 1900.\n\nImport scripts: Pantheon 2.0 CSV (pantheon.world), Wikidata SPARQL pre-1900 notable people.\n\nAtom IDs: person:field:*, person:subfield:*, person:era:*, person:*",
+  "license": "Public domain (taxonomy) + CC0 (Pantheon 2.0) + CC BY-SA 4.0 (Wikidata)",
+  "source": "https://pantheon.world/data/datasets | https://www.wikidata.org/",
+  "size_hint": "~100 static + thousands from import scripts",
+  "attribution": "Pantheon 2.0 (MIT Media Lab / Harvard Dataverse) | Wikidata"
+}

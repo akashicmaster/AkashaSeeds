@@ -1,0 +1,89 @@
+{
+  "version": "2",
+  "packages": [
+    {
+      "name": "base",
+      "autoload": true
+    },
+    {
+      "name": "vocab",
+      "autoload": false
+    },
+    {
+      "name": "world",
+      "autoload": false
+    },
+    {
+      "name": "tech",
+      "autoload": false
+    },
+    {
+      "name": "domain",
+      "autoload": false
+    },
+    {
+      "name": "archaeology",
+      "autoload": false
+    },
+    {
+      "name": "art",
+      "autoload": false
+    },
+    {
+      "name": "biology",
+      "autoload": false
+    },
+    {
+      "name": "film",
+      "autoload": false
+    },
+    {
+      "name": "geology",
+      "autoload": false
+    },
+    {
+      "name": "law",
+      "autoload": false
+    },
+    {
+      "name": "literature",
+      "autoload": false
+    },
+    {
+      "name": "medicine",
+      "autoload": false
+    },
+    {
+      "name": "music",
+      "autoload": false
+    },
+    {
+      "name": "nutrition",
+      "autoload": false
+    },
+    {
+      "name": "people",
+      "autoload": false
+    },
+    {
+      "name": "resources",
+      "autoload": false
+    },
+    {
+      "name": "space",
+      "autoload": false
+    },
+    {
+      "name": "war",
+      "autoload": false
+    },
+    {
+      "name": "weather",
+      "autoload": false
+    },
+    {
+      "name": "wine",
+      "autoload": false
+    }
+  ]
+}

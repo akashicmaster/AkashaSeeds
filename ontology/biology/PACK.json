@@ -1,0 +1,8 @@
+{
+  "label": "NCBI Taxonomy (Biology)",
+  "description": "Taxonomic hierarchy for vertebrates, vascular plants, fungi, and major invertebrate/bacterial groups. Sourced from the NCBI Taxonomy database. Ranks from kingdom to species for vertebrates; kingdom to genus for plants/fungi; kingdom to order for invertebrates.\n\nAtom IDs: bio:{rank}:{scientific_name}, e.g. bio:species:homo_sapiens, bio:family:felidae",
+  "license": "Public domain (National Center for Biotechnology Information)",
+  "source": "https://www.ncbi.nlm.nih.gov/taxonomy",
+  "size_hint": "~80K–150K atoms depending on filter",
+  "attribution": "NCBI Taxonomy, National Center for Biotechnology Information"
+}

@@ -1,0 +1,8 @@
+{
+  "label": "USDA FoodData Central (SR Legacy)",
+  "description": "~8,800 foods with full nutrient profiles from the USDA FoodData Central SR Legacy dataset. Includes natural foods, processed foods, and prepared dishes. Each atom carries key nutrients per 100g (energy, protein, fat, carbohydrates, fiber, vitamins, minerals).\n\nAtom IDs: food:{category}:{name}, e.g. food:fruit:apple_raw_with_skin",
+  "license": "Public domain (U.S. Department of Agriculture)",
+  "source": "https://fdc.nal.usda.gov/",
+  "size_hint": "~8.8K atoms",
+  "attribution": "USDA FoodData Central, Agricultural Research Service"
+}

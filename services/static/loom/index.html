@@ -1,0 +1,1407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Loom — Akasha Writing Atelier</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300..700;1,6..72,300..700&display=swap" rel="stylesheet">
+  <style>
+    /* ── Palette ────────────────────────────────────────────── */
+    :root {
+      --paper:    #f5f0e8;
+      --paper2:   #ede8de;
+      --paper3:   #e4ddd0;
+      --ink:      #2c2318;
+      --ink2:     #5a4e3c;
+      --ink3:     #8a7d6a;
+      --sepia:    #9b7945;
+      --sepia2:   #c4a26a;
+      --sepia3:   #e8d5b0;
+      --rust:     #8b3a2a;
+      --border:   #d4c9b4;
+      --shadow:   rgba(44, 35, 24, 0.12);
+      --panel-w:  280px;
+    }
+
+    /* ── Reset & Base ───────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--paper);
+      color: var(--ink);
+      font-family: 'Newsreader', Georgia, serif;
+      font-size: 17px;
+      line-height: 1.7;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Paper texture overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+      opacity: 1;
+    }
+
+    /* ── Login Overlay ──────────────────────────────────────── */
+    #login-overlay {
+      position: fixed; inset: 0; z-index: 9999;
+      background: var(--paper);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 20px;
+      padding: 40px;
+    }
+
+    .loom-wordmark {
+      display: block;
+      width: 100px;
+      height: 100px;
+      object-fit: contain;
+      margin-bottom: 12px;
+      filter: drop-shadow(0 0 12px rgba(200,160,80,.25));
+    }
+
+    .loom-tagline {
+      font-size: 0.85rem;
+      color: var(--ink3);
+      letter-spacing: 0.15em;
+      margin-bottom: 24px;
+    }
+
+    .loom-input {
+      background: transparent;
+      border: none;
+      border-bottom: 1.5px solid var(--border);
+      color: var(--ink);
+      padding: 8px 4px;
+      font-size: 1rem;
+      font-family: inherit;
+      width: 240px;
+      text-align: center;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .loom-input:focus { border-color: var(--sepia); }
+    .loom-input::placeholder { color: var(--ink3); }
+
+    .loom-btn {
+      background: transparent;
+      border: 1.5px solid var(--sepia);
+      color: var(--sepia);
+      padding: 9px 32px;
+      font-size: 0.9rem;
+      font-family: inherit;
+      font-style: italic;
+      cursor: pointer;
+      letter-spacing: 0.1em;
+      transition: all 0.2s;
+      border-radius: 2px;
+    }
+    .loom-btn:hover { background: var(--sepia); color: var(--paper); }
+    .loom-btn:active { transform: scale(0.98); }
+
+    #login-msg {
+      color: var(--rust);
+      font-size: 0.82rem;
+      min-height: 1.2em;
+      font-style: italic;
+    }
+
+    /* ── App Shell ──────────────────────────────────────────── */
+    #app {
+      display: none;
+      flex-direction: column;
+      height: 100%;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ── Header ─────────────────────────────────────────────── */
+    #header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--paper2);
+      flex-shrink: 0;
+      box-shadow: 0 1px 4px var(--shadow);
+    }
+
+    .header-wordmark {
+      width: 28px;
+      height: 28px;
+      object-fit: contain;
+      flex-shrink: 0;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+    #note-title-display {
+      font-size: 0.9rem;
+      color: var(--ink2);
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 3px;
+      transition: background 0.15s;
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #note-title-display:hover { background: var(--paper3); }
+
+    #title-edit-form { display: none; flex: 1; }
+    #title-edit-input {
+      width: 100%;
+      font-size: 0.9rem;
+      font-family: inherit;
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid var(--sepia);
+      color: var(--ink);
+      padding: 4px 8px;
+      outline: none;
+    }
+
+    .header-sep { color: var(--border); font-size: 0.85rem; }
+
+    .header-btn {
+      background: transparent;
+      border: none;
+      color: var(--ink3);
+      font-size: 0.82rem;
+      font-family: inherit;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 3px;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .header-btn:hover { color: var(--sepia); background: var(--paper3); }
+    .header-btn.active { color: var(--sepia); }
+
+    .loom-menu-wrap { position: relative; }
+    .loom-dropdown {
+      position: absolute; top: calc(100% + 4px); left: 0;
+      background: var(--paper2); border: 1px solid var(--border2);
+      border-radius: 4px; min-width: 140px; z-index: 400;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    .loom-dropdown.hidden { display: none; }
+    .ldd-item {
+      display: block; width: 100%; text-align: left;
+      background: none; border: none; font-family: inherit;
+      font-size: 0.82rem; color: var(--ink2); padding: 7px 14px;
+      cursor: pointer; white-space: nowrap;
+    }
+    .ldd-item:hover { background: var(--paper3); color: var(--sepia); }
+    .ldd-sep { height: 1px; background: var(--border); margin: 3px 0; }
+
+    #writing-mode-btn {
+      margin-left: auto;
+      font-style: italic;
+    }
+
+    #save-indicator {
+      font-size: 0.75rem;
+      color: var(--ink3);
+      font-style: italic;
+      opacity: 0;
+      transition: opacity 0.4s;
+      flex-shrink: 0;
+    }
+    #save-indicator.visible { opacity: 1; }
+
+    /* ── Main Layout ─────────────────────────────────────────── */
+    #main {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Left Panel — chunk list ─────────────────────────────── */
+    #left-panel {
+      width: var(--panel-w);
+      flex-shrink: 0;
+      border-right: 1px solid var(--border);
+      background: var(--paper2);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: width 0.3s ease, opacity 0.3s ease;
+    }
+    #left-panel.hidden { width: 0; opacity: 0; pointer-events: none; }
+
+    .panel-header {
+      padding: 12px 16px 8px;
+      font-size: 0.75rem;
+      color: var(--ink3);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .panel-actions {
+      padding: 8px 12px;
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .mini-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--ink2);
+      font-size: 0.75rem;
+      font-family: inherit;
+      cursor: pointer;
+      padding: 3px 9px;
+      border-radius: 2px;
+      transition: all 0.15s;
+    }
+    .mini-btn:hover { border-color: var(--sepia); color: var(--sepia); }
+    .mini-btn:disabled { opacity: 0.35; cursor: default; }
+
+    #chunk-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 0;
+    }
+    #chunk-list::-webkit-scrollbar { width: 4px; }
+    #chunk-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .chunk-item {
+      padding: 10px 16px;
+      cursor: pointer;
+      border-left: 3px solid transparent;
+      transition: all 0.15s;
+    }
+    .chunk-item:hover { background: var(--paper3); border-left-color: var(--sepia3); }
+    .chunk-item.active { background: var(--paper3); border-left-color: var(--sepia); }
+
+    .chunk-item-role {
+      font-size: 0.7rem;
+      color: var(--ink3);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 2px;
+    }
+
+    .chunk-item-head {
+      font-size: 0.85rem;
+      color: var(--ink2);
+      line-height: 1.4;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+
+    .chunk-item-num {
+      font-size: 0.7rem;
+      color: var(--ink3);
+      margin-top: 3px;
+    }
+
+    /* ── Center — Editor ─────────────────────────────────────── */
+    #center {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--paper);
+    }
+
+    #editor-area {
+      flex: 1;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      padding: 40px 60px 20px;
+      max-width: 800px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    #chunk-role-label {
+      font-size: 0.75rem;
+      color: var(--ink3);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    #editor {
+      flex: 1;
+      width: 100%;
+      background: transparent;
+      border: none;
+      outline: none;
+      font-family: 'Newsreader', Georgia, serif;
+      font-size: 1.05rem;
+      line-height: 1.8;
+      color: var(--ink);
+      resize: none;
+      overflow-y: auto;
+      caret-color: var(--sepia);
+    }
+    #editor::-webkit-scrollbar { width: 4px; }
+    #editor::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    #editor::selection { background: var(--sepia3); }
+    #editor::placeholder { color: var(--ink3); font-style: italic; }
+
+    #editor-empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      gap: 16px;
+      color: var(--ink3);
+    }
+
+    .empty-icon {
+      font-size: 2.5rem;
+      opacity: 0.4;
+    }
+
+    .empty-text {
+      font-size: 0.88rem;
+      text-align: center;
+      line-height: 1.8;
+      max-width: 280px;
+      font-style: italic;
+    }
+
+    .new-chunk-btn {
+      background: transparent;
+      border: 1.5px solid var(--sepia);
+      color: var(--sepia);
+      padding: 8px 24px;
+      font-size: 0.85rem;
+      font-family: inherit;
+      font-style: italic;
+      cursor: pointer;
+      border-radius: 2px;
+      transition: all 0.2s;
+    }
+    .new-chunk-btn:hover { background: var(--sepia); color: var(--paper); }
+
+    /* ── Right Panel — Resonance ─────────────────────────────── */
+    #right-panel {
+      width: var(--panel-w);
+      flex-shrink: 0;
+      border-left: 1px solid var(--border);
+      background: var(--paper2);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: width 0.3s ease, opacity 0.3s ease;
+    }
+    #right-panel.hidden { width: 0; opacity: 0; pointer-events: none; }
+
+    .right-section {
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    #tags-list {
+      padding: 8px 14px 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .tag-chip {
+      background: var(--paper3);
+      border: 1px solid var(--border);
+      color: var(--ink2);
+      font-size: 0.75rem;
+      padding: 3px 10px;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .tag-chip:hover { border-color: var(--sepia); color: var(--sepia); background: var(--sepia3); }
+    .tag-chip.active { border-color: var(--sepia); color: var(--sepia); background: var(--sepia3); }
+
+    .tags-empty {
+      font-size: 0.8rem;
+      color: var(--ink3);
+      font-style: italic;
+      padding: 4px 0;
+    }
+
+    /* Association drawer (hidden until tag chip click) */
+    #assoc-drawer {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      overflow: hidden;
+      border-top: 1px solid var(--border);
+    }
+    #assoc-drawer.hidden { display: none; }
+
+    .drawer-header {
+      padding: 8px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      background: var(--paper2);
+    }
+    .drawer-axis-label {
+      font-size: 0.72rem;
+      color: var(--sepia);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    .drawer-close {
+      background: none;
+      border: none;
+      color: var(--ink3);
+      cursor: pointer;
+      font-size: 0.8rem;
+      padding: 2px 6px;
+      border-radius: 2px;
+      line-height: 1;
+      transition: color 0.15s, background 0.15s;
+    }
+    .drawer-close:hover { color: var(--rust); background: var(--paper3); }
+
+    /* Scope slider (inside drawer) */
+    #scope-row {
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .scope-label {
+      font-size: 0.75rem;
+      color: var(--ink3);
+      white-space: nowrap;
+    }
+    #scope-slider {
+      flex: 1;
+      accent-color: var(--sepia);
+      cursor: pointer;
+    }
+    #scope-val {
+      font-size: 0.75rem;
+      color: var(--sepia);
+      min-width: 16px;
+      text-align: right;
+    }
+
+    /* Associations list (inside drawer) */
+    #assoc-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 0;
+    }
+    #assoc-list::-webkit-scrollbar { width: 4px; }
+    #assoc-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .assoc-item {
+      padding: 9px 16px;
+      border-left: 3px solid transparent;
+      transition: all 0.15s;
+      cursor: default;
+    }
+    .assoc-item:hover { background: var(--paper3); border-left-color: var(--sepia3); }
+
+    .assoc-item-rel {
+      font-size: 0.68rem;
+      color: var(--sepia2);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 2px;
+    }
+
+    .assoc-item-head {
+      font-size: 0.82rem;
+      color: var(--ink2);
+      line-height: 1.4;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+
+    .right-loading {
+      padding: 16px;
+      font-size: 0.8rem;
+      color: var(--ink3);
+      font-style: italic;
+      text-align: center;
+    }
+
+    /* ── Scrollbar global ─────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* ── Toast ───────────────────────────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%) translateY(16px);
+      background: var(--ink);
+      color: var(--paper);
+      font-size: 0.82rem;
+      padding: 8px 20px;
+      border-radius: 3px;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.25s;
+      z-index: 100;
+      white-space: nowrap;
+    }
+    #toast.show {
+      opacity: 0.92;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* ── Writing mode ─────────────────────────────────────────── */
+    body.writing-mode #left-panel,
+    body.writing-mode #right-panel { width: 0; opacity: 0; pointer-events: none; }
+    body.writing-mode #editor-area { padding: 60px 120px 40px; max-width: 680px; }
+
+    /* ── Responsive ──────────────────────────────────────────── */
+    @media (max-width: 900px) {
+      :root { --panel-w: 220px; }
+    }
+    @media (max-width: 640px) {
+      #left-panel, #right-panel { display: none; }
+      #editor-area { padding: 24px 20px; }
+    }
+
+    /* ── Utility ─────────────────────────────────────────────── */
+    .spin {
+      display: inline-block;
+      animation: spin 1.2s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Guide Modal ─────────────────────────────────────────── */
+    #guide-modal {
+      display: none; position: fixed; inset: 0; z-index: 9500;
+      background: rgba(44, 35, 24, 0.55); overflow-y: auto; padding: 40px 0;
+    }
+    #guide-modal.visible { display: block; }
+    #guide-box {
+      width: min(640px, 92vw); margin: 0 auto;
+      background: var(--paper); border: 1px solid var(--border);
+      border-radius: 4px; padding: 36px 40px 28px;
+      box-shadow: 0 12px 48px rgba(44, 35, 24, 0.22);
+    }
+    .lg-h1 {
+      font-family: 'Newsreader', Georgia, serif;
+      font-size: 1.55rem; font-weight: 300; font-style: italic;
+      color: var(--sepia); letter-spacing: 0.06em; margin-bottom: 4px;
+    }
+    .lg-h2 {
+      font-size: 0.7rem; color: var(--ink3); letter-spacing: 0.12em;
+      text-transform: uppercase; margin: 22px 0 8px;
+      padding-bottom: 3px; border-bottom: 1px solid var(--border);
+    }
+    .lg-p  { font-size: 0.875rem; color: var(--ink2); line-height: 1.75; margin: 5px 0; }
+    .lg-ol { font-size: 0.875rem; color: var(--ink2); line-height: 1.75; padding-left: 20px; margin: 5px 0; }
+    .lg-sep { border: none; border-top: 1px solid var(--border); margin: 20px 0; opacity: 0.6; }
+    .lg-table { width: 100%; border-collapse: collapse; font-size: 0.83rem; margin: 8px 0; }
+    .lg-table th {
+      text-align: left; color: var(--ink3); font-weight: 400;
+      font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase;
+      padding: 3px 0; border-bottom: 1px solid var(--border);
+    }
+    .lg-table td {
+      padding: 5px 8px 5px 0; color: var(--ink2);
+      border-bottom: 1px solid rgba(212, 201, 180, 0.5); vertical-align: top;
+    }
+    .lg-table td:first-child {
+      color: var(--sepia); font-size: 0.82rem; white-space: nowrap;
+      width: 160px; padding-right: 16px;
+    }
+    .lg-kbd {
+      display: inline-block; font-family: monospace; font-size: 0.8rem;
+      background: var(--paper2); border: 1px solid var(--border);
+      border-radius: 2px; padding: 1px 5px; color: var(--sepia2);
+    }
+    .lg-foot { display: flex; justify-content: flex-end; margin-top: 24px; }
+    .lg-close {
+      background: transparent; border: 1.5px solid var(--sepia);
+      color: var(--sepia); font-family: inherit; font-size: 0.85rem;
+      font-style: italic; padding: 7px 24px; cursor: pointer;
+      border-radius: 2px; transition: all 0.2s;
+    }
+    .lg-close:hover { background: var(--sepia); color: var(--paper); }
+  </style>
+</head>
+<body>
+
+<!-- ── Login ──────────────────────────────────────────── -->
+<div id="login-overlay">
+  <img class="loom-wordmark"  src="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%2244%2069%20152%20152%22%20width%3D%22512%22%20height%3D%22512%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3CradialGradient%20id%3D%22bg%22%20cx%3D%2250%25%22%20cy%3D%2240%25%22%20r%3D%2260%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%232a1f0e%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%2260%25%22%20stop-color%3D%22%231a1208%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%230e0a04%22%2F%3E%0A%20%20%20%20%3C%2FradialGradient%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22trunk%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%220%25%22%20y2%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23c8960a%22%20stop-opacity%3D%220.9%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%2250%25%22%20stop-color%3D%22%23a07008%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%236b4a05%22%20stop-opacity%3D%220.6%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22rootG%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%220%25%22%20y2%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%238b6508%22%20stop-opacity%3D%220.7%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%233d2a02%22%20stop-opacity%3D%220.15%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%20%20%3CradialGradient%20id%3D%22futureG%22%20cx%3D%2250%25%22%20cy%3D%2250%25%22%20r%3D%2250%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%2300ffcc%22%20stop-opacity%3D%220.6%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%2300ffcc%22%20stop-opacity%3D%220%22%2F%3E%0A%20%20%20%20%3C%2FradialGradient%3E%0A%20%20%20%20%3CradialGradient%20id%3D%22pG%22%20cx%3D%2250%25%22%20cy%3D%2250%25%22%20r%3D%2250%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%238b6508%22%20stop-opacity%3D%220.2%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%238b6508%22%20stop-opacity%3D%220%22%2F%3E%0A%20%20%20%20%3C%2FradialGradient%3E%0A%20%20%20%20%3Cfilter%20id%3D%22ff%22%20x%3D%22-100%25%22%20y%3D%22-100%25%22%20width%3D%22300%25%22%20height%3D%22300%25%22%3E%0A%20%20%20%20%20%20%3CfeGaussianBlur%20stdDeviation%3D%222.5%22%20result%3D%22blur%22%2F%3E%0A%20%20%20%20%20%20%3CfeMerge%3E%3CfeMergeNode%20in%3D%22blur%22%2F%3E%3CfeMergeNode%20in%3D%22SourceGraphic%22%2F%3E%3C%2FfeMerge%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%20%20%3Cfilter%20id%3D%22gf%22%20x%3D%22-50%25%22%20y%3D%22-50%25%22%20width%3D%22200%25%22%20height%3D%22200%25%22%3E%0A%20%20%20%20%20%20%3CfeGaussianBlur%20stdDeviation%3D%221.2%22%20result%3D%22blur%22%2F%3E%0A%20%20%20%20%20%20%3CfeMerge%3E%3CfeMergeNode%20in%3D%22blur%22%2F%3E%3CfeMergeNode%20in%3D%22SourceGraphic%22%2F%3E%3C%2FfeMerge%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Cellipse%20cx%3D%22120%22%20cy%3D%22155.0%22%20rx%3D%2255%22%20ry%3D%2255%22%20fill%3D%22url%28%23pG%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22155.0%22%20r%3D%2250%22%20fill%3D%22none%22%20stroke%3D%22%238b6508%22%20stroke-width%3D%220.7%22%20opacity%3D%220.35%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22155.0%22%20r%3D%2236%22%20fill%3D%22none%22%20stroke%3D%22%238b6508%22%20stroke-width%3D%220.3%22%20opacity%3D%220.2%22%20stroke-dasharray%3D%223%2C5%22%2F%3E%0A%20%20%3Cline%20x1%3D%22120%22%20y1%3D%2295.0%22%20x2%3D%22120%22%20y2%3D%22168.0%22%20stroke%3D%22url%28%23trunk%29%22%20stroke-width%3D%222%22%20filter%3D%22url%28%23gf%29%22%20opacity%3D%220.95%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C168.0%20Q107%2C178.0%2098%2C188.0%22%20fill%3D%22none%22%20stroke%3D%22url%28%23rootG%29%22%20stroke-width%3D%221.1%22%20opacity%3D%220.55%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C168.0%20Q120%2C180.0%20120%2C191.0%22%20fill%3D%22none%22%20stroke%3D%22url%28%23rootG%29%22%20stroke-width%3D%221.1%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C168.0%20Q133%2C178.0%20142%2C188.0%22%20fill%3D%22none%22%20stroke%3D%22url%28%23rootG%29%22%20stroke-width%3D%221.1%22%20opacity%3D%220.55%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2298%22%20cy%3D%22188.0%22%20r%3D%221.8%22%20fill%3D%22%238b6508%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22191.0%22%20r%3D%221.8%22%20fill%3D%22%238b6508%22%20opacity%3D%220.45%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22142%22%20cy%3D%22188.0%22%20r%3D%221.8%22%20fill%3D%22%238b6508%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C160.0%20Q107%2C154.0%2095%2C149.0%22%20fill%3D%22none%22%20stroke%3D%22%238b6508%22%20stroke-width%3D%220.9%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C160.0%20Q133%2C154.0%20145%2C149.0%22%20fill%3D%22none%22%20stroke%3D%22%238b6508%22%20stroke-width%3D%220.9%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C148.0%20Q104%2C141.0%2091%2C135.0%22%20fill%3D%22none%22%20stroke%3D%22%23a07008%22%20stroke-width%3D%221%22%20opacity%3D%220.6%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C148.0%20Q136%2C141.0%20149%2C135.0%22%20fill%3D%22none%22%20stroke%3D%22%23a07008%22%20stroke-width%3D%221%22%20opacity%3D%220.6%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C134.0%20Q102%2C127.0%2088%2C121.0%22%20fill%3D%22none%22%20stroke%3D%22%23b08010%22%20stroke-width%3D%221.1%22%20opacity%3D%220.65%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C134.0%20Q138%2C127.0%20152%2C121.0%22%20fill%3D%22none%22%20stroke%3D%22%23b08010%22%20stroke-width%3D%221.1%22%20opacity%3D%220.65%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C120.0%20Q103%2C112.0%2090%2C106.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%221.2%22%20opacity%3D%220.75%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C120.0%20Q137%2C112.0%20150%2C106.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%221.2%22%20opacity%3D%220.75%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C108.0%20Q110%2C100.0%20102%2C93.0%22%20fill%3D%22none%22%20stroke%3D%22%23d4a43a%22%20stroke-width%3D%221.1%22%20opacity%3D%220.8%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C108.0%20Q120%2C98.0%20120%2C90.0%22%20fill%3D%22none%22%20stroke%3D%22%23d4a43a%22%20stroke-width%3D%221.2%22%20opacity%3D%220.85%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C108.0%20Q130%2C100.0%20138%2C93.0%22%20fill%3D%22none%22%20stroke%3D%22%23d4a43a%22%20stroke-width%3D%221.1%22%20opacity%3D%220.8%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M90%2C106.0%20Q82%2C102.0%2076%2C99.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%220.7%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M150%2C106.0%20Q158%2C102.0%20164%2C99.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%220.7%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M88%2C121.0%20Q79%2C118.0%2072%2C116.0%22%20fill%3D%22none%22%20stroke%3D%22%23a07008%22%20stroke-width%3D%220.6%22%20opacity%3D%220.4%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M152%2C121.0%20Q161%2C118.0%20168%2C116.0%22%20fill%3D%22none%22%20stroke%3D%22%23a07008%22%20stroke-width%3D%220.6%22%20opacity%3D%220.4%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M108%2C111.0%20Q97%2C102.0%20102%2C92.0%20Q107%2C82.0%20120%2C81.0%20Q133%2C82.0%20138%2C92.0%20Q143%2C102.0%20132%2C111.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%221.3%22%20opacity%3D%220.7%22%20filter%3D%22url%28%23gf%29%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M132%2C111.0%20Q142%2C118.0%20137%2C128.0%20Q132%2C136.0%20120%2C134.0%22%20fill%3D%22none%22%20stroke%3D%22%23b08010%22%20stroke-width%3D%221.1%22%20opacity%3D%220.6%22%2F%3E%0A%20%20%3Cline%20x1%3D%22112%22%20y1%3D%2281.0%22%20x2%3D%22128%22%20y2%3D%2281.0%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%220.8%22%20opacity%3D%220.45%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22135.0%22%20r%3D%223%22%20fill%3D%22%23c8960a%22%20opacity%3D%220.3%22%20filter%3D%22url%28%23gf%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22135.0%22%20r%3D%221.5%22%20fill%3D%22%23e8c55a%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%2288.0%22%20r%3D%2210%22%20fill%3D%22url%28%23futureG%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22101%22%20cy%3D%2291.0%22%20r%3D%227%22%20fill%3D%22url%28%23futureG%29%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22139%22%20cy%3D%2291.0%22%20r%3D%227%22%20fill%3D%22url%28%23futureG%29%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%2288.0%22%20r%3D%224%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.95%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%2288.0%22%20r%3D%221.8%22%20fill%3D%22%23ffffff%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22101%22%20cy%3D%2291.0%22%20r%3D%223.2%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.85%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22101%22%20cy%3D%2291.0%22%20r%3D%221.3%22%20fill%3D%22%23e0fff8%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22139%22%20cy%3D%2291.0%22%20r%3D%223.2%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.85%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22139%22%20cy%3D%2291.0%22%20r%3D%221.3%22%20fill%3D%22%23e0fff8%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2288%22%20cy%3D%22104.0%22%20r%3D%222.5%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22152%22%20cy%3D%22104.0%22%20r%3D%222.5%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2275%22%20cy%3D%2298.0%22%20r%3D%222%22%20fill%3D%22%2300ffcc%22%20opacity%3D%220.55%22%20filter%3D%22url%28%23ff%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22165%22%20cy%3D%2298.0%22%20r%3D%222%22%20fill%3D%22%2300ffcc%22%20opacity%3D%220.55%22%20filter%3D%22url%28%23ff%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2271%22%20cy%3D%22115.0%22%20r%3D%221.8%22%20fill%3D%22%2300ffcc%22%20opacity%3D%220.4%22%20filter%3D%22url%28%23ff%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22169%22%20cy%3D%22115.0%22%20r%3D%221.8%22%20fill%3D%22%2300ffcc%22%20opacity%3D%220.4%22%20filter%3D%22url%28%23ff%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2289%22%20cy%3D%22134.0%22%20r%3D%221.4%22%20fill%3D%22%2300ddaa%22%20opacity%3D%220.3%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22151%22%20cy%3D%22134.0%22%20r%3D%221.4%22%20fill%3D%22%2300ddaa%22%20opacity%3D%220.3%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2293%22%20cy%3D%22148.0%22%20r%3D%221.1%22%20fill%3D%22%2300bbaa%22%20opacity%3D%220.2%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22147%22%20cy%3D%22148.0%22%20r%3D%221.1%22%20fill%3D%22%2300bbaa%22%20opacity%3D%220.2%22%2F%3E%0A%3C%2Fsvg%3E" alt="Loom">
+  <div class="loom-tagline">a writing atelier</div>
+  <input id="user-input"  class="loom-input" type="text"     placeholder="name"       autocomplete="off">
+  <input id="token-input" class="loom-input" type="password" placeholder="passphrase" autocomplete="off">
+  <button class="loom-btn" onclick="doLogin()">Enter</button>
+  <div id="login-msg"></div>
+</div>
+
+<!-- ── App ────────────────────────────────────────────── -->
+<div id="app">
+
+  <!-- Header -->
+  <div id="header">
+    <img class="header-wordmark"  src="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%2244%2069%20152%20152%22%20width%3D%22512%22%20height%3D%22512%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3CradialGradient%20id%3D%22bg%22%20cx%3D%2250%25%22%20cy%3D%2240%25%22%20r%3D%2260%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%232a1f0e%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%2260%25%22%20stop-color%3D%22%231a1208%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%230e0a04%22%2F%3E%0A%20%20%20%20%3C%2FradialGradient%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22trunk%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%220%25%22%20y2%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23c8960a%22%20stop-opacity%3D%220.9%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%2250%25%22%20stop-color%3D%22%23a07008%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%236b4a05%22%20stop-opacity%3D%220.6%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22rootG%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%220%25%22%20y2%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%238b6508%22%20stop-opacity%3D%220.7%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%233d2a02%22%20stop-opacity%3D%220.15%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%20%20%3CradialGradient%20id%3D%22futureG%22%20cx%3D%2250%25%22%20cy%3D%2250%25%22%20r%3D%2250%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%2300ffcc%22%20stop-opacity%3D%220.6%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%2300ffcc%22%20stop-opacity%3D%220%22%2F%3E%0A%20%20%20%20%3C%2FradialGradient%3E%0A%20%20%20%20%3CradialGradient%20id%3D%22pG%22%20cx%3D%2250%25%22%20cy%3D%2250%25%22%20r%3D%2250%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%238b6508%22%20stop-opacity%3D%220.2%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%238b6508%22%20stop-opacity%3D%220%22%2F%3E%0A%20%20%20%20%3C%2FradialGradient%3E%0A%20%20%20%20%3Cfilter%20id%3D%22ff%22%20x%3D%22-100%25%22%20y%3D%22-100%25%22%20width%3D%22300%25%22%20height%3D%22300%25%22%3E%0A%20%20%20%20%20%20%3CfeGaussianBlur%20stdDeviation%3D%222.5%22%20result%3D%22blur%22%2F%3E%0A%20%20%20%20%20%20%3CfeMerge%3E%3CfeMergeNode%20in%3D%22blur%22%2F%3E%3CfeMergeNode%20in%3D%22SourceGraphic%22%2F%3E%3C%2FfeMerge%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%20%20%3Cfilter%20id%3D%22gf%22%20x%3D%22-50%25%22%20y%3D%22-50%25%22%20width%3D%22200%25%22%20height%3D%22200%25%22%3E%0A%20%20%20%20%20%20%3CfeGaussianBlur%20stdDeviation%3D%221.2%22%20result%3D%22blur%22%2F%3E%0A%20%20%20%20%20%20%3CfeMerge%3E%3CfeMergeNode%20in%3D%22blur%22%2F%3E%3CfeMergeNode%20in%3D%22SourceGraphic%22%2F%3E%3C%2FfeMerge%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Cellipse%20cx%3D%22120%22%20cy%3D%22155.0%22%20rx%3D%2255%22%20ry%3D%2255%22%20fill%3D%22url%28%23pG%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22155.0%22%20r%3D%2250%22%20fill%3D%22none%22%20stroke%3D%22%238b6508%22%20stroke-width%3D%220.7%22%20opacity%3D%220.35%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22155.0%22%20r%3D%2236%22%20fill%3D%22none%22%20stroke%3D%22%238b6508%22%20stroke-width%3D%220.3%22%20opacity%3D%220.2%22%20stroke-dasharray%3D%223%2C5%22%2F%3E%0A%20%20%3Cline%20x1%3D%22120%22%20y1%3D%2295.0%22%20x2%3D%22120%22%20y2%3D%22168.0%22%20stroke%3D%22url%28%23trunk%29%22%20stroke-width%3D%222%22%20filter%3D%22url%28%23gf%29%22%20opacity%3D%220.95%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C168.0%20Q107%2C178.0%2098%2C188.0%22%20fill%3D%22none%22%20stroke%3D%22url%28%23rootG%29%22%20stroke-width%3D%221.1%22%20opacity%3D%220.55%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C168.0%20Q120%2C180.0%20120%2C191.0%22%20fill%3D%22none%22%20stroke%3D%22url%28%23rootG%29%22%20stroke-width%3D%221.1%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C168.0%20Q133%2C178.0%20142%2C188.0%22%20fill%3D%22none%22%20stroke%3D%22url%28%23rootG%29%22%20stroke-width%3D%221.1%22%20opacity%3D%220.55%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2298%22%20cy%3D%22188.0%22%20r%3D%221.8%22%20fill%3D%22%238b6508%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22191.0%22%20r%3D%221.8%22%20fill%3D%22%238b6508%22%20opacity%3D%220.45%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22142%22%20cy%3D%22188.0%22%20r%3D%221.8%22%20fill%3D%22%238b6508%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C160.0%20Q107%2C154.0%2095%2C149.0%22%20fill%3D%22none%22%20stroke%3D%22%238b6508%22%20stroke-width%3D%220.9%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C160.0%20Q133%2C154.0%20145%2C149.0%22%20fill%3D%22none%22%20stroke%3D%22%238b6508%22%20stroke-width%3D%220.9%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C148.0%20Q104%2C141.0%2091%2C135.0%22%20fill%3D%22none%22%20stroke%3D%22%23a07008%22%20stroke-width%3D%221%22%20opacity%3D%220.6%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C148.0%20Q136%2C141.0%20149%2C135.0%22%20fill%3D%22none%22%20stroke%3D%22%23a07008%22%20stroke-width%3D%221%22%20opacity%3D%220.6%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C134.0%20Q102%2C127.0%2088%2C121.0%22%20fill%3D%22none%22%20stroke%3D%22%23b08010%22%20stroke-width%3D%221.1%22%20opacity%3D%220.65%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C134.0%20Q138%2C127.0%20152%2C121.0%22%20fill%3D%22none%22%20stroke%3D%22%23b08010%22%20stroke-width%3D%221.1%22%20opacity%3D%220.65%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C120.0%20Q103%2C112.0%2090%2C106.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%221.2%22%20opacity%3D%220.75%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C120.0%20Q137%2C112.0%20150%2C106.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%221.2%22%20opacity%3D%220.75%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C108.0%20Q110%2C100.0%20102%2C93.0%22%20fill%3D%22none%22%20stroke%3D%22%23d4a43a%22%20stroke-width%3D%221.1%22%20opacity%3D%220.8%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C108.0%20Q120%2C98.0%20120%2C90.0%22%20fill%3D%22none%22%20stroke%3D%22%23d4a43a%22%20stroke-width%3D%221.2%22%20opacity%3D%220.85%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C108.0%20Q130%2C100.0%20138%2C93.0%22%20fill%3D%22none%22%20stroke%3D%22%23d4a43a%22%20stroke-width%3D%221.1%22%20opacity%3D%220.8%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M90%2C106.0%20Q82%2C102.0%2076%2C99.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%220.7%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M150%2C106.0%20Q158%2C102.0%20164%2C99.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%220.7%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M88%2C121.0%20Q79%2C118.0%2072%2C116.0%22%20fill%3D%22none%22%20stroke%3D%22%23a07008%22%20stroke-width%3D%220.6%22%20opacity%3D%220.4%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M152%2C121.0%20Q161%2C118.0%20168%2C116.0%22%20fill%3D%22none%22%20stroke%3D%22%23a07008%22%20stroke-width%3D%220.6%22%20opacity%3D%220.4%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M108%2C111.0%20Q97%2C102.0%20102%2C92.0%20Q107%2C82.0%20120%2C81.0%20Q133%2C82.0%20138%2C92.0%20Q143%2C102.0%20132%2C111.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%221.3%22%20opacity%3D%220.7%22%20filter%3D%22url%28%23gf%29%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M132%2C111.0%20Q142%2C118.0%20137%2C128.0%20Q132%2C136.0%20120%2C134.0%22%20fill%3D%22none%22%20stroke%3D%22%23b08010%22%20stroke-width%3D%221.1%22%20opacity%3D%220.6%22%2F%3E%0A%20%20%3Cline%20x1%3D%22112%22%20y1%3D%2281.0%22%20x2%3D%22128%22%20y2%3D%2281.0%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%220.8%22%20opacity%3D%220.45%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22135.0%22%20r%3D%223%22%20fill%3D%22%23c8960a%22%20opacity%3D%220.3%22%20filter%3D%22url%28%23gf%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22135.0%22%20r%3D%221.5%22%20fill%3D%22%23e8c55a%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%2288.0%22%20r%3D%2210%22%20fill%3D%22url%28%23futureG%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22101%22%20cy%3D%2291.0%22%20r%3D%227%22%20fill%3D%22url%28%23futureG%29%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22139%22%20cy%3D%2291.0%22%20r%3D%227%22%20fill%3D%22url%28%23futureG%29%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%2288.0%22%20r%3D%224%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.95%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%2288.0%22%20r%3D%221.8%22%20fill%3D%22%23ffffff%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22101%22%20cy%3D%2291.0%22%20r%3D%223.2%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.85%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22101%22%20cy%3D%2291.0%22%20r%3D%221.3%22%20fill%3D%22%23e0fff8%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22139%22%20cy%3D%2291.0%22%20r%3D%223.2%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.85%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22139%22%20cy%3D%2291.0%22%20r%3D%221.3%22%20fill%3D%22%23e0fff8%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2288%22%20cy%3D%22104.0%22%20r%3D%222.5%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22152%22%20cy%3D%22104.0%22%20r%3D%222.5%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2275%22%20cy%3D%2298.0%22%20r%3D%222%22%20fill%3D%22%2300ffcc%22%20opacity%3D%220.55%22%20filter%3D%22url%28%23ff%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22165%22%20cy%3D%2298.0%22%20r%3D%222%22%20fill%3D%22%2300ffcc%22%20opacity%3D%220.55%22%20filter%3D%22url%28%23ff%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2271%22%20cy%3D%22115.0%22%20r%3D%221.8%22%20fill%3D%22%2300ffcc%22%20opacity%3D%220.4%22%20filter%3D%22url%28%23ff%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22169%22%20cy%3D%22115.0%22%20r%3D%221.8%22%20fill%3D%22%2300ffcc%22%20opacity%3D%220.4%22%20filter%3D%22url%28%23ff%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2289%22%20cy%3D%22134.0%22%20r%3D%221.4%22%20fill%3D%22%2300ddaa%22%20opacity%3D%220.3%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22151%22%20cy%3D%22134.0%22%20r%3D%221.4%22%20fill%3D%22%2300ddaa%22%20opacity%3D%220.3%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2293%22%20cy%3D%22148.0%22%20r%3D%221.1%22%20fill%3D%22%2300bbaa%22%20opacity%3D%220.2%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22147%22%20cy%3D%22148.0%22%20r%3D%221.1%22%20fill%3D%22%2300bbaa%22%20opacity%3D%220.2%22%2F%3E%0A%3C%2Fsvg%3E" alt="Loom">
+    <div id="note-title-display" onclick="startTitleEdit()" title="Click to rename">Untitled</div>
+    <div id="title-edit-form">
+      <input id="title-edit-input" placeholder="Note title"
+        onblur="commitTitleEdit()"
+        onkeydown="if(event.key==='Enter') commitTitleEdit(); if(event.key==='Escape') cancelTitleEdit();">
+    </div>
+    <span class="header-sep">·</span>
+    <button class="header-btn" onclick="newChunk()" title="Add a new chunk">+ Chunk</button>
+    <span id="save-indicator">Saving…</span>
+    <div class="loom-menu-wrap">
+      <button class="header-btn" onclick="toggleLoomFileMenu()">File ▾</button>
+      <div id="loom-file-menu" class="loom-dropdown hidden">
+        <button class="ldd-item" onclick="duplicateLoom();closeLoomFileMenu()">Duplicate</button>
+        <div class="ldd-sep"></div>
+        <button class="ldd-item" onclick="exportLoom();closeLoomFileMenu()">Export…</button>
+        <button class="ldd-item" onclick="importLoom();closeLoomFileMenu()">Import…</button>
+      </div>
+    </div>
+    <button class="header-btn" id="writing-mode-btn" onclick="toggleWritingMode()" title="Toggle writing mode">
+      Write
+    </button>
+    <button class="header-btn" onclick="showGuide()" title="Quick Guide">?</button>
+  </div>
+
+  <!-- Main -->
+  <div id="main">
+
+    <!-- Left panel: chunk list -->
+    <div id="left-panel">
+      <div class="panel-header">Chunks</div>
+      <div class="panel-actions">
+        <button class="mini-btn" id="btn-undo" onclick="doUndo()">↩ Undo</button>
+        <button class="mini-btn" id="btn-redo" onclick="doRedo()">↪ Redo</button>
+        <button class="mini-btn" id="btn-restore" onclick="doRestore()">⟳ Restore</button>
+      </div>
+      <div id="chunk-list"></div>
+    </div>
+
+    <!-- Center: editor -->
+    <div id="center">
+      <div id="editor-area">
+        <div id="editor-empty-state">
+          <div class="empty-icon">✦</div>
+          <div class="empty-text">Select a chunk from the list, or add a new one to begin writing.</div>
+          <button class="new-chunk-btn" onclick="newChunk()">New chunk</button>
+        </div>
+        <div id="chunk-role-label" style="display:none"></div>
+        <textarea id="editor" placeholder="Write here…" style="display:none"
+          oninput="onEditorInput()"
+          onkeydown="handleEditorKey(event)"></textarea>
+      </div>
+    </div>
+
+    <!-- Right panel: resonance -->
+    <div id="right-panel">
+      <div class="right-section">
+        <div class="panel-header">Axes / Tags</div>
+        <div id="tags-list"><span class="tags-empty">Select a chunk</span></div>
+      </div>
+      <!-- Association drawer — revealed by tag chip click -->
+      <div id="assoc-drawer" class="hidden">
+        <div class="drawer-header">
+          <span id="drawer-axis-label" class="drawer-axis-label"></span>
+          <button class="drawer-close" onclick="closeAssocDrawer()" title="Close">✕</button>
+        </div>
+        <div id="scope-row">
+          <span class="scope-label">Depth</span>
+          <input id="scope-slider" type="range" min="1" max="5" value="2"
+            oninput="document.getElementById('scope-val').textContent=this.value; debouncedAssoc()">
+          <span id="scope-val">2</span>
+        </div>
+        <div id="assoc-list"></div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<div id="toast"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════
+   RPC core
+═══════════════════════════════════════════════════════════ */
+let SESSION_TOKEN = '';
+let NOTE_ID = '';
+let PROJ_ID = '';
+
+async function rpc(method, params = {}) {
+  const res = await fetch('/api/rpc', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0', id: Date.now(), method,
+      params: { session_token: SESSION_TOKEN, data: params },
+    }),
+  });
+  const j = await res.json();
+  if (j.error) throw new Error(j.error.message || JSON.stringify(j.error));
+  return j.result;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   State
+═══════════════════════════════════════════════════════════ */
+let chunks = [];           // [{id, version, head, content, role, order}]
+let activeChunkId = null;
+let activeChunkText = '';
+let savePending = null;
+let isSaving = false;
+
+/* ═══════════════════════════════════════════════════════════
+   Login
+═══════════════════════════════════════════════════════════ */
+async function doLogin() {
+  const user = document.getElementById('user-input').value.trim();
+  const pass = document.getElementById('token-input').value;
+  if (!user || !pass) { document.getElementById('login-msg').textContent = 'Enter name and passphrase.'; return; }
+  document.getElementById('login-msg').textContent = '';
+  try {
+    const res = await fetch('/api/rpc', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0', id: Date.now(), method: 'kernel.auth.verify',
+        params: { data: { user_id: user, passphrase: pass } },
+      }),
+    });
+    const j = await res.json();
+    if (j.error) throw new Error(j.error.message || JSON.stringify(j.error));
+    if (j.result?.status !== 'authenticated') throw new Error('Access denied.');
+    SESSION_TOKEN = j.result.session_token;
+    await boot();
+  } catch (e) {
+    document.getElementById('login-msg').textContent = e.message || 'Authentication failed.';
+    SESSION_TOKEN = '';
+  }
+}
+
+document.getElementById('token-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+document.getElementById('user-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('token-input').focus();
+});
+
+/* ═══════════════════════════════════════════════════════════
+   Boot: open/create note + proj, bootstrap axes
+═══════════════════════════════════════════════════════════ */
+async function boot() {
+  try {
+    // Note: open existing if session has one, create only if not
+    let hasActiveNote = false;
+    try {
+      await rpc('loom.note.read', {});
+      hasActiveNote = true;
+    } catch { /* no active note */ }
+
+    if (!hasActiveNote) {
+      const r = await rpc('loom.note.new', { title: 'Untitled' });
+      NOTE_ID = r.note_id || r.root_id;
+    }
+
+    // Proj: open existing if available, create only if none found
+    try {
+      const pl = await rpc('proj.ls', {});
+      const projs = pl?.projections || [];
+      if (projs.length > 0) {
+        await rpc('proj.open', { proj_id: projs[0].proj_id });
+        PROJ_ID = projs[0].proj_id;
+      } else {
+        throw new Error('no proj');
+      }
+    } catch {
+      try {
+        const pr = await rpc('proj.new', { title: 'Loom Projection' });
+        PROJ_ID = pr.proj_id || pr.root_id;
+        for (const axis of ['emotion', 'theme', 'time', 'space']) {
+          await rpc('proj.axis.add', { name: axis }).catch(() => {});
+        }
+      } catch { /* proj unavailable — graceful degradation */ }
+    }
+
+    await refreshTitle();
+
+    document.getElementById('login-overlay').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+
+    await rpc('sys.onboarding.seed', { app: 'loom' }).catch(() => {});
+    await loadChunks();
+
+  } catch (e) {
+    document.getElementById('login-msg').textContent = 'Boot failed: ' + e.message;
+    TOKEN = '';
+  }
+}
+
+async function refreshTitle() {
+  // Display title is resolved server-side via note:title pointer;
+  // note.list only returns heads, so we try note.read meta if available
+  // For now, the title stays as set by op_new / op_rename.
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Chunk list
+═══════════════════════════════════════════════════════════ */
+async function loadChunks() {
+  try {
+    const r = await rpc('loom.note.list', {});
+    chunks = r.chunks || [];
+    renderChunkList();
+    if (activeChunkId) {
+      const still = chunks.find(c => c.id === activeChunkId);
+      if (!still && chunks.length > 0) selectChunk(chunks[0].id);
+    } else if (chunks.length > 0) {
+      selectChunk(chunks[0].id);
+    }
+  } catch (e) {
+    toast('Failed to load chunks: ' + e.message);
+  }
+}
+
+function renderChunkList() {
+  const el = document.getElementById('chunk-list');
+  if (!chunks.length) {
+    el.innerHTML = '<div style="padding:16px;font-size:0.82rem;color:var(--ink3);font-style:italic;text-align:center;">No chunks yet</div>';
+    return;
+  }
+  el.innerHTML = chunks.map((c, i) => `
+    <div class="chunk-item ${c.id === activeChunkId ? 'active' : ''}"
+         onclick="selectChunk('${c.id}')"
+         draggable="true"
+         ondragstart="dragStart(event,'${c.id}')"
+         ondragover="dragOver(event)"
+         ondrop="dragDrop(event,'${c.id}')">
+      <div class="chunk-item-role">${escHtml(c.role || 'chunk')}</div>
+      <div class="chunk-item-head">${escHtml(c.head || '(empty)')}</div>
+      <div class="chunk-item-num">#${i + 1}</div>
+    </div>`).join('');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Select / Edit chunk
+═══════════════════════════════════════════════════════════ */
+async function selectChunk(id) {
+  if (activeChunkId === id) return;
+  if (savePending) { clearTimeout(savePending); await flushSave(); }
+  activeChunkId = id;
+  const chunk = chunks.find(c => c.id === id);
+  if (!chunk) return;
+  renderChunkList();
+  activeChunkText = chunk.content || chunk.head || '';
+  showEditor(chunk, activeChunkText);
+  loadRightPanel(id);
+}
+
+function showEditor(chunk, text) {
+  document.getElementById('editor-empty-state').style.display = 'none';
+  document.getElementById('chunk-role-label').style.display = 'block';
+  document.getElementById('chunk-role-label').textContent = chunk.role || 'chunk';
+  const ed = document.getElementById('editor');
+  ed.style.display = 'block';
+  ed.value = text;
+  ed.focus();
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Auto-save with debounce
+═══════════════════════════════════════════════════════════ */
+function onEditorInput() {
+  showSaving();
+  if (savePending) clearTimeout(savePending);
+  savePending = setTimeout(flushSave, 1400);
+}
+
+async function flushSave() {
+  savePending = null;
+  if (!activeChunkId || isSaving) return;
+  const text = document.getElementById('editor').value;
+  if (text === activeChunkText) return;
+  isSaving = true;
+  try {
+    await rpc('loom.note.edit', { chunk_id: activeChunkId, text });
+    activeChunkText = text;
+    const c = chunks.find(x => x.id === activeChunkId);
+    if (c) { c.head = text.split('\n')[0].slice(0, 80); c.content = text; }
+    renderChunkList();
+    if (PROJ_ID) {
+      rpc('proj.extract', { version_id: activeChunkId }).catch(() => {});
+    }
+    loadRightPanel(activeChunkId);
+  } catch (e) {
+    toast('Save failed: ' + e.message);
+  } finally {
+    isSaving = false;
+    hideSaving();
+  }
+}
+
+function showSaving() {
+  const el = document.getElementById('save-indicator');
+  el.textContent = 'Saving…';
+  el.classList.add('visible');
+}
+function hideSaving() {
+  document.getElementById('save-indicator').classList.remove('visible');
+}
+
+function handleEditorKey(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault();
+    clearTimeout(savePending);
+    flushSave();
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   New chunk
+═══════════════════════════════════════════════════════════ */
+async function newChunk() {
+  if (savePending) { clearTimeout(savePending); await flushSave(); }
+  try {
+    const r = await rpc('loom.note.add', { text: '' });
+    await loadChunks();
+    const id = r.chunk_id || r.node_id;
+    if (id) selectChunk(id);
+  } catch (e) {
+    toast('Failed to add chunk: ' + e.message);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Undo / Redo / Restore
+═══════════════════════════════════════════════════════════ */
+async function doUndo() {
+  try {
+    const r = await rpc('loom.note.undo', {});
+    if (r.status === 'nothing_to_undo') { toast('Nothing to undo'); return; }
+    toast('Undone');
+    await loadChunks();
+  } catch (e) { toast(e.message); }
+}
+
+async function doRedo() {
+  try {
+    const r = await rpc('loom.note.redo', {});
+    if (r.status === 'nothing_to_redo') { toast('Nothing to redo'); return; }
+    toast('Redone');
+    await loadChunks();
+  } catch (e) { toast(e.message); }
+}
+
+async function doRestore() {
+  if (!confirm('Discard all edits and restore original order and content?\n(This can be undone.)')) return;
+  try {
+    await rpc('loom.note.restore', {});
+    toast('Restored to original');
+    activeChunkId = null;
+    await loadChunks();
+  } catch (e) { toast(e.message); }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Drag-and-drop reorder
+═══════════════════════════════════════════════════════════ */
+let dragSourceId = null;
+
+function dragStart(e, id) {
+  dragSourceId = id;
+  e.dataTransfer.effectAllowed = 'move';
+}
+
+function dragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+}
+
+async function dragDrop(e, targetId) {
+  e.preventDefault();
+  if (!dragSourceId || dragSourceId === targetId) return;
+  const targetIdx = chunks.findIndex(c => c.id === targetId);
+  const afterId = targetIdx > 0 ? chunks[targetIdx - 1].id : null;
+  try {
+    await rpc('loom.note.move', { chunk_id: dragSourceId, after: afterId });
+    await loadChunks();
+    toast('Reordered');
+  } catch (err) {
+    toast('Move failed: ' + err.message);
+  }
+  dragSourceId = null;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Right panel: tags (always) + association drawer (tag-click)
+═══════════════════════════════════════════════════════════ */
+let currentDrawerAxis = null;
+let assocTimer = null;
+
+function debouncedAssoc() {
+  clearTimeout(assocTimer);
+  assocTimer = setTimeout(() => {
+    if (currentDrawerAxis && activeChunkId) loadAssocForAxis(currentDrawerAxis);
+  }, 400);
+}
+
+async function loadRightPanel(chunkId) {
+  loadTags(chunkId);
+  closeAssocDrawer();
+}
+
+async function loadTags(chunkId) {
+  const el = document.getElementById('tags-list');
+  if (!PROJ_ID) { el.innerHTML = '<span class="tags-empty">proj not connected</span>'; return; }
+  try {
+    const r = await rpc('proj.lens', { atom_id: chunkId }).catch(() => null);
+    const lenses = r?.lenses || {};
+    const families = Object.keys(lenses);
+    if (!families.length) {
+      el.innerHTML = '<span class="tags-empty">No tags yet</span>';
+      return;
+    }
+    el.innerHTML = families.map(family =>
+      `<span class="tag-chip"
+             data-axis="${escHtml(family)}"
+             data-label="${escHtml(family)}"
+             onclick="openAssocDrawer(this.dataset.axis, this.dataset.label)"
+             title="${escHtml((lenses[family] || []).join(', '))}">${escHtml(family)}</span>`
+    ).join('');
+  } catch {
+    el.innerHTML = '<span class="tags-empty">Unavailable</span>';
+  }
+}
+
+function openAssocDrawer(axisId, label) {
+  currentDrawerAxis = axisId;
+  document.getElementById('drawer-axis-label').textContent = label;
+  document.getElementById('assoc-drawer').classList.remove('hidden');
+  document.querySelectorAll('.tag-chip').forEach(c =>
+    c.classList.toggle('active', c.dataset.axis === axisId));
+  loadAssocForAxis(axisId);
+}
+
+function closeAssocDrawer() {
+  document.getElementById('assoc-drawer').classList.add('hidden');
+  document.querySelectorAll('.tag-chip').forEach(c => c.classList.remove('active'));
+  currentDrawerAxis = null;
+}
+
+async function loadAssocForAxis(axisId) {
+  const el = document.getElementById('assoc-list');
+  if (!PROJ_ID) { el.innerHTML = '<span class="right-loading">proj not connected</span>'; return; }
+  el.innerHTML = '<span class="right-loading"><span class="spin">◌</span> Loading…</span>';
+  const scope = parseInt(document.getElementById('scope-slider').value, 10);
+  try {
+    const r = await rpc('proj.associate', { atom_id: activeChunkId, axis: axisId, scope }).catch(() => null);
+    const neighbors = r?.neighbors || [];
+    if (!neighbors.length) {
+      el.innerHTML = '<span class="right-loading">No associations</span>';
+      return;
+    }
+    el.innerHTML = neighbors.slice(0, 12).map(nid => {
+      const known = chunks.find(c => c.id === nid || c.version === nid);
+      const head = known ? escHtml(known.head || '(empty)') : escHtml(nid.slice(0, 36) + '…');
+      const clickAttr = known
+        ? `style="cursor:pointer" onclick="closeAssocDrawer(); selectChunk('${escHtml(known.id)}')"` : '';
+      return `<div class="assoc-item" ${clickAttr}>
+        <div class="assoc-item-rel">${escHtml(axisId)}</div>
+        <div class="assoc-item-head">${head}</div>
+      </div>`;
+    }).join('');
+  } catch {
+    el.innerHTML = '<span class="right-loading">—</span>';
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Title rename
+═══════════════════════════════════════════════════════════ */
+function startTitleEdit() {
+  const disp = document.getElementById('note-title-display');
+  const form = document.getElementById('title-edit-form');
+  const inp = document.getElementById('title-edit-input');
+  disp.style.display = 'none';
+  form.style.display = 'block';
+  inp.value = disp.textContent;
+  inp.focus();
+  inp.select();
+}
+
+async function commitTitleEdit() {
+  const disp = document.getElementById('note-title-display');
+  const form = document.getElementById('title-edit-form');
+  const inp = document.getElementById('title-edit-input');
+  const newTitle = inp.value.trim();
+  form.style.display = 'none';
+  disp.style.display = 'block';
+  if (!newTitle || newTitle === disp.textContent) return;
+  try {
+    await rpc('loom.note.rename', { title: newTitle });
+    disp.textContent = newTitle;
+    toast('Renamed');
+  } catch (e) {
+    toast('Rename failed: ' + e.message);
+  }
+}
+
+function cancelTitleEdit() {
+  document.getElementById('title-edit-form').style.display = 'none';
+  document.getElementById('note-title-display').style.display = 'block';
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Writing mode
+═══════════════════════════════════════════════════════════ */
+let writingMode = false;
+function toggleWritingMode() {
+  writingMode = !writingMode;
+  document.body.classList.toggle('writing-mode', writingMode);
+  document.getElementById('writing-mode-btn').classList.toggle('active', writingMode);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Toast
+═══════════════════════════════════════════════════════════ */
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Helpers
+═══════════════════════════════════════════════════════════ */
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function showGuide()  { document.getElementById('guide-modal').classList.add('visible'); }
+function closeGuide() { document.getElementById('guide-modal').classList.remove('visible'); }
+
+/* ── File menu ──────────────────────────────────────────────────────── */
+function toggleLoomFileMenu() {
+  document.getElementById('loom-file-menu').classList.toggle('hidden');
+}
+function closeLoomFileMenu() {
+  document.getElementById('loom-file-menu').classList.add('hidden');
+}
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.loom-menu-wrap')) closeLoomFileMenu();
+});
+
+/* ── Duplicate ──────────────────────────────────────────────────────── */
+async function duplicateLoom() {
+  try {
+    const res = await rpc('loom.note.clone', {});
+    alert(`Duplicated as "${res.title}". Reload the page to open the copy.`);
+  } catch(e) { alert('Duplicate failed: ' + e.message); }
+}
+
+/* ── Export / Import (Akasha capsule format) ───────────────────────── */
+function _loomCapsuleFileName() {
+  const titleEl = document.getElementById('note-title-display');
+  const raw  = (titleEl ? titleEl.textContent : '') || 'loom';
+  const safe = raw.replace(/[^a-zA-Z0-9_\- ]/g, '').trim().replace(/\s+/g, '_') || 'loom';
+  const d  = new Date();
+  const ds = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+  return `${safe}_${ds}.akasha`;
+}
+
+async function exportLoom() {
+  try {
+    const res  = await rpc('loom.note.export', {});
+    const blob = new Blob([res.capsule], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = _loomCapsuleFileName();
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) { alert('Export failed: ' + e.message); }
+}
+
+function importLoom() {
+  document.getElementById('loom-import-input').value = '';
+  document.getElementById('loom-import-input').click();
+}
+
+document.getElementById('loom-import-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const res  = await rpc('loom.note.import', { capsule: text });
+    alert(`Imported: ${res.atoms_injected} atoms, ${res.links_queued} links`);
+  } catch(err) { alert('Import failed: ' + err.message); }
+  e.target.value = '';
+});
+</script>
+
+<input type="file" id="loom-import-input" accept=".akasha,.json" style="display:none">
+
+<div id="guide-modal" onclick="if(event.target===this)closeGuide()">
+  <div id="guide-box">
+    <div class="lg-h1">Loom — Quick Guide</div>
+    <hr class="lg-sep">
+
+    <div class="lg-h2">What Is Loom?</div>
+    <div class="lg-p">Loom is a quiet, distraction-free writing atelier for composing literary work — stories, essays, poems, and long-form prose — directly inside Akasha. Everything you write is stored as connected semantic chunks, woven into the knowledge graph as you work.</div>
+    <div class="lg-p">Loom can be used for:</div>
+    <ul class="lg-ol">
+      <li>short stories and fiction</li>
+      <li>essays and long-form nonfiction</li>
+      <li>poetry and verse</li>
+      <li>worldbuilding and narrative design</li>
+      <li>drafting and manuscript development</li>
+      <li>reflective or literary journaling</li>
+    </ul>
+
+    <hr class="lg-sep">
+
+    <div class="lg-h2">Basic Workflow</div>
+    <ol class="lg-ol">
+      <li>Log in — your active piece opens automatically</li>
+      <li>Add a chunk and begin writing</li>
+      <li>Let the piece auto-save as you type</li>
+      <li>Explore associations in the right panel</li>
+      <li>Reorder and revise chunks as the work grows</li>
+    </ol>
+
+    <hr class="lg-sep">
+
+    <div class="lg-h2">Login</div>
+    <div class="lg-p">Enter your name and Akasha passphrase, then press <strong>Enter</strong>. Your active piece opens immediately.</div>
+
+    <hr class="lg-sep">
+
+    <div class="lg-h2">Your Piece</div>
+    <div class="lg-p">Loom holds one active piece at a time. When you log in, that piece opens automatically. The title is shown in the header — click it to rename the piece inline.</div>
+
+    <hr class="lg-sep">
+
+    <div class="lg-h2">Writing</div>
+    <div class="lg-p">Press <strong>+ Chunk</strong> in the header (or <strong>New chunk</strong> when the page is empty) to create a new chunk. Write directly in the editor. The piece auto-saves as you type. Press <span class="lg-kbd">Ctrl+S</span> to save immediately.</div>
+    <div class="lg-p">Each chunk is a self-contained unit you can later move, edit, or connect.</div>
+
+    <hr class="lg-sep">
+
+    <div class="lg-h2">Chunks as Cognitive Units</div>
+    <div class="lg-p">Loom treats a piece as a sequence of chunks rather than one undifferentiated page. Keep each chunk to a single thought, image, or beat. The left panel lists all chunks in order — click one to select it, drag to reorder.</div>
+
+    <hr class="lg-sep">
+
+    <div class="lg-h2">Axes / Tags</div>
+    <div class="lg-p">After a chunk is saved, the right panel shows automatically derived axis labels — emotional resonance, themes, time markers, and more — drawn from the knowledge graph. Click any axis chip to open the <strong>association drawer</strong>, which shows related atoms from the graph. Use the <strong>Depth</strong> slider to control how far the search reaches.</div>
+    <div class="lg-p">Associations are live: as the graph grows, the drawer reveals more.</div>
+
+    <hr class="lg-sep">
+
+    <div class="lg-h2">Writing Mode</div>
+    <div class="lg-p">Press <strong>Write</strong> in the header to collapse both side panels and leave only the editor — a distraction-free page. Press <strong>Write</strong> again to restore the panels.</div>
+
+    <hr class="lg-sep">
+
+    <div class="lg-h2">Versions</div>
+    <table class="lg-table">
+      <thead><tr><th>Action</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td>↩ Undo</td><td>Step back through recent edits</td></tr>
+        <tr><td>↪ Redo</td><td>Step forward again</td></tr>
+        <tr><td>⟳ Restore</td><td>Return the piece to an earlier saved state</td></tr>
+      </tbody>
+    </table>
+    <div class="lg-p">Revise freely — the earlier shape of the work is never lost.</div>
+
+    <hr class="lg-sep">
+
+    <div class="lg-h2">Shortcuts</div>
+    <table class="lg-table">
+      <thead><tr><th>Action</th><th>How</th></tr></thead>
+      <tbody>
+        <tr><td>New chunk</td><td>+ Chunk (header) or New chunk (empty state)</td></tr>
+        <tr><td>Force save</td><td><span class="lg-kbd">Ctrl+S</span> / <span class="lg-kbd">Cmd+S</span></td></tr>
+        <tr><td>Rename piece</td><td>Click the title in the header</td></tr>
+        <tr><td>Toggle focus mode</td><td>Write (header)</td></tr>
+        <tr><td>Reorder chunks</td><td>Drag items in the left panel</td></tr>
+        <tr><td>Duplicate piece</td><td>File ▾ › Duplicate — creates a copy prefixed with "(Copy)"</td></tr>
+        <tr><td>Export piece</td><td>File ▾ › Export… — saves an <code>.akasha</code> file</td></tr>
+        <tr><td>Import piece</td><td>File ▾ › Import… — opens an <code>.akasha</code> file</td></tr>
+      </tbody>
+    </table>
+
+    <hr class="lg-sep">
+
+    <div class="lg-h2">Export &amp; Import</div>
+    <div class="lg-p"><strong>Export…</strong> saves the active piece (all chunks, links, and metadata) as an <code>.akasha</code> capsule file. Use this to back up your work or move it to another Akasha instance.</div>
+    <div class="lg-p"><strong>Import…</strong> opens a file picker. Select an <code>.akasha</code> capsule file; its atoms are injected into a pending isolation scope for verification. Both <em>File ▾</em> items are in the header menu.</div>
+
+    <hr class="lg-sep">
+
+    <div class="lg-h2">Suggested Workflow</div>
+    <ol class="lg-ol">
+      <li>Draft quickly, one chunk at a time — do not stop to polish</li>
+      <li>Let the graph tag the work automatically</li>
+      <li>Follow associations when you are stuck or curious</li>
+      <li>Reorder and revise chunks once the shape emerges</li>
+      <li>Re-read after accumulation; let themes and patterns surface</li>
+    </ol>
+    <div class="lg-p">Loom works best when a piece grows over many sittings.</div>
+
+    <hr class="lg-sep">
+
+    <div class="lg-h2">Philosophy</div>
+    <div class="lg-p">Loom is intentionally lightweight. It is not trying to replace full manuscript suites, publishing platforms, or collaborative editors. Instead, it acts as a semantic writing room for living drafts and evolving ideas.</div>
+    <div class="lg-p">The goal is not only to store words. The goal is to keep the threads of a work connected — to thought, to memory, to everything else you know — while the writing is still alive.</div>
+
+    <div class="lg-foot">
+      <button class="lg-close" onclick="closeGuide()">Close</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

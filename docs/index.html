@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Akasha — Docs</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:        #08080f;
+      --panel:     #0d0d18;
+      --border:    #1a1a2a;
+      --text:      #ccc8be;
+      --text-dim:  #908c84;
+      --accent:    #8ba4c8;
+      --accent-lo: rgba(139,164,200,0.12);
+      --gold:      #c9a050;
+    }
+    html, body { height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 14px;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    /* ── Top bar ─────────────────────────────────────────────────── */
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .topbar-back {
+      font-size: 0.62rem;
+      letter-spacing: 4px;
+      color: rgba(139,164,200,0.60);
+      text-decoration: none;
+      text-transform: uppercase;
+      transition: color 0.2s;
+    }
+    .topbar-back:hover { color: var(--accent); }
+    .topbar-title {
+      font-size: 0.7rem;
+      letter-spacing: 5px;
+      color: var(--accent);
+      text-transform: uppercase;
+      font-weight: bold;
+    }
+
+    /* ── Layout ─────────────────────────────────────────────────── */
+    .layout {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ─────────────────────────────────────────────────── */
+    .sidebar {
+      width: 260px;
+      flex-shrink: 0;
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 16px 0 32px;
+    }
+    .sidebar::-webkit-scrollbar { width: 4px; }
+    .sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .tree-section { margin-bottom: 4px; }
+    .tree-section-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 16px;
+      cursor: pointer;
+      user-select: none;
+      color: var(--text-dim);
+      font-size: 0.6rem;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      transition: color 0.15s;
+    }
+    .tree-section-header:hover { color: var(--accent); }
+    .tree-section-header.open { color: var(--accent); }
+    .tree-chevron {
+      font-size: 0.55rem;
+      transition: transform 0.2s;
+      display: inline-block;
+    }
+    .tree-section-header.open .tree-chevron { transform: rotate(90deg); }
+    .tree-items { display: none; padding-bottom: 4px; }
+    .tree-items.open { display: block; }
+
+    .tree-item {
+      display: block;
+      padding: 5px 16px 5px 28px;
+      font-size: 0.68rem;
+      letter-spacing: 0.5px;
+      color: var(--text-dim);
+      text-decoration: none;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: pointer;
+      transition: color 0.15s, background 0.15s;
+      border-left: 2px solid transparent;
+    }
+    .tree-item:hover { color: var(--text); background: var(--accent-lo); }
+    .tree-item.active {
+      color: var(--accent);
+      border-left-color: var(--accent);
+      background: var(--accent-lo);
+    }
+    .tree-item-root {
+      padding-left: 16px;
+      font-weight: bold;
+      letter-spacing: 1px;
+    }
+
+    /* ── Content ─────────────────────────────────────────────────── */
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 36px 48px 64px;
+      max-width: 820px;
+    }
+    .content::-webkit-scrollbar { width: 4px; }
+    .content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .welcome {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 12px;
+      opacity: 0.45;
+      margin-top: 60px;
+    }
+    .welcome-title {
+      font-size: 0.65rem;
+      letter-spacing: 5px;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    .welcome-sub { font-size: 0.75rem; letter-spacing: 1px; color: var(--text-dim); }
+
+    /* ── Markdown rendering ─────────────────────────────────────── */
+    #md-body { display: none; }
+    #md-body h1 {
+      font-size: 1.3rem;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    #md-body h2 {
+      font-size: 0.9rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: rgba(139,164,200,0.75);
+      margin: 28px 0 12px;
+    }
+    #md-body h3 {
+      font-size: 0.78rem;
+      letter-spacing: 1.5px;
+      color: var(--text);
+      margin: 20px 0 8px;
+    }
+    #md-body p {
+      line-height: 1.75;
+      font-size: 0.82rem;
+      color: var(--text);
+      margin-bottom: 14px;
+      letter-spacing: 0.3px;
+    }
+    #md-body code {
+      background: rgba(139,164,200,0.08);
+      border: 1px solid var(--border);
+      padding: 1px 5px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.8rem;
+      color: var(--gold);
+    }
+    #md-body pre {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      padding: 16px 18px;
+      overflow-x: auto;
+      margin: 14px 0;
+    }
+    #md-body pre code {
+      background: none;
+      border: none;
+      padding: 0;
+      color: rgba(139,164,200,0.85);
+      font-size: 0.78rem;
+      line-height: 1.7;
+    }
+    #md-body ul, #md-body ol {
+      padding-left: 20px;
+      margin-bottom: 14px;
+    }
+    #md-body li {
+      font-size: 0.82rem;
+      line-height: 1.7;
+      color: var(--text);
+      margin-bottom: 3px;
+    }
+    #md-body a { color: var(--accent); text-decoration: none; }
+    #md-body a:hover { text-decoration: underline; }
+    #md-body table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 14px 0;
+      font-size: 0.78rem;
+    }
+    #md-body th, #md-body td {
+      border: 1px solid var(--border);
+      padding: 6px 12px;
+      text-align: left;
+    }
+    #md-body th { color: var(--accent); background: var(--accent-lo); }
+    #md-body hr { border: none; border-top: 1px solid var(--border); margin: 24px 0; }
+    #md-body blockquote {
+      border-left: 2px solid var(--accent);
+      padding: 4px 0 4px 16px;
+      color: var(--text-dim);
+      margin: 14px 0;
+      font-style: italic;
+    }
+
+    .loading {
+      font-size: 0.65rem;
+      letter-spacing: 3px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      margin-top: 60px;
+    }
+    .error-msg {
+      font-size: 0.75rem;
+      color: rgba(200,80,60,0.7);
+      margin-top: 60px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <a href="/" class="topbar-back" onclick="history.length>1?history.back():window.location='/';return false;">←</a>
+  <span class="topbar-title">Documentation</span>
+</div>
+
+<div class="layout">
+
+  <!-- ── Sidebar tree ─────────────────────────────────────────── -->
+  <aside class="sidebar">
+
+    <div class="tree-section">
+      <a class="tree-item tree-item-root" data-src="/docs/quick-start.md">Quick Start</a>
+    </div>
+    <div class="tree-section">
+      <a class="tree-item tree-item-root" data-src="/docs/roadmap.md">Roadmap</a>
+    </div>
+
+    <div class="tree-section">
+      <div class="tree-section-header open" onclick="toggleSection(this)">
+        <span class="tree-chevron">▶</span> Users
+      </div>
+      <div class="tree-items open">
+        <a class="tree-item" data-src="/docs/users/user-manual.md">User Manual</a>
+        <a class="tree-item" data-src="/docs/users/csl-manual.md">CSL Manual</a>
+        <a class="tree-item" data-src="/docs/users/admin-manual.md">Admin Manual</a>
+      </div>
+    </div>
+
+    <div class="tree-section">
+      <div class="tree-section-header" onclick="toggleSection(this)">
+        <span class="tree-chevron">▶</span> Developer
+      </div>
+      <div class="tree-items">
+        <a class="tree-item" data-src="/docs/developer/api-spec.md">API Spec</a>
+        <a class="tree-item" data-src="/docs/developer/csl-spec.md">CSL Spec</a>
+        <a class="tree-item" data-src="/docs/developer/scope-dimension-model.md">Scope &amp; Dimension Model</a>
+        <a class="tree-item" data-src="/docs/developer/webui-tutorial.md">Web UI Tutorial</a>
+        <a class="tree-item" data-src="/docs/developer/cop-tutorial-note.md">COP Tutorial</a>
+      </div>
+    </div>
+
+    <div class="tree-section">
+      <div class="tree-section-header" onclick="toggleSection(this)">
+        <span class="tree-chevron">▶</span> Concept Model
+      </div>
+      <div class="tree-items">
+        <a class="tree-item" data-src="/docs/concept-model/concept-model-spec.md">Spec</a>
+        <a class="tree-item" data-src="/docs/concept-model/concept-model-intelligence.md">Intelligence</a>
+      </div>
+    </div>
+
+    <div class="tree-section">
+      <div class="tree-section-header" onclick="toggleSection(this)">
+        <span class="tree-chevron">▶</span> Ontology
+      </div>
+      <div class="tree-items">
+        <a class="tree-item" data-src="/docs/ontology/ontology-spec.md">Ontology Spec</a>
+        <a class="tree-item" data-src="/docs/ontology/concept-extensions-earth.md">Extensions: Earth</a>
+        <a class="tree-item" data-src="/docs/ontology/concept-extensions-fieldwork.md">Extensions: Fieldwork</a>
+        <a class="tree-item" data-src="/docs/ontology/concept-extensions-game.md">Extensions: Game</a>
+        <a class="tree-item" data-src="/docs/ontology/concept-extensions-story.md">Extensions: Story</a>
+      </div>
+    </div>
+
+    <div class="tree-section">
+      <div class="tree-section-header" onclick="toggleSection(this)">
+        <span class="tree-chevron">▶</span> Cookbook Notes
+      </div>
+      <div class="tree-items">
+        <a class="tree-item" data-src="/docs/cookbook/cookbook-beginners.md">Beginners Guide</a>
+        <a class="tree-item" data-src="/docs/cookbook/cookbook-llm-beginners.md">LLM Beginners</a>
+        <a class="tree-item" data-src="/docs/cookbook/map-ancient-world.md">Map: Ancient World</a>
+      </div>
+    </div>
+
+    <div class="tree-section">
+      <div class="tree-section-header" onclick="toggleSection(this)">
+        <span class="tree-chevron">▶</span> For LLM
+      </div>
+      <div class="tree-items">
+        <a class="tree-item" data-src="/docs/for-llm/akasha-spec-compact.md">Spec (Compact)</a>
+        <a class="tree-item" data-src="/docs/for-llm/akasha-ontology-guide.md">Ontology Guide</a>
+        <a class="tree-item" data-src="/docs/for-llm/architecture-vision.md">Architecture Vision</a>
+        <a class="tree-item" data-src="/docs/for-llm/thesaurus-creation-guide.md">Thesaurus Creation</a>
+        <a class="tree-item" data-src="/docs/for-llm/genesis-ontology-map.md">Genesis Ontology Map</a>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ── Content area ─────────────────────────────────────────── -->
+  <main class="content" id="content">
+    <div class="welcome" id="welcome">
+      <div class="welcome-title">Documentation</div>
+      <div class="welcome-sub">Select a document from the tree on the left.</div>
+    </div>
+    <div class="loading" id="loading" style="display:none">Loading…</div>
+    <div class="error-msg" id="error" style="display:none"></div>
+    <div id="md-body"></div>
+  </main>
+
+</div>
+
+<script>
+  function toggleSection(header) {
+    header.classList.toggle('open');
+    header.nextElementSibling.classList.toggle('open');
+  }
+
+  let current = null;
+
+  function loadDoc(src, el) {
+    if (current) current.classList.remove('active');
+    current = el;
+    el.classList.add('active');
+
+    document.getElementById('welcome').style.display = 'none';
+    document.getElementById('md-body').style.display = 'none';
+    document.getElementById('error').style.display = 'none';
+    document.getElementById('loading').style.display = 'block';
+
+    fetch(src)
+      .then(r => {
+        if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+        return r.text();
+      })
+      .then(text => {
+        document.getElementById('loading').style.display = 'none';
+        const body = document.getElementById('md-body');
+        body.innerHTML = marked.parse(text);
+        body.style.display = 'block';
+        document.getElementById('content').scrollTop = 0;
+      })
+      .catch(err => {
+        document.getElementById('loading').style.display = 'none';
+        const e = document.getElementById('error');
+        e.textContent = `Could not load document: ${err.message}`;
+        e.style.display = 'block';
+      });
+  }
+
+  document.querySelectorAll('.tree-item[data-src]').forEach(el => {
+    el.addEventListener('click', () => loadDoc(el.dataset.src, el));
+  });
+
+  // Load from URL hash on page load
+  const hash = window.location.hash.slice(1);
+  if (hash) {
+    const el = document.querySelector(`[data-src="${decodeURIComponent(hash)}"]`);
+    if (el) loadDoc(el.dataset.src, el);
+  }
+</script>
+</body>
+</html>

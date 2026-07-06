@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Akasha Cockpit</title>
+    <script src="https://unpkg.com/3d-force-graph"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        :root {
+            --accent:  #00ffcc;
+            --accent2: #ff00ff;
+            --accent3: #ff9900;
+            --bg:      #020202;
+            --panel:   rgba(8, 12, 16, 0.75);
+            --border:  rgba(0, 255, 204, 0.3);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: var(--bg); color: var(--accent);
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden; height: 100vh; display: flex; flex-direction: column;
+        }
+
+        /* ── Login ─────────────────────────────────────────────── */
+        #login-overlay {
+            position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.96);
+            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+        }
+        .glitch-title { font-size: 3rem; font-weight: bold; letter-spacing: 8px; text-shadow: 0 0 15px var(--accent); text-transform: uppercase; }
+        .cyber-input {
+            background: rgba(0,20,20,0.5); border: 1px solid var(--accent); color: var(--accent);
+            padding: 12px; font-size: 1rem; width: 300px; text-align: center; outline: none; font-family: inherit; transition: box-shadow 0.3s;
+        }
+        .cyber-input:focus { box-shadow: 0 0 10px var(--accent); }
+        .cyber-btn {
+            background: rgba(0,255,204,0.1); border: 1px solid var(--accent); color: var(--accent);
+            padding: 12px 40px; font-size: 1.1rem; cursor: pointer; text-transform: uppercase; letter-spacing: 3px; font-family: inherit; transition: all 0.2s;
+        }
+        .cyber-btn:hover { background: var(--accent); color: #000; box-shadow: 0 0 15px var(--accent); }
+        #login-msg { color: #888; height: 1.2em; font-size: 0.85rem; }
+        #login-msg.error { color: #f55; text-shadow: 0 0 5px #f55; }
+
+        /* ── App shell ─────────────────────────────────────────── */
+        #app-container { display: none; flex: 1; flex-direction: column; overflow: hidden; position: relative; }
+        #header {
+            flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; padding: 10px 20px;
+            border-bottom: 1px solid var(--border); background: rgba(0,0,0,0.8); z-index: 10; backdrop-filter: blur(4px);
+        }
+        .brand { font-size: 1.2rem; font-weight: bold; letter-spacing: 2px; }
+        .tabs  { display: flex; gap: 20px; }
+        .tab-btn {
+            background: none; border: none; color: #557; font-size: 1rem; font-weight: bold; cursor: pointer;
+            padding: 8px 14px; font-family: inherit; text-transform: uppercase; border-bottom: 2px solid transparent; transition: 0.2s;
+        }
+        .tab-btn:hover { color: #88c; }
+        .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); text-shadow: 0 0 8px var(--accent); }
+        #status-bar { font-size: 0.8rem; color: #0f0; text-shadow: 0 0 5px #0f0; }
+
+
+        /* ── Side tab bar (always visible) ─────────────────────── */
+        #side-tabbar {
+            display: flex; position: fixed; left: 0; top: 0; bottom: 0; z-index: 200;
+            width: 48px;
+            background: rgba(4,6,10,0.97); border-right: 1px solid var(--border);
+            backdrop-filter: blur(8px);
+            flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+        }
+        #side-tabbar .tab-btn {
+            background: none; border: none; color: #557; font-family: inherit; cursor: pointer;
+            width: 100%; padding: 14px 0; font-size: 0.55rem; font-weight: bold; text-transform: uppercase;
+            display: flex; flex-direction: column; align-items: center; gap: 4px;
+            border-left: 3px solid transparent; transition: 0.2s;
+        }
+        #side-tabbar .tab-btn:hover { color: #88c; }
+        #side-tabbar .tab-btn.active { color: var(--accent); border-left-color: var(--accent); text-shadow: 0 0 8px var(--accent); }
+        .tab-icon { font-size: 1.1rem; line-height: 1; }
+        /* shift all content right to clear the sidebar */
+        #app-container { margin-left: 48px; }
+        @media (max-width: 1100px) {
+            #header .tabs { display: none; }
+            #header { padding: 8px 14px; }
+            .brand { font-size: 0.95rem; letter-spacing: 1px; }
+            #status-bar { font-size: 0.7rem; }
+        }
+
+        /* ── Views ─────────────────────────────────────────────── */
+        .view-pane { flex: 1; position: relative; display: none; min-height: 0; background: transparent; }
+        .view-pane.active { display: flex; flex-direction: column; }
+        #graph-3d { width: 100%; height: 100%; position: absolute; inset: 0; }
+
+        /* ── Cockpit HUD ───────────────────────────────────────── */
+        .cockpit-panel {
+            pointer-events: auto; background: var(--panel); border: 1px solid var(--border);
+            border-radius: 4px; padding: 16px; backdrop-filter: blur(6px); box-shadow: 0 4px 20px rgba(0,0,0,0.8);
+            display: flex; flex-direction: column; gap: 10px;
+        }
+        .panel-title { font-size: 0.75rem; color: #668; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 4px; }
+
+        /* 1. Telemetry — floats freely over the graph */
+        #hud-telemetry {
+            position: absolute;
+            top: max(20px, env(safe-area-inset-top, 20px));
+            left: max(20px, env(safe-area-inset-left, 20px));
+            min-width: 260px; max-width: 340px;
+        }
+        .data-row { display: flex; justify-content: space-between; gap: 12px; font-size: 0.85rem; color: #ccc; }
+        .data-val { color: var(--accent); font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+        .data-val.focus { color: #fff; text-shadow: 0 0 5px #fff; font-size: 1rem; }
+
+        /* Bottom Control Deck */
+        #cockpit-deck {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 20px; align-items: flex-end; width: 95%; max-width: 1300px; pointer-events: none;
+        }
+
+        /* 2. Sensor Array */
+        #panel-sensors { flex: 1; pointer-events: auto; }
+        .cyber-select { background: #000; color: var(--accent); border: 1px solid var(--border); padding: 6px; font-family: inherit; font-size: 0.9rem; outline: none; width: 100%; }
+        .cyber-slider { -webkit-appearance: none; width: 100%; background: #112; height: 4px; outline: none; }
+        .cyber-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 18px; background: var(--accent); cursor: pointer; border-radius: 2px; }
+
+        /* 3. Helm Navigation */
+        #panel-helm { flex: 1.2; text-align: center; pointer-events: auto; border-color: var(--accent); box-shadow: 0 0 15px rgba(0,255,204,0.2); }
+        .warp-input-group { display: flex; gap: 8px; }
+        .btn-warp { background: rgba(0,255,204,0.2); border: 1px solid var(--accent); color: var(--accent); font-weight: bold; font-family: inherit; cursor: pointer; padding: 0 20px; transition: 0.2s; text-transform: uppercase; }
+        .btn-warp:hover { background: var(--accent); color: #000; }
+        .btn-warp:active { transform: scale(0.95); }
+
+        /* 4. Trace Deck */
+        #panel-trace { flex: 1.5; pointer-events: auto; border-color: var(--accent3); max-height: 200px; display: flex; flex-direction: column; }
+        .wake-stream { flex: 1; overflow-y: auto; background: rgba(0,0,0,0.5); border: 1px solid #333; padding: 6px; margin-bottom: 8px; font-size: 0.75rem; color: #ccc; }
+        .wake-item { border-left: 2px solid var(--accent3); padding-left: 6px; margin-bottom: 6px; }
+        .wake-meta { color: var(--accent3); font-size: 0.7rem; }
+        .btn-beacon { background: rgba(255,153,0,0.1); border: 1px solid var(--accent3); color: var(--accent3); width: 100%; padding: 8px; font-family: inherit; font-weight: bold; cursor: pointer; text-transform: uppercase; transition: 0.2s; }
+        .btn-beacon:hover { background: var(--accent3); color: #000; box-shadow: 0 0 10px var(--accent3); }
+
+        /* ── Auxiliary Views ─────────────────────────────────────── */
+        #view-cli { background: #000; }
+        #cli-output { flex: 1; padding: 16px 20px; overflow-y: auto; font-size: 1rem; color: #eee; white-space: pre-wrap; background: #050505; min-height: 0; }
+        .cli-line-in  { color: var(--accent); }
+        .cli-line-out { color: #bbb; }
+        .cli-line-err { color: #f55; }
+        .cli-input-row { flex-shrink: 0; display: flex; align-items: center; padding: 12px 20px; background: #0a0a0a; border-top: 1px solid var(--border); }
+        .cli-prompt { color: var(--accent); margin-right: 12px; font-weight: bold; }
+        #cli-input { flex: 1; background: transparent; border: none; color: #fff; font-family: inherit; font-size: 1rem; outline: none; }
+        .cli-submit-btn { flex-shrink: 0; margin-left: 10px; padding: 4px 12px; background: transparent; border: 1px solid var(--accent); color: var(--accent); font-family: inherit; font-size: 0.85rem; cursor: pointer; border-radius: 2px; }
+        .cli-submit-btn:hover { background: var(--accent); color: #000; }
+
+        #view-jobs { background: #050505; color: #ccc; padding: 20px; overflow-y: auto; }
+        .jobs-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .job-card { background: rgba(0,20,10,0.6); border: 1px solid var(--border); border-radius: 4px; padding: 10px 14px; margin-bottom: 8px; font-size: 0.85rem; display: flex; gap: 20px; align-items: center; }
+        .job-status-RUNNING   { color: var(--accent); min-width: 80px; }
+        .job-status-PENDING   { color: #ff0;  min-width: 80px; }
+        .job-status-DONE      { color: #888;  min-width: 80px; }
+        .job-status-FAILED    { color: #f55;  min-width: 80px; }
+        .job-status-CANCELLED { color: #666;  min-width: 80px; }
+
+        .notification { position: absolute; top: 80px; left: 50%; transform: translateX(-50%); background: var(--accent3); color: #000; padding: 8px 16px; font-weight: bold; border-radius: 4px; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 100; }
+
+        /* ── Guide Modal ─────────────────────────────────────────── */
+        #guide-modal {
+            display: none; position: fixed; inset: 0; z-index: 9500;
+            background: rgba(0,0,0,0.85); overflow-y: auto; padding: 40px 0;
+        }
+        #guide-modal.visible { display: block; }
+        #guide-box {
+            width: min(680px, 92vw); margin: 0 auto;
+            background: rgba(4,8,14,0.97); border: 1px solid var(--accent);
+            border-radius: 4px; padding: 32px 36px 28px;
+            box-shadow: 0 0 40px rgba(0,255,204,0.15);
+        }
+        .cg-h1 { font-size: 1.2rem; font-weight: bold; color: var(--accent); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; }
+        .cg-h2 { font-size: 0.7rem; color: var(--accent); letter-spacing: 2px; text-transform: uppercase; margin: 20px 0 8px; padding-bottom: 3px; border-bottom: 1px solid var(--border); }
+        .cg-p  { font-size: 0.85rem; color: #aaa; line-height: 1.72; margin: 5px 0; }
+        .cg-ol { font-size: 0.85rem; color: #aaa; line-height: 1.72; padding-left: 20px; margin: 5px 0; }
+        .cg-sep { border: none; border-top: 1px solid var(--border); margin: 18px 0; opacity: 0.5; }
+        .cg-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin: 8px 0; }
+        .cg-table th { text-align: left; color: #557; font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; padding: 3px 0; border-bottom: 1px solid var(--border); }
+        .cg-table td { padding: 5px 8px 5px 0; color: #aaa; border-bottom: 1px solid rgba(80,100,120,0.2); vertical-align: top; }
+        .cg-table td:first-child { color: var(--accent); font-family: monospace; font-size: 0.78rem; white-space: nowrap; width: 140px; padding-right: 12px; }
+        .cg-kbd { display: inline-block; font-family: monospace; font-size: 0.78rem; background: rgba(0,255,204,0.06); border: 1px solid var(--border); border-radius: 2px; padding: 1px 5px; color: var(--accent); }
+        .cg-foot { display: flex; justify-content: flex-end; margin-top: 22px; }
+        .cg-close { background: rgba(0,255,204,0.1); border: 1px solid var(--accent); color: var(--accent); font-family: inherit; font-size: 0.85rem; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; padding: 8px 20px; cursor: pointer; transition: 0.2s; }
+        .cg-close:hover { background: var(--accent); color: #000; }
+
+        /* Guide tab in side tabbar */
+        #side-tabbar .tab-btn.guide-tab { margin-top: auto; color: #446; }
+        #side-tabbar .tab-btn.guide-tab:hover { color: var(--accent); }
+    </style>
+</head>
+<body>
+
+<div id="login-overlay">
+    <div class="glitch-title">AKASHA COCKPIT</div>
+    <input type="text"     id="username" class="cyber-input" placeholder="PILOT IDENTITY" autocomplete="off">
+    <input type="password" id="password" class="cyber-input" placeholder="PASSPHRASE" autocomplete="off">
+    <button class="cyber-btn" onclick="login()">ENGAGE</button>
+    <div id="login-msg"></div>
+</div>
+
+<div id="app-container">
+    <div id="header">
+        <div class="brand">AKASHA V2 // <span id="vessel-name" style="color:#666">OBSERVATION DECK</span></div>
+        <div class="tabs">
+            <button class="tab-btn active" id="tab-cosmos" onclick="switchTab('cosmos')">Viewport</button>
+            <button class="tab-btn"        id="tab-cli"    onclick="switchTab('cli')">Aux: Terminal</button>
+            <button class="tab-btn"        id="tab-jobs"   onclick="switchTab('jobs')">Aux: Jobs</button>
+        </div>
+        <div id="status-bar">SYSTEM ONLINE ◉ <span id="auth-user" style="margin-left:8px;"></span></div>
+    </div>
+
+    <!-- Tablet left sidebar tabs (hidden on desktop via CSS) -->
+    <div id="side-tabbar">
+        <button class="tab-btn active" id="mob-tab-cosmos" onclick="switchTab('cosmos')"><span class="tab-icon">◎</span>VIEW</button>
+        <button class="tab-btn"        id="mob-tab-cli"    onclick="switchTab('cli')"><span class="tab-icon">⌨</span>TERM</button>
+        <button class="tab-btn"        id="mob-tab-jobs"   onclick="switchTab('jobs')"><span class="tab-icon">⚙</span>JOBS</button>
+        <button class="tab-btn guide-tab" onclick="showGuide()"><span class="tab-icon">?</span>GUIDE</button>
+    </div>
+
+    <div id="view-cosmos" class="view-pane active">
+        <div id="graph-3d"></div>
+        <div id="node-labels-overlay" style="position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:5;"></div>
+
+        <div class="cockpit-panel" id="hud-telemetry">
+            <div class="panel-title">Telemetry Sensor</div>
+            <div class="data-row"><span>FOCAL LOCK:</span> <span class="data-val focus" id="tel-focus">Awaiting...</span></div>
+            <div class="data-row"><span>DIMENSION AXIS:</span> <span class="data-val" id="tel-axis">ALL</span></div>
+            <div class="data-row"><span>PENETRATION SCOPE:</span> <span class="data-val" id="tel-scope">2</span></div>
+            <div style="border-top: 1px solid #333; margin: 4px 0;"></div>
+            <div class="data-row"><span>LOCAL ENTITIES:</span> <span class="data-val" id="tel-nodes">0</span></div>
+            <div class="data-row"><span>ACTIVE TENSORS:</span> <span class="data-val" id="tel-links">0</span></div>
+        </div>
+
+        <div id="cockpit-deck">
+            <div class="cockpit-panel" id="panel-sensors">
+                <div class="panel-title">Dimensional Lens</div>
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                    <label style="font-size: 0.8rem; color:#aaa;">Spectrum (Axis)</label>
+                    <select id="lens-axis" class="cyber-select" onchange="tuneLens()">
+                        <option value="all">ALL (Raw Topology)</option>
+                        <option value="structure">STRUCTURE (Ontology)</option>
+                        <option value="emotion">EMOTION (Resonance)</option>
+                        <option value="context">CONTEXT (Associative)</option>
+                        <option value="time">TIME (Chronological)</option>
+                        <option value="story">STORY (Narrative)</option>
+                    </select>
+                    <label style="font-size: 0.8rem; color:#aaa; margin-top: 4px;">Penetration Depth (Scope): <span id="scope-val" style="color:var(--accent)">2</span></label>
+                    <input type="range" id="lens-scope" class="cyber-slider" min="1" max="5" value="2" onchange="tuneLens()" oninput="document.getElementById('scope-val').textContent=this.value">
+                    <div style="margin-top: 6px;">
+                        <button id="btn-label-toggle" class="cyber-btn" style="padding: 5px 12px; font-size: 0.75rem; border-color:#334; color:#557; width:100%;" onclick="toggleLabels()">NODE LABELS: OFF</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="cockpit-panel" id="panel-helm">
+                <div class="panel-title" style="color: var(--accent); font-weight:bold;">Helm Control</div>
+                <div class="warp-input-group">
+                    <input type="text" id="helm-target" class="cyber-input" style="width: 100%; padding: 8px;" placeholder="Target ID / Alias / $it" onkeydown="if(event.key==='Enter') engageWarp()">
+                    <button class="btn-warp" onclick="engageWarp()">WARP</button>
+                </div>
+            </div>
+
+            <div class="cockpit-panel" id="panel-trace">
+                <div class="panel-title" style="color: var(--accent3);">Trace Deck (Wake)</div>
+                <div id="wake-stream" class="wake-stream"></div>
+                <div style="display: flex; gap: 8px;">
+                    <input type="text" id="beacon-note" class="cyber-input" style="flex:1; padding: 8px; border-color:var(--accent3); color:var(--accent3);" placeholder="Observation note..." onkeydown="if(event.key==='Enter') dropBeacon()">
+                    <button class="btn-beacon" style="width: auto; padding: 0 15px;" onclick="dropBeacon()">DROP</button>
+                </div>
+            </div>
+        </div>
+        <div id="ui-notification" class="notification"></div>
+    </div>
+
+    <div id="view-cli" class="view-pane">
+        <div id="cli-output"></div>
+        <div class="cli-input-row">
+            <span class="cli-prompt" id="cli-prompt">akasha&gt;</span>
+            <input type="text" id="cli-input" placeholder="Enter command (type 'help' for list)..." onkeydown="handleCliKey(event)" autocomplete="off" spellcheck="false">
+            <button class="cli-submit-btn" onclick="submitCli()">&#x25B6;</button>
+        </div>
+    </div>
+
+    <div id="view-jobs" class="view-pane">
+        <div class="jobs-header">
+            <h3 style="color: var(--accent);">HARMONIA JOB QUEUE</h3>
+            <button class="cyber-btn" style="padding: 5px 15px; font-size: 0.8rem;" onclick="refreshJobs()">REFRESH SENSORS</button>
+        </div>
+        <div id="jobs-list"></div>
+    </div>
+</div>
+
+<script>
+    const API = '/api/rpc';
+    let sessionToken  = '';
+    let currentUser   = '';
+    let graph3d       = null;
+    let currentFocalId = null;
+    let labelMode      = false;
+    let labelAnimFrame = null;
+    const _labelEls    = new Map();
+    let _debugRpc     = false; // toggled by `debug on/off` in the terminal
+
+    // ── Emotion colour palette ─────────────────────────────────────────────
+    // Warm/comfortable → positive; cold/red → negative
+    const EMO_COLORS = {
+        joy:          '#ffd060',   // warm gold
+        trust:        '#88cc66',   // soft green
+        anticipation: '#ff9922',   // amber
+        calm:         '#99ccbb',   // balanced teal  (neutral comfort)
+        surprise:     '#44ccee',   // light cyan     (neutral alert)
+        fear:         '#5577bb',   // muted blue     (cold dread)
+        sadness:      '#5566aa',   // blue-grey      (cold sorrow)
+        disgust:      '#9966bb',   // muted purple   (dark unease)
+        anger:        '#ee3344',   // hot red
+        awe:          '#cc88ff',   // luminous violet (transcendence)
+    };
+
+    // ── Sense colour palette (synesthetic) ────────────────────────────────
+    const SENSE_COLORS = {
+        sight: '#ffee88',   // sunlight yellow
+        sound: '#66aadd',   // resonant blue
+        touch: '#ee99aa',   // skin pink
+        taste: '#88cc88',   // fresh green
+        smell: '#dd88cc',   // floral magenta
+    };
+
+    function nodeColor(n) {
+        const id    = String(n.id    || '');
+        const alias = String(n.alias || n.name || '');
+        // Focal node: always bright white so it stands apart
+        if (id === currentFocalId) return '#ffffff';
+        // Emotion namespace checked BEFORE signpost — an emo: atom can be a signpost too
+        const emoFromId    = id.match(/^emo:([a-z_]+)/);
+        const emoFromAlias = alias.match(/^emo:([a-z_]+)/);
+        const emoKey = (emoFromId || emoFromAlias || [])[1];
+        if (emoKey && EMO_COLORS[emoKey]) return EMO_COLORS[emoKey];
+        // Exact match on alias/name == emotion word (e.g. alias "joy")
+        const label = alias.toLowerCase().trim();
+        if (EMO_COLORS[label]) return EMO_COLORS[label];
+        // Sense namespace: word:sense:sight etc.
+        const senseFromId    = id.match(/^word:sense:([a-z_]+)/);
+        const senseFromAlias = alias.match(/^word:sense:([a-z_]+)/);
+        const senseKey = (senseFromId || senseFromAlias || [])[1];
+        if (senseKey && SENSE_COLORS[senseKey]) return SENSE_COLORS[senseKey];
+        if (SENSE_COLORS[label]) return SENSE_COLORS[label];
+        // Signpost: after emotion/sense so those identities win
+        if (n.group === 'signpost') return n.color || '#88bbff';
+        // Server-supplied colour (backend encodes emotion/sense aura for linked atoms)
+        return n.color || '#00ffcc';
+    }
+
+    // ── In-app debug log (forwards console.warn/error to Aux: Terminal) ──────
+    (function() {
+        function _cliLog(cssClass, ...args) {
+            const el = document.getElementById('cli-output');
+            if (!el) return;
+            const line = document.createElement('div');
+            line.className = cssClass;
+            line.textContent = args.map(a =>
+                a instanceof Error ? `${a.message}` :
+                typeof a === 'object' ? JSON.stringify(a) : String(a)
+            ).join(' ');
+            el.appendChild(line);
+            el.scrollTop = el.scrollHeight;
+        }
+        const _w = console.warn.bind(console);
+        const _e = console.error.bind(console);
+        console.warn  = (...a) => { _w(...a);  _cliLog('cli-line-out', '[WARN]', ...a); };
+        console.error = (...a) => { _e(...a);  _cliLog('cli-line-err', '[ERR]',  ...a); };
+        window.onerror = (msg, src, ln) => _cliLog('cli-line-err', `[JS] ${msg}  (${src}:${ln})`);
+        window.onunhandledrejection = e => _cliLog('cli-line-err', '[PROMISE]', e.reason);
+    })();
+
+    // ── Utilities ──────────────────────────────────────────────────────────
+    function escHtml(s) {
+        return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+    function showNotify(msg) {
+        const el = document.getElementById('ui-notification');
+        el.textContent = msg; el.style.opacity = 1;
+        setTimeout(() => el.style.opacity = 0, 3000);
+    }
+
+    // ── RPC Wrapper ────────────────────────────────────────────────────────
+    async function rpc(method, data = {}) {
+        if (_debugRpc) console.warn(`→ RPC ${method}`, data);
+        const res = await fetch(API, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jsonrpc: '2.0', method, params: { session_token: sessionToken, data }, id: Date.now() })
+        });
+        const json = await res.json();
+        if (json.error) {
+            console.error(`✗ RPC ${method}:`, json.error.message || JSON.stringify(json.error));
+            throw new Error(json.error.message || JSON.stringify(json.error));
+        }
+        if (_debugRpc) console.warn(`← RPC ${method}`, json.result);
+        return json.result;
+    }
+
+    // ── Boot Sequence (Auth & Commissioning) ───────────────────────────────
+    async function login() {
+        const user  = document.getElementById('username').value.trim();
+        const pass  = document.getElementById('password').value;
+        const msgEl = document.getElementById('login-msg');
+        if (!user || !pass) { msgEl.className = ''; msgEl.textContent = 'Awaiting credentials.'; return; }
+
+        msgEl.className = '';
+        msgEl.textContent = 'Establishing secure link...';
+        try {
+            const raw = await fetch(API, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jsonrpc: '2.0', method: 'kernel.auth.verify', params: { data: { user_id: user, passphrase: pass } }, id: 'auth' })
+            }).then(r => r.json());
+
+            if (raw.error) throw new Error(raw.error.message || 'Auth failed');
+            if (raw.result?.status === 'authenticated') {
+                sessionToken = raw.result.session_token;
+                currentUser  = raw.result.user_id;
+
+                document.getElementById('auth-user').textContent = currentUser;
+                document.getElementById('login-overlay').style.display = 'none';
+                document.getElementById('app-container').style.display = 'flex';
+                document.getElementById('cli-prompt').textContent = `${currentUser}>`;
+
+                try { initGraph3D(); } catch(ge) { console.error('Graph3D init failed:', ge); }
+                await rpc('sys.scope.reset');
+                await bootCockpit();
+            } else { msgEl.className = 'error'; msgEl.textContent = 'Access Denied.'; }
+        } catch(e) { msgEl.className = 'error'; msgEl.textContent = `Login error: ${e.message}`; }
+    }
+
+    async function bootCockpit() {
+        try {
+            const listRes = await rpc('cockpit.ls');
+            let vesselName = '';
+
+            if (listRes.cockpits && listRes.cockpits.length > 0) {
+                const cp = listRes.cockpits[0];
+                await rpc('cockpit.open', { cockpit_id: cp.cockpit_id });
+                vesselName = cp.name;
+                showNotify(`Boarded vessel: ${vesselName}`);
+            } else {
+                vesselName = `Voyage-${new Date().toISOString().slice(0,10)}`;
+                await rpc('cockpit.new', { name: vesselName });
+                showNotify(`Commissioned new vessel: ${vesselName}`);
+            }
+
+            document.getElementById('vessel-name').innerHTML = `VESSEL: <span style="color:var(--accent)">${escHtml(vesselName)}</span>`;
+
+            const status = await rpc('cockpit.status');
+            const savedAxis  = status.axis  || 'all';
+            const savedScope = status.scope || 2;
+            document.getElementById('lens-axis').value    = savedAxis;
+            document.getElementById('lens-scope').value   = savedScope;
+            document.getElementById('scope-val').textContent = savedScope;
+            document.getElementById('tel-axis').textContent  = savedAxis.toUpperCase();
+            document.getElementById('tel-scope').textContent = savedScope;
+            // Sync session axis/scope to match the restored cockpit state
+            try { await rpc('sys.scope.set', { axis: savedAxis === 'all' ? null : savedAxis, scope: savedScope }); } catch(e) {}
+
+            // If no focal lock, try to find a recent atom as entry point
+            let startNode = status.focus || null;
+            if (!startNode) {
+                try {
+                    const ls = await rpc('sys.ls', { limit: 1 });
+                    if (ls.atoms?.length) startNode = ls.atoms[0].key;
+                } catch(e) {}
+            }
+            // Fallback: anchor to a DNA concept so the graph isn't blank on first boot
+            if (!startNode) {
+                for (const anchor of ['sys:is_a', 'sys:causes', 'emo:joy']) {
+                    try {
+                        const al = await rpc('kernel.identity.alias.find', { pattern: anchor });
+                        if (al.aliases?.length) { startNode = al.aliases[0].key; break; }
+                    } catch(e) {}
+                }
+            }
+            await scanEnvironment(startNode || undefined);
+            await refreshWake();
+        } catch(e) {
+            console.warn('Boot sequence error:', e);
+            showNotify(`Boot error: ${e.message?.substring(0, 50) || 'unknown'}`);
+        }
+    }
+
+    // ── Cockpit Operations ─────────────────────────────────────────────────
+
+    async function scanEnvironment(targetId = null) {
+        const focalId = targetId || currentFocalId;
+        // Read axis/scope directly from UI — do not rely on session state
+        const rawAxis = document.getElementById('lens-axis')?.value || 'all';
+        const axis    = rawAxis === 'all' ? undefined : rawAxis;
+        const scope   = parseInt(document.getElementById('lens-scope')?.value || '2');
+        try {
+            if (focalId) {
+                await rpc('cockpit.lock', { target: focalId });
+            }
+
+            // dive.look now returns signposts + associations + resonance + cosmos
+            const params = { scope };
+            if (focalId) params.id   = focalId;
+            if (axis)    params.axis = axis;
+
+            const diveData    = await rpc('dive.look', params);
+            const cosmosData  = diveData?.cosmos;
+
+            if (!cosmosData?.nodes) {
+                document.getElementById('tel-focus').textContent = focalId ? `@${focalId.substring(0,12)}` : '—';
+                document.getElementById('tel-nodes').textContent = '0';
+                document.getElementById('tel-links').textContent = '0';
+                return;
+            }
+
+            // Merge direct signpost links into the graph for full neighbourhood
+            const spNodes = [];
+            const spLinks = [];
+            const knownIds = new Set(cosmosData.nodes.map(n => n.id));
+            for (const sp of (diveData.signposts || [])) {
+                if (!knownIds.has(sp.key)) {
+                    spNodes.push({ id: sp.key, name: sp.alias || sp.key.substring(0,8),
+                                   group: 'signpost', val: 8, color: '#88bbff' });
+                    knownIds.add(sp.key);
+                }
+                const src = sp.direction === 'in' ? sp.key : cosmosData.focal.key;
+                const dst = sp.direction === 'in' ? cosmosData.focal.key : sp.key;
+                spLinks.push({ source: src, target: dst, rel: sp.rel, type: 'signpost' });
+            }
+
+            graph3d.graphData({
+                nodes: [...cosmosData.nodes, ...spNodes],
+                links: [...cosmosData.links, ...spLinks],
+            });
+            if (labelMode) applyLabelMode();
+
+            currentFocalId = cosmosData.focal?.key || focalId || null;
+            // Refresh node colours so focal node turns white and neighbours get emotion hues
+            if (graph3d) graph3d.nodeColor(nodeColor).nodeVal(n => n.id === currentFocalId ? (n.val || 10) * 2 : n.val || 10);
+            const focusLabel = cosmosData.focal?.alias || nodeShortLabel(cosmosData.focal) || 'Void';
+            document.getElementById('tel-focus').textContent = `@${focusLabel}`;
+            document.getElementById('tel-nodes').textContent = cosmosData.nodes.length + spNodes.length;
+            document.getElementById('tel-links').textContent = cosmosData.links.length + spLinks.length;
+            document.getElementById('tel-axis').textContent  = (cosmosData.axis || rawAxis).toUpperCase();
+            document.getElementById('helm-target').value = '';
+        } catch(e) {
+            console.warn('Sensor scan error:', e);
+            const errMsg = e.message?.substring(0,60) || 'unknown';
+            showNotify(`Scan error: ${errMsg}`);
+            // keep error visible in telemetry so it's not lost in 3s notification
+            document.getElementById('tel-focus').textContent = `⚠ ${errMsg}`;
+        }
+    }
+
+    async function engageWarp(displayHint) {
+        const target = document.getElementById('helm-target').value.trim();
+        if (!target) return;
+        // Show a readable label; truncate long hashes so notification is human-readable
+        const label = displayHint || (target.length > 20 ? target.substring(0, 8) + '…' : target);
+        showNotify(`Warping: ${label}…`);
+        let resolvedId = target;
+        try {
+            const found = await rpc('kernel.identity.alias.find', { pattern: target });
+            const aliases = found?.aliases || [];
+            if (aliases.length > 0) resolvedId = aliases[0].key;
+        } catch(e) { /* use target as-is; server will attempt to resolve */ }
+        await scanEnvironment(resolvedId);
+    }
+
+    async function tuneLens() {
+        const rawAxis = document.getElementById('lens-axis').value;
+        const axis    = rawAxis === 'all' ? null : rawAxis;
+        const scope   = parseInt(document.getElementById('lens-scope').value);
+
+        document.getElementById('tel-axis').textContent  = rawAxis.toUpperCase();
+        document.getElementById('tel-scope').textContent = scope;
+
+        await rpc('sys.scope.set', { axis, scope });
+        await scanEnvironment();
+    }
+
+    async function dropBeacon() {
+        const noteInput = document.getElementById('beacon-note');
+        const note = noteInput.value.trim();
+        if (!note) return;
+        try {
+            const res = await rpc('cockpit.beacon', { note });
+            noteInput.value = '';
+            showNotify(`Beacon deployed: ${res.beacon_id?.substring(0,8)}`);
+            await refreshWake();
+        } catch(e) { showNotify(`Beacon failed: ${e.message}`); }
+    }
+
+    async function refreshWake() {
+        try {
+            const res = await rpc('cockpit.wake');
+            const wake = res.wake || [];
+            const streamEl = document.getElementById('wake-stream');
+            if (!wake.length) {
+                streamEl.innerHTML = '<div style="color:#555; text-align:center; margin-top:10px;">No beacons deployed.</div>';
+                return;
+            }
+            streamEl.innerHTML = wake.map(b => {
+                const date  = new Date(b.created_at * 1000).toLocaleTimeString();
+                const focal = b.focal_alias || (b.focal_key ? b.focal_key.substring(0, 8) : 'Unknown');
+                return `
+                    <div class="wake-item">
+                        <div class="wake-meta">[${date}] LOC:${escHtml(focal)} | AX:${b.axis || 'ALL'}</div>
+                        <div>${escHtml(b.content)}</div>
+                    </div>`;
+            }).join('');
+            streamEl.scrollTop = streamEl.scrollHeight;
+        } catch(e) { console.warn('Failed to load wake:', e); }
+    }
+
+    // ── 3D Graph Engine ────────────────────────────────────────────────────
+
+    // Extract a short human-readable label from a node object
+    function nodeShortLabel(node) {
+        if (!node) return '';
+        if (node.alias) return node.alias;
+        const name = node.preview || node.name || '';
+        // e.g. "Concept: attachment. ..." → "attachment"
+        //      "Word: en: psychology. ..." → "psychology"
+        const m = name.match(/^(?:[^:]+:\s*)+([^.]+)/);
+        if (m) return m[1].trim().substring(0, 20);
+        return (node.key || node.id || '').substring(0, 8);
+    }
+
+    function toggleLabels() {
+        labelMode = !labelMode;
+        const btn = document.getElementById('btn-label-toggle');
+        if (btn) {
+            btn.textContent = labelMode ? 'NODE LABELS: ON' : 'NODE LABELS: OFF';
+            btn.style.borderColor = labelMode ? 'var(--accent)' : '#334';
+            btn.style.color       = labelMode ? 'var(--accent)' : '#557';
+        }
+        applyLabelMode();
+    }
+
+    function applyLabelMode() {
+        const overlay = document.getElementById('node-labels-overlay');
+        if (!overlay || !graph3d) return;
+        if (labelAnimFrame) { cancelAnimationFrame(labelAnimFrame); labelAnimFrame = null; }
+        overlay.innerHTML = '';
+        _labelEls.clear();
+        if (!labelMode) return;
+        const nodes = graph3d.graphData().nodes;
+        for (const node of nodes) {
+            const div = document.createElement('div');
+            div.style.cssText = `position:absolute;top:0;left:0;color:${nodeColor(node)};font-size:0.7rem;font-family:'Courier New',monospace;background:rgba(0,0,0,0.55);padding:1px 4px;border-radius:2px;pointer-events:none;white-space:nowrap;`;
+            div.textContent = node.alias || nodeShortLabel(node);
+            overlay.appendChild(div);
+            _labelEls.set(node.id, div);
+        }
+        _tickLabels();
+    }
+
+    function _tickLabels() {
+        if (!labelMode || !graph3d) { labelAnimFrame = null; return; }
+        const nodes = graph3d.graphData().nodes;
+        for (const node of nodes) {
+            const el = _labelEls.get(node.id);
+            if (!el || node.x == null) continue;
+            const sc = graph3d.graph2ScreenCoords(node.x, node.y, node.z);
+            el.style.transform = `translate(${Math.round(sc.x)}px,${Math.round(sc.y) - 10}px) translate(-50%,-100%)`;
+        }
+        labelAnimFrame = requestAnimationFrame(_tickLabels);
+    }
+
+    function initGraph3D() {
+        graph3d = ForceGraph3D()(document.getElementById('graph-3d'))
+            .graphData({ nodes: [], links: [] })
+            .nodeLabel('name')
+            .nodeVal(n => n.id === currentFocalId ? (n.val || 10) * 2 : n.val || 10)
+            .nodeColor(nodeColor)
+            .linkColor(l => l.type === 'resonance' ? 'rgba(255,153,0,0.4)' : 'rgba(0,255,204,0.2)')
+            .linkWidth(l => l.type === 'resonance' ? 0.5 : 1.2)
+            .linkDirectionalParticles(2)
+            .linkDirectionalParticleSpeed(0.006)
+            .backgroundColor('rgba(0,0,0,0)')
+            .onNodeClick(async node => {
+                document.getElementById('helm-target').value = node.id;
+                await engageWarp(node.alias || nodeShortLabel(node));
+            });
+    }
+
+    // ── Tab Switching ──────────────────────────────────────────────────────
+    function switchTab(id) {
+        // sync both desktop header tabs and mobile bottom tab bar
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        const dt = document.getElementById(`tab-${id}`);
+        const mb = document.getElementById(`mob-tab-${id}`);
+        if (dt) dt.classList.add('active');
+        if (mb) mb.classList.add('active');
+        document.querySelectorAll('.view-pane').forEach(p => p.classList.remove('active'));
+        document.getElementById(`view-${id}`).classList.add('active');
+        if (id === 'jobs') refreshJobs();
+        if (id === 'cli')  document.getElementById('cli-input').focus();
+    }
+
+    document.getElementById('password').addEventListener('keypress', e => { if (e.key === 'Enter') login(); });
+
+    // ── CLI Command Router ─────────────────────────────────────────────────
+    const CMD_SPECS = {
+        'w':         { method: 'kernel.memory.write',          args: ['text'] },
+        'def':       { method: 'kernel.memory.define',         args: ['name'] },
+        'r':         { method: 'kernel.memory.read',           args: ['id'] },
+        'rm':        { method: 'kernel.memory.drop',           args: ['id'] },
+        'ln':        { method: 'kernel.memory.link',           args: ['src','dst','rel'] },
+        'ln.ls':     { method: 'link.list',                    args: ['id'] },
+        'ln.+':      { method: 'link.reinforce',               args: ['src','dst','rel'] },
+        'meta':      { method: 'meta.set',                     args: ['id','key','value'] },
+        'exp':       { method: 'explore',                      args: ['id','depth'] },
+        'al':        { method: 'kernel.identity.alias',        args: ['id','name'] },
+        'al.ls':     { method: 'kernel.identity.alias.list',   args: [] },
+        'al.find':   { method: 'kernel.identity.alias.find',   args: ['pattern'] },
+        'look':      { method: 'dive.look',                    args: ['id'] },
+        'd':         { method: 'dive.look',                    args: ['id'] },
+        'out':       { method: 'dive.out',                     args: ['id'] },
+        's.add':     { method: 'set.add',                      args: ['name','id'] },
+        's.rm':      { method: 'set.rm',                       args: ['name','id'] },
+        's.ls':      { method: 'set.ls',                       args: ['name'] },
+        's.clear':   { method: 'set.clear',                    args: ['name'] },
+        's.op':      { method: 'set.op',                       args: ['op','result','a','b'] },
+        'n.new':     { method: 'note.new',                     args: ['title'] },
+        'n.ls':      { method: 'note.ls',                      args: [] },
+        'n.open':    { method: 'note.open',                    args: ['note_id'] },
+        'n.add':     { method: 'note.add',                     args: ['text'] },
+        'n.sec':     { method: 'note.section',                 args: ['title'] },
+        'n.chap':    { method: 'note.section',                 args: ['title','role'] },
+        'n.para':    { method: 'note.paragraph',               args: ['category'] },
+        'n.toc':     { method: 'note.toc',                     args: [] },
+        'n.read':    { method: 'note.read',                    args: [] },
+        'n.rm':      { method: 'note.rm',                      args: [] },
+        'log.new':   { method: 'log.new',                      args: ['name'] },
+        'log.cp':    { method: 'log.checkpoint',               args: ['note'] },
+        'log.ann':   { method: 'log.annotate',                 args: ['text'] },
+        'log.replay':{ method: 'log.replay',                   args: [] },
+        'log.read':  { method: 'log.read',                     args: [] },
+        'log.rm':    { method: 'log.rm',                       args: [] },
+        'wb.new':    { method: 'wb.new',                       args: ['name'] },
+        'wb.pin':    { method: 'wb.pin',                       args: ['concept'] },
+        'wb.unpin':  { method: 'wb.unpin',                     args: ['concept'] },
+        'wb.focus':  { method: 'wb.focus',                     args: ['name'] },
+        'wb.ls':     { method: 'wb.ls',                        args: [] },
+        'wb.show':   { method: 'wb.show',                      args: [] },
+        'wb.rm':     { method: 'wb.rm',                        args: ['name'] },
+        'cp.new':    { method: 'cockpit.new',                  args: ['name'] },
+        'cp.ls':     { method: 'cockpit.ls',                   args: [] },
+        'cp.open':   { method: 'cockpit.open',                 args: ['cockpit_id'] },
+        'cp.lock':   { method: 'cockpit.lock',                 args: ['target'] },
+        'cp.tune':   { method: 'cockpit.tune',                 args: ['axis','scope'] },
+        'cp.beacon': { method: 'cockpit.beacon',               args: ['note'] },
+        'cp.wake':   { method: 'cockpit.wake',                 args: [] },
+        'cp.status': { method: 'cockpit.status',               args: [] },
+        'cp.rm':     { method: 'cockpit.rm',                   args: [] },
+        'fn.new':    { method: 'fieldnote.new',                args: ['title','project','region','season'] },
+        'fn.ls':     { method: 'fieldnote.ls',                 args: [] },
+        'fn.open':   { method: 'fieldnote.open',               args: ['fieldnote_id'] },
+        'fn.add':    { method: 'fieldnote.add',                args: ['text'] },
+        'fn.read':   { method: 'fieldnote.read',               args: [] },
+        'fn.rm':     { method: 'fieldnote.rm',                 args: [] },
+        'sv.new':    { method: 'survey.new',                   args: ['title','description'] },
+        'sv.open':   { method: 'survey.open',                  args: ['survey_id'] },
+        'sv.ls':     { method: 'survey.ls',                    args: [] },
+        'sv.q':      { method: 'survey.q.add',                 args: ['text','qtype'] },
+        'sv.opt':    { method: 'survey.opt.add',               args: ['question_id','label','value'] },
+        'sv.who':    { method: 'survey.res.add',               args: ['respondent_id'] },
+        'sv.ans':    { method: 'survey.ans',                   args: ['question_id','respondent_atom','answer'] },
+        'sv.list':   { method: 'survey.list',                  args: [] },
+        'sv.rm':     { method: 'survey.rm',                    args: [] },
+        'associate': { method: 'kernel.associate',             args: ['id','axis','scope','format'] },
+        'assoc':     { method: 'kernel.associate',             args: ['id','axis','scope','format'] },
+        'job.ls':    { method: 'job.ls',                       args: [] },
+        'dream':     { method: 'jataka.dream',                 args: [] },
+        'fetch':     { method: 'contexa.fetch',                args: ['query'] },
+        'ping':      { method: 'sys.ping',                     args: [] },
+        'cog':       { method: 'sys.cogito',                   args: [] },
+        'hist':      { method: 'sys.history',                  args: [] },
+        'ls':        { method: 'sys.ls',                       args: ['limit'] },
+        'passwd':    { method: 'sys.passwd',                   args: [] },
+    };
+
+    function buildRpc(raw) {
+        const parts = raw.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g);
+        if (!parts?.length) return null;
+        const cmd  = parts[0].toLowerCase();
+        const args = parts.slice(1).map(a => a.replace(/^["']|["']$/g, ''));
+        const spec = CMD_SPECS[cmd];
+        if (!spec) return null;
+        const params = {};
+        spec.args.forEach((name, i) => {
+            if (i < args.length) params[name] = (i === spec.args.length - 1) ? args.slice(i).join(' ') : args[i];
+        });
+        return { method: spec.method, params };
+    }
+
+    let cliHistory = [], cliHistIdx = -1;
+    async function submitCli() {
+        const inp = document.getElementById('cli-input');
+        const raw = inp.value.trim(); inp.value = '';
+        if (!raw) return;
+        cliHistory.unshift(raw); cliHistIdx = -1;
+
+        const out = document.getElementById('cli-output');
+        out.innerHTML += `<div class="cli-line-in">&gt; ${escHtml(raw)}</div>`;
+        if (raw === 'help') {
+            const cmds = Object.keys(CMD_SPECS).join('  ');
+            out.innerHTML += `<div class="cli-line-out">Available: ${escHtml(cmds)}</div>`;
+            out.innerHTML += `<div class="cli-line-out">Built-in: debug on | debug off | cls | help</div>`;
+            out.scrollTop = out.scrollHeight; return;
+        }
+        if (raw === 'cls' || raw === 'clear') { out.innerHTML = ''; return; }
+        if (raw === 'debug on')  { _debugRpc = true;  out.innerHTML += `<div class="cli-line-out">[DEBUG] RPC verbose logging ON</div>`;  out.scrollTop = out.scrollHeight; return; }
+        if (raw === 'debug off') { _debugRpc = false; out.innerHTML += `<div class="cli-line-out">[DEBUG] RPC verbose logging OFF</div>`; out.scrollTop = out.scrollHeight; return; }
+        const parsed = buildRpc(raw);
+        try {
+            const res = parsed ? await rpc(parsed.method, parsed.params) : await rpc(raw.split(' ')[0], {});
+            out.innerHTML += `<div class="cli-line-out">${escHtml(JSON.stringify(res, null, 2))}</div>`;
+        } catch(err) { out.innerHTML += `<div class="cli-line-err">[!] ${escHtml(err.message)}</div>`; }
+        out.scrollTop = out.scrollHeight;
+    }
+    async function handleCliKey(e) {
+        const inp = document.getElementById('cli-input');
+        if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (cliHistIdx < cliHistory.length - 1) { cliHistIdx++; inp.value = cliHistory[cliHistIdx]; }
+            return;
+        }
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            if (cliHistIdx > 0) { cliHistIdx--; inp.value = cliHistory[cliHistIdx]; }
+            else { cliHistIdx = -1; inp.value = ''; }
+            return;
+        }
+        if (e.key !== 'Enter') return;
+        await submitCli();
+    }
+
+    // ── Jobs View ──────────────────────────────────────────────────────────
+    async function refreshJobs() {
+        const container = document.getElementById('jobs-list');
+        try {
+            const res = await rpc('job.ls');
+            if (!res.jobs?.length) { container.innerHTML = '<div style="color:#555; margin-top:8px;">No jobs in queue.</div>'; return; }
+            container.innerHTML = res.jobs.map(j => `
+                <div class="job-card">
+                    <span class="job-status-${j.status}">${j.status}</span>
+                    <span style="flex:1; color:#aaa;">${escHtml(j.label || j.job_id)}</span>
+                    <span style="color:#555; font-size:0.8rem;">${j.step_done}/${j.step_count} steps</span>
+                    <span style="color:#444; font-size:0.75rem;">${j.job_id.substring(0,8)}</span>
+                </div>
+            `).join('');
+        } catch(e) { container.innerHTML = `<div class="cli-line-err">${escHtml(e.message)}</div>`; }
+    }
+
+    function showGuide()  { document.getElementById('guide-modal').classList.add('visible'); }
+    function closeGuide() { document.getElementById('guide-modal').classList.remove('visible'); }
+</script>
+
+<div id="guide-modal" onclick="if(event.target===this)closeGuide()">
+  <div id="guide-box">
+    <div class="cg-h1">Cockpit — Quick Guide</div>
+    <hr class="cg-sep">
+
+    <div class="cg-h2">What Is Cockpit?</div>
+    <div class="cg-p">Cockpit is a 3D knowledge graph navigator for the Akasha semantic universe. It renders atoms and their tensor connections as an interactive force graph. You navigate by warping to nodes, tuning the dimensional lens, and marking positions with beacons.</div>
+
+    <hr class="cg-sep">
+
+    <div class="cg-h2">Basic Workflow</div>
+    <ol class="cg-ol">
+      <li>Login with your pilot identity and passphrase</li>
+      <li>Enter a target in the Helm and press WARP</li>
+      <li>Tune the Dimensional Lens to filter the view</li>
+      <li>Adjust Penetration Depth to control graph expansion</li>
+      <li>Drop beacons to mark important positions</li>
+    </ol>
+
+    <hr class="cg-sep">
+
+    <div class="cg-h2">Views</div>
+    <table class="cg-table">
+      <thead><tr><th>View</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td>Viewport ◎</td><td>3D force-graph of the semantic universe</td></tr>
+        <tr><td>Terminal ⌨</td><td>Direct Akasha CLI — type commands and read results</td></tr>
+        <tr><td>Jobs ⚙</td><td>Monitor background operations and their status</td></tr>
+      </tbody>
+    </table>
+
+    <hr class="cg-sep">
+
+    <div class="cg-h2">Helm Navigation</div>
+    <div class="cg-p">Enter any atom ID, alias, or <span class="cg-kbd">$it</span> into the Helm Control input. Press <span class="cg-kbd">Enter</span> or click WARP to lock the focal point and render the local neighborhood.</div>
+
+    <hr class="cg-sep">
+
+    <div class="cg-h2">Dimensional Lens</div>
+    <div class="cg-p">The Spectrum filter restricts which tensor types are rendered:</div>
+    <table class="cg-table">
+      <thead><tr><th>Axis</th><th>Shows</th></tr></thead>
+      <tbody>
+        <tr><td>ALL</td><td>Raw topology — every connection</td></tr>
+        <tr><td>STRUCTURE</td><td>Ontological is_a / part_of relations</td></tr>
+        <tr><td>EMOTION</td><td>Emotional resonance links</td></tr>
+        <tr><td>CONTEXT</td><td>Associative and referential links</td></tr>
+        <tr><td>TIME</td><td>Chronological and sequential links</td></tr>
+        <tr><td>STORY</td><td>Narrative structure links</td></tr>
+      </tbody>
+    </table>
+
+    <hr class="cg-sep">
+
+    <div class="cg-h2">Penetration Depth (Scope)</div>
+    <div class="cg-p">The scope slider (1–5) controls how many hops from the focal node are rendered. Scope 1 shows only immediate neighbors. Scope 5 renders a deep neighborhood. Higher values may be slow on dense regions.</div>
+
+    <hr class="cg-sep">
+
+    <div class="cg-h2">Telemetry Sensor</div>
+    <table class="cg-table">
+      <thead><tr><th>Reading</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td>FOCAL LOCK</td><td>Currently targeted atom</td></tr>
+        <tr><td>DIMENSION AXIS</td><td>Active lens filter</td></tr>
+        <tr><td>PENETRATION SCOPE</td><td>Current depth setting</td></tr>
+        <tr><td>LOCAL ENTITIES</td><td>Nodes visible in the current render</td></tr>
+        <tr><td>ACTIVE TENSORS</td><td>Connections visible in the current render</td></tr>
+      </tbody>
+    </table>
+
+    <hr class="cg-sep">
+
+    <div class="cg-h2">Trace Deck (Beacons)</div>
+    <div class="cg-p">Use the Trace Deck to drop beacons at the current focal position. Add an observation note to record why the position was marked. The wake stream shows navigation history in reverse chronological order.</div>
+
+    <hr class="cg-sep">
+
+    <div class="cg-h2">Terminal</div>
+    <div class="cg-p">The Terminal view provides a direct CLI into Akasha. Type any command and press <span class="cg-kbd">Enter</span> or tap the <span class="cg-kbd">&#x25B6;</span> button. Output appears inline. Use this for queries, lookups, and operations not available in the graphical HUD.</div>
+
+    <hr class="cg-sep">
+
+    <div class="cg-h2">Jobs</div>
+    <div class="cg-p">Long-running operations are tracked as jobs. The Jobs view shows status and progress.</div>
+    <table class="cg-table">
+      <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td>RUNNING</td><td>Operation in progress</td></tr>
+        <tr><td>PENDING</td><td>Queued, not yet started</td></tr>
+        <tr><td>DONE</td><td>Completed successfully</td></tr>
+        <tr><td>FAILED</td><td>Terminated with error</td></tr>
+        <tr><td>CANCELLED</td><td>Manually stopped</td></tr>
+      </tbody>
+    </table>
+
+    <div class="cg-foot">
+      <button class="cg-close" onclick="closeGuide()">CLOSE</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

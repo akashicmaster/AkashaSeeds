@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Notes — Akasha</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Newsreader:ital,opsz,wght@0,6..72,300..700;1,6..72,300..700&display=swap" rel="stylesheet">
+  <style>
+    /* ── Palette ─────────────────────────────────────────── */
+    :root {
+      --paper:   #f8f5ef;
+      --paper2:  #f0ebe0;
+      --paper3:  #e8e0d2;
+      --ink:     #2a1f14;
+      --ink2:    #5a4a38;
+      --ink3:    #8a7a68;
+      --amber:   #9b7014;
+      --amber2:  #c49a3c;
+      --amber3:  #eddeb8;
+      --rust:    #8b3a2a;
+      --border:  #d8d0be;
+      --rule:    rgba(200, 188, 168, 0.65);
+      --shadow:  rgba(42, 31, 20, 0.10);
+      --panel-w: 256px;
+      --lh:      32px;
+    }
+
+    /* ── Reset ───────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--paper);
+      color: var(--ink);
+      font-family: 'Newsreader', Georgia, serif;
+      font-size: 16px;
+      line-height: var(--lh);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      pointer-events: none; z-index: 0;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    }
+
+    /* ── Shared button styles ─────────────────────────────── */
+    .wordmark {
+      object-fit: contain;
+      flex-shrink: 0;
+      filter: drop-shadow(0 0 8px rgba(0,200,160,.25));
+    }
+
+    .btn {
+      background: transparent;
+      border: 1.5px solid var(--amber); color: var(--amber);
+      padding: 7px 22px; font-size: 0.88rem;
+      font-family: inherit; font-style: italic;
+      cursor: pointer; border-radius: 2px;
+      transition: all 0.2s; letter-spacing: 0.05em;
+    }
+    .btn:hover { background: var(--amber); color: var(--paper); }
+    .btn:active { transform: scale(0.98); }
+    .btn.sm { padding: 5px 16px; font-size: 0.82rem; }
+    .btn.danger { border-color: var(--rust); color: var(--rust); }
+    .btn.danger:hover { background: var(--rust); color: var(--paper); }
+    .btn.muted { border-color: var(--border); color: var(--ink3); }
+    .btn.muted:hover { background: var(--paper3); color: var(--ink2); }
+
+    .ghost-btn {
+      background: transparent; border: none;
+      color: var(--ink3); font-size: 0.82rem;
+      font-family: inherit; cursor: pointer;
+      padding: 4px 10px; border-radius: 3px;
+      transition: all 0.15s; white-space: nowrap;
+    }
+    .ghost-btn:hover { color: var(--amber); background: var(--paper3); }
+
+    .mini-btn {
+      background: transparent;
+      border: 1px solid var(--border); color: var(--ink2);
+      font-size: 0.75rem; font-family: inherit;
+      cursor: pointer; padding: 3px 9px; border-radius: 2px;
+      transition: all 0.15s;
+    }
+    .mini-btn:hover { border-color: var(--amber); color: var(--amber); }
+    .mini-btn:disabled { opacity: 0.35; cursor: default; }
+
+    .text-input {
+      width: 100%; background: transparent; border: none;
+      border-bottom: 1.5px solid var(--border);
+      color: var(--ink); padding: 8px 4px;
+      font-size: 0.95rem; font-family: inherit;
+      outline: none; transition: border-color 0.2s;
+    }
+    .text-input:focus { border-color: var(--amber); }
+    .text-input::placeholder { color: var(--ink3); }
+
+    /* ── App header ───────────────────────────────────────── */
+    .app-header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--paper2); flex-shrink: 0;
+      box-shadow: 0 1px 4px var(--shadow);
+      position: relative; z-index: 20;
+    }
+    .header-sep { color: var(--border); font-size: 0.85rem; flex-shrink: 0; }
+
+    /* ── Login overlay ────────────────────────────────────── */
+    #login-overlay {
+      position: fixed; inset: 0; z-index: 9999;
+      background: var(--paper);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 18px; padding: 40px;
+    }
+    #login-wordmark { width: 90px; height: 90px; margin-bottom: 12px; }
+    #login-tagline {
+      font-size: 0.82rem; color: var(--ink3);
+      letter-spacing: 0.18em; margin-bottom: 20px;
+    }
+    .login-input {
+      background: transparent; border: none;
+      border-bottom: 1.5px solid var(--border);
+      color: var(--ink); padding: 8px 4px;
+      font-size: 1rem; font-family: inherit;
+      width: 260px; text-align: center;
+      outline: none; transition: border-color 0.2s;
+    }
+    .login-input:focus { border-color: var(--amber); }
+    .login-input::placeholder { color: var(--ink3); }
+    #login-msg { color: var(--rust); font-size: 0.82rem; min-height: 1.2em; font-style: italic; }
+
+    /* ── Library view ─────────────────────────────────────── */
+    #library-view {
+      display: none; flex-direction: column; height: 100%;
+      position: relative; z-index: 1;
+    }
+    #library-view.active { display: flex; }
+
+    .lib-body { flex: 1; overflow-y: auto; padding: 40px 48px; }
+
+    .lib-toolbar {
+      display: flex; align-items: baseline;
+      justify-content: space-between; margin-bottom: 28px;
+    }
+    .lib-heading {
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-size: 1.45rem; font-weight: 400;
+      color: var(--ink2); letter-spacing: 0.04em;
+    }
+    .note-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+      gap: 16px;
+    }
+    .note-card {
+      background: var(--paper2); border: 1px solid var(--border);
+      border-radius: 4px; padding: 20px; cursor: pointer;
+      transition: all 0.15s; box-shadow: 0 1px 4px var(--shadow);
+    }
+    .note-card:hover {
+      border-color: var(--amber2);
+      box-shadow: 0 3px 12px var(--shadow); transform: translateY(-1px);
+    }
+    .card-title {
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-size: 1.05rem; font-weight: 600; color: var(--ink);
+      margin-bottom: 8px; line-height: 1.4;
+    }
+    .card-date { font-size: 0.73rem; color: var(--ink3); font-style: italic; }
+    .lib-empty {
+      grid-column: 1 / -1; text-align: center;
+      color: var(--ink3); font-style: italic; padding: 52px 0; font-size: 0.9rem;
+    }
+
+    /* ── Editor view ──────────────────────────────────────── */
+    #editor-view {
+      display: none; flex-direction: column; height: 100%;
+      position: relative; z-index: 1;
+    }
+    #editor-view.active { display: flex; }
+
+    #note-title-display {
+      font-size: 0.9rem; color: var(--ink2); flex: 1;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 3px 6px;
+    }
+    #save-indicator {
+      font-size: 0.72rem; color: var(--ink3); font-style: italic;
+      opacity: 0; transition: opacity 0.4s; flex-shrink: 0;
+    }
+    #save-indicator.on { opacity: 1; }
+
+    /* File menu */
+    .menu-wrap { position: relative; flex-shrink: 0; }
+    .menu-btn {
+      background: transparent; border: 1px solid var(--border);
+      color: var(--ink2); font-size: 0.82rem; font-family: inherit;
+      cursor: pointer; padding: 4px 10px; border-radius: 3px;
+      transition: all 0.15s; white-space: nowrap;
+    }
+    .menu-btn:hover, .menu-btn.open {
+      border-color: var(--amber); color: var(--amber); background: var(--paper3);
+    }
+    .dropdown {
+      position: absolute; top: calc(100% + 4px); right: 0;
+      background: var(--paper2); border: 1px solid var(--border);
+      border-radius: 4px; box-shadow: 0 4px 18px var(--shadow);
+      min-width: 160px; z-index: 999; overflow: hidden;
+    }
+    .dropdown.hidden { display: none; }
+    .dd-item {
+      display: block; width: 100%; text-align: left;
+      background: transparent; border: none;
+      padding: 8px 16px; font-size: 0.85rem; font-family: inherit;
+      color: var(--ink2); cursor: pointer; transition: background 0.1s, color 0.1s;
+    }
+    .dd-item:hover { background: var(--paper3); color: var(--ink); }
+    .dd-item.danger:hover { color: var(--rust); }
+    .dd-sep { height: 1px; background: var(--border); margin: 3px 0; }
+
+    /* ── Editor layout ────────────────────────────────────── */
+    .editor-main { display: flex; flex: 1; overflow: hidden; }
+
+    #left-panel {
+      width: var(--panel-w); flex-shrink: 0;
+      border-right: 1px solid var(--border); background: var(--paper2);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .panel-hd {
+      padding: 12px 16px 8px; font-size: 0.72rem; color: var(--ink3);
+      letter-spacing: 0.14em; text-transform: uppercase;
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .panel-actions {
+      padding: 8px 12px; display: flex; gap: 6px; flex-wrap: wrap;
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    #chunk-list { flex: 1; overflow-y: auto; padding: 6px 0; }
+    #chunk-list::-webkit-scrollbar { width: 4px; }
+    #chunk-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .chunk-item {
+      padding: 9px 16px; cursor: pointer;
+      border-left: 3px solid transparent; transition: all 0.12s;
+    }
+    .chunk-item:hover { background: var(--paper3); border-left-color: var(--amber3); }
+    .chunk-item.active { background: var(--paper3); border-left-color: var(--amber); }
+    .ci-role {
+      font-size: 0.68rem; color: var(--ink3);
+      letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 1px;
+    }
+    .ci-head {
+      font-size: 0.83rem; color: var(--ink2); line-height: 1.4;
+      overflow: hidden; display: -webkit-box;
+      -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    }
+    .ci-num { font-size: 0.68rem; color: var(--ink3); margin-top: 2px; }
+    .panel-foot { padding: 10px 12px; border-top: 1px solid var(--border); flex-shrink: 0; }
+
+    /* ── Document area ────────────────────────────────────── */
+    #doc-area { flex: 1; overflow-y: auto; background: var(--paper); }
+    #doc-area::-webkit-scrollbar { width: 6px; }
+    #doc-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    #doc-inner {
+      max-width: 680px; margin: 0 auto;
+      padding: 64px 64px 96px; min-height: 100%;
+      background-image: repeating-linear-gradient(
+        transparent 0, transparent 31px, var(--rule) 31px, var(--rule) 32px
+      );
+      background-size: 100% 32px;
+    }
+
+    .doc-empty {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      min-height: 50vh; gap: 16px; color: var(--ink3);
+    }
+    .doc-empty-icon { font-size: 2.5rem; opacity: 0.3; }
+    .doc-empty-text { font-size: 0.88rem; font-style: italic; }
+
+    .chunk-block { position: relative; }
+
+    .chunk-text {
+      font-size: 16px; line-height: var(--lh); color: var(--ink);
+      white-space: pre-wrap; word-wrap: break-word;
+      cursor: text; padding: 0; min-height: var(--lh);
+      border-radius: 2px; transition: background 0.12s;
+    }
+    .chunk-text:hover { background: rgba(155, 112, 20, 0.04); }
+    .chunk-text.empty { color: var(--ink3); font-style: italic; }
+
+    .chunk-ta {
+      display: none; width: 100%;
+      font-family: 'Newsreader', Georgia, serif;
+      font-size: 16px; line-height: var(--lh); color: var(--ink);
+      background: transparent; border: none; outline: none;
+      resize: none; overflow: hidden; padding: 0; margin: 0;
+      caret-color: var(--amber);
+    }
+    .chunk-ta::selection { background: var(--amber3); }
+
+    .chunk-block.editing .chunk-text { display: none; }
+    .chunk-block.editing .chunk-ta  { display: block; }
+
+    .chunk-edit-bar { display: none; justify-content: flex-end; margin-top: 4px; }
+    .chunk-block.editing .chunk-edit-bar { display: flex; }
+    .chunk-done-btn {
+      font-family: inherit; font-size: 0.75rem; padding: 2px 10px;
+      background: var(--amber2); color: var(--ink); border: 1px solid var(--amber);
+      border-radius: 3px; cursor: pointer; line-height: 1.4;
+    }
+    .chunk-done-btn:hover { background: var(--amber); }
+
+    .chunk-divider { height: var(--lh); display: flex; align-items: center; }
+    .chunk-divider::after {
+      content: ''; display: block; width: 48px; height: 1px;
+      background: var(--border); margin: 0 auto;
+    }
+
+    /* ── Modals ───────────────────────────────────────────── */
+    .modal-back {
+      position: fixed; inset: 0; background: rgba(42, 31, 20, 0.35);
+      display: flex; align-items: center; justify-content: center; z-index: 9000;
+    }
+    .modal-back.hidden { display: none; }
+    .modal-box {
+      background: var(--paper); border: 1px solid var(--border);
+      border-radius: 6px; box-shadow: 0 8px 32px rgba(42, 31, 20, 0.18);
+      padding: 32px; width: 380px; max-width: 90vw;
+      display: flex; flex-direction: column; gap: 18px;
+    }
+    .modal-title {
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-size: 1.25rem; font-weight: 600; color: var(--ink);
+    }
+    .modal-body { font-size: 0.88rem; color: var(--ink2); line-height: 1.65; }
+    .modal-row { display: flex; justify-content: flex-end; gap: 10px; }
+
+    #modal-about .modal-box { width: 600px; max-height: 85vh; overflow-y: auto; }
+    .about-desc { font-size: 0.85rem; color: var(--ink2); line-height: 1.7; }
+    .shortcut-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    .shortcut-table th {
+      text-align: left; color: var(--ink3); font-weight: 400;
+      font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase;
+      padding: 4px 0; border-bottom: 1px solid var(--border);
+    }
+    .shortcut-table td {
+      padding: 5px 0; color: var(--ink2);
+      border-bottom: 1px solid rgba(216, 208, 190, 0.45); vertical-align: top;
+    }
+    .shortcut-table td:first-child {
+      font-family: monospace; font-size: 0.78rem;
+      color: var(--amber); width: 170px; padding-right: 12px;
+    }
+
+    /* ── Toast ────────────────────────────────────────────── */
+    #toast {
+      position: fixed; bottom: 28px; left: 50%;
+      transform: translateX(-50%) translateY(16px);
+      background: var(--ink); color: var(--paper);
+      font-size: 0.82rem; padding: 8px 20px; border-radius: 3px;
+      opacity: 0; pointer-events: none; transition: all 0.25s;
+      z-index: 99999; white-space: nowrap;
+    }
+    #toast.show { opacity: 0.92; transform: translateX(-50%) translateY(0); }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    @media (max-width: 720px) {
+      :root { --panel-w: 200px; }
+      #doc-inner { padding: 48px 32px 80px; }
+    }
+    @media (max-width: 540px) {
+      #left-panel { display: none; }
+      #doc-inner { padding: 32px 20px 60px; }
+    }
+
+    .spin { display: inline-block; animation: spin 1.2s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<!-- ── Login ─────────────────────────────────────────── -->
+<div id="login-overlay">
+  <img id="login-wordmark" class="wordmark"  src="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%2244%2069%20152%20152%22%20width%3D%22512%22%20height%3D%22512%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3CradialGradient%20id%3D%22bg%22%20cx%3D%2250%25%22%20cy%3D%2240%25%22%20r%3D%2260%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%232a1f0e%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%2260%25%22%20stop-color%3D%22%231a1208%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%230e0a04%22%2F%3E%0A%20%20%20%20%3C%2FradialGradient%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22trunk%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%220%25%22%20y2%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23c8960a%22%20stop-opacity%3D%220.9%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%2250%25%22%20stop-color%3D%22%23a07008%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%236b4a05%22%20stop-opacity%3D%220.6%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22rootG%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%220%25%22%20y2%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%238b6508%22%20stop-opacity%3D%220.7%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%233d2a02%22%20stop-opacity%3D%220.15%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%20%20%3CradialGradient%20id%3D%22futureG%22%20cx%3D%2250%25%22%20cy%3D%2250%25%22%20r%3D%2250%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%2300ffcc%22%20stop-opacity%3D%220.6%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%2300ffcc%22%20stop-opacity%3D%220%22%2F%3E%0A%20%20%20%20%3C%2FradialGradient%3E%0A%20%20%20%20%3CradialGradient%20id%3D%22pG%22%20cx%3D%2250%25%22%20cy%3D%2250%25%22%20r%3D%2250%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%238b6508%22%20stop-opacity%3D%220.2%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%238b6508%22%20stop-opacity%3D%220%22%2F%3E%0A%20%20%20%20%3C%2FradialGradient%3E%0A%20%20%20%20%3Cfilter%20id%3D%22ff%22%20x%3D%22-100%25%22%20y%3D%22-100%25%22%20width%3D%22300%25%22%20height%3D%22300%25%22%3E%0A%20%20%20%20%20%20%3CfeGaussianBlur%20stdDeviation%3D%222.5%22%20result%3D%22blur%22%2F%3E%0A%20%20%20%20%20%20%3CfeMerge%3E%3CfeMergeNode%20in%3D%22blur%22%2F%3E%3CfeMergeNode%20in%3D%22SourceGraphic%22%2F%3E%3C%2FfeMerge%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%20%20%3Cfilter%20id%3D%22gf%22%20x%3D%22-50%25%22%20y%3D%22-50%25%22%20width%3D%22200%25%22%20height%3D%22200%25%22%3E%0A%20%20%20%20%20%20%3CfeGaussianBlur%20stdDeviation%3D%221.2%22%20result%3D%22blur%22%2F%3E%0A%20%20%20%20%20%20%3CfeMerge%3E%3CfeMergeNode%20in%3D%22blur%22%2F%3E%3CfeMergeNode%20in%3D%22SourceGraphic%22%2F%3E%3C%2FfeMerge%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20x%3D%2244%22%20y%3D%2269%22%20width%3D%22152%22%20height%3D%22152%22%20fill%3D%22url%28%23bg%29%22%2F%3E%0A%20%20%3Cellipse%20cx%3D%22120%22%20cy%3D%22155.0%22%20rx%3D%2255%22%20ry%3D%2255%22%20fill%3D%22url%28%23pG%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22155.0%22%20r%3D%2250%22%20fill%3D%22none%22%20stroke%3D%22%238b6508%22%20stroke-width%3D%220.7%22%20opacity%3D%220.35%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22155.0%22%20r%3D%2236%22%20fill%3D%22none%22%20stroke%3D%22%238b6508%22%20stroke-width%3D%220.3%22%20opacity%3D%220.2%22%20stroke-dasharray%3D%223%2C5%22%2F%3E%0A%20%20%3Cline%20x1%3D%22120%22%20y1%3D%2295.0%22%20x2%3D%22120%22%20y2%3D%22168.0%22%20stroke%3D%22url%28%23trunk%29%22%20stroke-width%3D%222%22%20filter%3D%22url%28%23gf%29%22%20opacity%3D%220.95%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C168.0%20Q107%2C178.0%2098%2C188.0%22%20fill%3D%22none%22%20stroke%3D%22url%28%23rootG%29%22%20stroke-width%3D%221.1%22%20opacity%3D%220.55%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C168.0%20Q120%2C180.0%20120%2C191.0%22%20fill%3D%22none%22%20stroke%3D%22url%28%23rootG%29%22%20stroke-width%3D%221.1%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C168.0%20Q133%2C178.0%20142%2C188.0%22%20fill%3D%22none%22%20stroke%3D%22url%28%23rootG%29%22%20stroke-width%3D%221.1%22%20opacity%3D%220.55%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2298%22%20cy%3D%22188.0%22%20r%3D%221.8%22%20fill%3D%22%238b6508%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22191.0%22%20r%3D%221.8%22%20fill%3D%22%238b6508%22%20opacity%3D%220.45%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22142%22%20cy%3D%22188.0%22%20r%3D%221.8%22%20fill%3D%22%238b6508%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C160.0%20Q107%2C154.0%2095%2C149.0%22%20fill%3D%22none%22%20stroke%3D%22%238b6508%22%20stroke-width%3D%220.9%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C160.0%20Q133%2C154.0%20145%2C149.0%22%20fill%3D%22none%22%20stroke%3D%22%238b6508%22%20stroke-width%3D%220.9%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C148.0%20Q104%2C141.0%2091%2C135.0%22%20fill%3D%22none%22%20stroke%3D%22%23a07008%22%20stroke-width%3D%221%22%20opacity%3D%220.6%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C148.0%20Q136%2C141.0%20149%2C135.0%22%20fill%3D%22none%22%20stroke%3D%22%23a07008%22%20stroke-width%3D%221%22%20opacity%3D%220.6%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C134.0%20Q102%2C127.0%2088%2C121.0%22%20fill%3D%22none%22%20stroke%3D%22%23b08010%22%20stroke-width%3D%221.1%22%20opacity%3D%220.65%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C134.0%20Q138%2C127.0%20152%2C121.0%22%20fill%3D%22none%22%20stroke%3D%22%23b08010%22%20stroke-width%3D%221.1%22%20opacity%3D%220.65%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C120.0%20Q103%2C112.0%2090%2C106.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%221.2%22%20opacity%3D%220.75%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C120.0%20Q137%2C112.0%20150%2C106.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%221.2%22%20opacity%3D%220.75%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C108.0%20Q110%2C100.0%20102%2C93.0%22%20fill%3D%22none%22%20stroke%3D%22%23d4a43a%22%20stroke-width%3D%221.1%22%20opacity%3D%220.8%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C108.0%20Q120%2C98.0%20120%2C90.0%22%20fill%3D%22none%22%20stroke%3D%22%23d4a43a%22%20stroke-width%3D%221.2%22%20opacity%3D%220.85%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C108.0%20Q130%2C100.0%20138%2C93.0%22%20fill%3D%22none%22%20stroke%3D%22%23d4a43a%22%20stroke-width%3D%221.1%22%20opacity%3D%220.8%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M90%2C106.0%20Q82%2C102.0%2076%2C99.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%220.7%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M150%2C106.0%20Q158%2C102.0%20164%2C99.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%220.7%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M88%2C121.0%20Q79%2C118.0%2072%2C116.0%22%20fill%3D%22none%22%20stroke%3D%22%23a07008%22%20stroke-width%3D%220.6%22%20opacity%3D%220.4%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M152%2C121.0%20Q161%2C118.0%20168%2C116.0%22%20fill%3D%22none%22%20stroke%3D%22%23a07008%22%20stroke-width%3D%220.6%22%20opacity%3D%220.4%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M108%2C111.0%20Q97%2C102.0%20102%2C92.0%20Q107%2C82.0%20120%2C81.0%20Q133%2C82.0%20138%2C92.0%20Q143%2C102.0%20132%2C111.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%221.3%22%20opacity%3D%220.7%22%20filter%3D%22url%28%23gf%29%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M132%2C111.0%20Q142%2C118.0%20137%2C128.0%20Q132%2C136.0%20120%2C134.0%22%20fill%3D%22none%22%20stroke%3D%22%23b08010%22%20stroke-width%3D%221.1%22%20opacity%3D%220.6%22%2F%3E%0A%20%20%3Cline%20x1%3D%22112%22%20y1%3D%2281.0%22%20x2%3D%22128%22%20y2%3D%2281.0%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%220.8%22%20opacity%3D%220.45%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22135.0%22%20r%3D%223%22%20fill%3D%22%23c8960a%22%20opacity%3D%220.3%22%20filter%3D%22url%28%23gf%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22135.0%22%20r%3D%221.5%22%20fill%3D%22%23e8c55a%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%2288.0%22%20r%3D%2210%22%20fill%3D%22url%28%23futureG%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22101%22%20cy%3D%2291.0%22%20r%3D%227%22%20fill%3D%22url%28%23futureG%29%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22139%22%20cy%3D%2291.0%22%20r%3D%227%22%20fill%3D%22url%28%23futureG%29%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%2288.0%22%20r%3D%224%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.95%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%2288.0%22%20r%3D%221.8%22%20fill%3D%22%23ffffff%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22101%22%20cy%3D%2291.0%22%20r%3D%223.2%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.85%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22101%22%20cy%3D%2291.0%22%20r%3D%221.3%22%20fill%3D%22%23e0fff8%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22139%22%20cy%3D%2291.0%22%20r%3D%223.2%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.85%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22139%22%20cy%3D%2291.0%22%20r%3D%221.3%22%20fill%3D%22%23e0fff8%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2288%22%20cy%3D%22104.0%22%20r%3D%222.5%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22152%22%20cy%3D%22104.0%22%20r%3D%222.5%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2275%22%20cy%3D%2298.0%22%20r%3D%222%22%20fill%3D%22%2300ffcc%22%20opacity%3D%220.55%22%20filter%3D%22url%28%23ff%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22165%22%20cy%3D%2298.0%22%20r%3D%222%22%20fill%3D%22%2300ffcc%22%20opacity%3D%220.55%22%20filter%3D%22url%28%23ff%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2271%22%20cy%3D%22115.0%22%20r%3D%221.8%22%20fill%3D%22%2300ffcc%22%20opacity%3D%220.4%22%20filter%3D%22url%28%23ff%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22169%22%20cy%3D%22115.0%22%20r%3D%221.8%22%20fill%3D%22%2300ffcc%22%20opacity%3D%220.4%22%20filter%3D%22url%28%23ff%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2289%22%20cy%3D%22134.0%22%20r%3D%221.4%22%20fill%3D%22%2300ddaa%22%20opacity%3D%220.3%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22151%22%20cy%3D%22134.0%22%20r%3D%221.4%22%20fill%3D%22%2300ddaa%22%20opacity%3D%220.3%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2293%22%20cy%3D%22148.0%22%20r%3D%221.1%22%20fill%3D%22%2300bbaa%22%20opacity%3D%220.2%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22147%22%20cy%3D%22148.0%22%20r%3D%221.1%22%20fill%3D%22%2300bbaa%22%20opacity%3D%220.2%22%2F%3E%0A%3C%2Fsvg%3E" alt="Notes">
+  <div id="login-tagline">your personal notebook</div>
+  <input id="user-input"  class="login-input" type="text"     placeholder="name"       autocomplete="off">
+  <input id="token-input" class="login-input" type="password" placeholder="passphrase" autocomplete="off">
+  <button class="btn" onclick="doLogin()">Open</button>
+  <div id="login-msg"></div>
+</div>
+
+<!-- ── Library ────────────────────────────────────────── -->
+<div id="library-view">
+  <div class="app-header">
+    <img class="wordmark" style="height:28px;width:28px;vertical-align:middle"  src="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%2244%2069%20152%20152%22%20width%3D%22512%22%20height%3D%22512%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3CradialGradient%20id%3D%22bg%22%20cx%3D%2250%25%22%20cy%3D%2240%25%22%20r%3D%2260%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%232a1f0e%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%2260%25%22%20stop-color%3D%22%231a1208%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%230e0a04%22%2F%3E%0A%20%20%20%20%3C%2FradialGradient%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22trunk%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%220%25%22%20y2%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23c8960a%22%20stop-opacity%3D%220.9%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%2250%25%22%20stop-color%3D%22%23a07008%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%236b4a05%22%20stop-opacity%3D%220.6%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22rootG%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%220%25%22%20y2%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%238b6508%22%20stop-opacity%3D%220.7%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%233d2a02%22%20stop-opacity%3D%220.15%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%20%20%3CradialGradient%20id%3D%22futureG%22%20cx%3D%2250%25%22%20cy%3D%2250%25%22%20r%3D%2250%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%2300ffcc%22%20stop-opacity%3D%220.6%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%2300ffcc%22%20stop-opacity%3D%220%22%2F%3E%0A%20%20%20%20%3C%2FradialGradient%3E%0A%20%20%20%20%3CradialGradient%20id%3D%22pG%22%20cx%3D%2250%25%22%20cy%3D%2250%25%22%20r%3D%2250%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%238b6508%22%20stop-opacity%3D%220.2%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%238b6508%22%20stop-opacity%3D%220%22%2F%3E%0A%20%20%20%20%3C%2FradialGradient%3E%0A%20%20%20%20%3Cfilter%20id%3D%22ff%22%20x%3D%22-100%25%22%20y%3D%22-100%25%22%20width%3D%22300%25%22%20height%3D%22300%25%22%3E%0A%20%20%20%20%20%20%3CfeGaussianBlur%20stdDeviation%3D%222.5%22%20result%3D%22blur%22%2F%3E%0A%20%20%20%20%20%20%3CfeMerge%3E%3CfeMergeNode%20in%3D%22blur%22%2F%3E%3CfeMergeNode%20in%3D%22SourceGraphic%22%2F%3E%3C%2FfeMerge%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%20%20%3Cfilter%20id%3D%22gf%22%20x%3D%22-50%25%22%20y%3D%22-50%25%22%20width%3D%22200%25%22%20height%3D%22200%25%22%3E%0A%20%20%20%20%20%20%3CfeGaussianBlur%20stdDeviation%3D%221.2%22%20result%3D%22blur%22%2F%3E%0A%20%20%20%20%20%20%3CfeMerge%3E%3CfeMergeNode%20in%3D%22blur%22%2F%3E%3CfeMergeNode%20in%3D%22SourceGraphic%22%2F%3E%3C%2FfeMerge%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20x%3D%2244%22%20y%3D%2269%22%20width%3D%22152%22%20height%3D%22152%22%20fill%3D%22url%28%23bg%29%22%2F%3E%0A%20%20%3Cellipse%20cx%3D%22120%22%20cy%3D%22155.0%22%20rx%3D%2255%22%20ry%3D%2255%22%20fill%3D%22url%28%23pG%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22155.0%22%20r%3D%2250%22%20fill%3D%22none%22%20stroke%3D%22%238b6508%22%20stroke-width%3D%220.7%22%20opacity%3D%220.35%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22155.0%22%20r%3D%2236%22%20fill%3D%22none%22%20stroke%3D%22%238b6508%22%20stroke-width%3D%220.3%22%20opacity%3D%220.2%22%20stroke-dasharray%3D%223%2C5%22%2F%3E%0A%20%20%3Cline%20x1%3D%22120%22%20y1%3D%2295.0%22%20x2%3D%22120%22%20y2%3D%22168.0%22%20stroke%3D%22url%28%23trunk%29%22%20stroke-width%3D%222%22%20filter%3D%22url%28%23gf%29%22%20opacity%3D%220.95%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C168.0%20Q107%2C178.0%2098%2C188.0%22%20fill%3D%22none%22%20stroke%3D%22url%28%23rootG%29%22%20stroke-width%3D%221.1%22%20opacity%3D%220.55%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C168.0%20Q120%2C180.0%20120%2C191.0%22%20fill%3D%22none%22%20stroke%3D%22url%28%23rootG%29%22%20stroke-width%3D%221.1%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C168.0%20Q133%2C178.0%20142%2C188.0%22%20fill%3D%22none%22%20stroke%3D%22url%28%23rootG%29%22%20stroke-width%3D%221.1%22%20opacity%3D%220.55%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2298%22%20cy%3D%22188.0%22%20r%3D%221.8%22%20fill%3D%22%238b6508%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22191.0%22%20r%3D%221.8%22%20fill%3D%22%238b6508%22%20opacity%3D%220.45%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22142%22%20cy%3D%22188.0%22%20r%3D%221.8%22%20fill%3D%22%238b6508%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C160.0%20Q107%2C154.0%2095%2C149.0%22%20fill%3D%22none%22%20stroke%3D%22%238b6508%22%20stroke-width%3D%220.9%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C160.0%20Q133%2C154.0%20145%2C149.0%22%20fill%3D%22none%22%20stroke%3D%22%238b6508%22%20stroke-width%3D%220.9%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C148.0%20Q104%2C141.0%2091%2C135.0%22%20fill%3D%22none%22%20stroke%3D%22%23a07008%22%20stroke-width%3D%221%22%20opacity%3D%220.6%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C148.0%20Q136%2C141.0%20149%2C135.0%22%20fill%3D%22none%22%20stroke%3D%22%23a07008%22%20stroke-width%3D%221%22%20opacity%3D%220.6%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C134.0%20Q102%2C127.0%2088%2C121.0%22%20fill%3D%22none%22%20stroke%3D%22%23b08010%22%20stroke-width%3D%221.1%22%20opacity%3D%220.65%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C134.0%20Q138%2C127.0%20152%2C121.0%22%20fill%3D%22none%22%20stroke%3D%22%23b08010%22%20stroke-width%3D%221.1%22%20opacity%3D%220.65%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C120.0%20Q103%2C112.0%2090%2C106.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%221.2%22%20opacity%3D%220.75%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C120.0%20Q137%2C112.0%20150%2C106.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%221.2%22%20opacity%3D%220.75%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C108.0%20Q110%2C100.0%20102%2C93.0%22%20fill%3D%22none%22%20stroke%3D%22%23d4a43a%22%20stroke-width%3D%221.1%22%20opacity%3D%220.8%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C108.0%20Q120%2C98.0%20120%2C90.0%22%20fill%3D%22none%22%20stroke%3D%22%23d4a43a%22%20stroke-width%3D%221.2%22%20opacity%3D%220.85%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C108.0%20Q130%2C100.0%20138%2C93.0%22%20fill%3D%22none%22%20stroke%3D%22%23d4a43a%22%20stroke-width%3D%221.1%22%20opacity%3D%220.8%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M90%2C106.0%20Q82%2C102.0%2076%2C99.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%220.7%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M150%2C106.0%20Q158%2C102.0%20164%2C99.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%220.7%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M88%2C121.0%20Q79%2C118.0%2072%2C116.0%22%20fill%3D%22none%22%20stroke%3D%22%23a07008%22%20stroke-width%3D%220.6%22%20opacity%3D%220.4%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M152%2C121.0%20Q161%2C118.0%20168%2C116.0%22%20fill%3D%22none%22%20stroke%3D%22%23a07008%22%20stroke-width%3D%220.6%22%20opacity%3D%220.4%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M108%2C111.0%20Q97%2C102.0%20102%2C92.0%20Q107%2C82.0%20120%2C81.0%20Q133%2C82.0%20138%2C92.0%20Q143%2C102.0%20132%2C111.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%221.3%22%20opacity%3D%220.7%22%20filter%3D%22url%28%23gf%29%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M132%2C111.0%20Q142%2C118.0%20137%2C128.0%20Q132%2C136.0%20120%2C134.0%22%20fill%3D%22none%22%20stroke%3D%22%23b08010%22%20stroke-width%3D%221.1%22%20opacity%3D%220.6%22%2F%3E%0A%20%20%3Cline%20x1%3D%22112%22%20y1%3D%2281.0%22%20x2%3D%22128%22%20y2%3D%2281.0%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%220.8%22%20opacity%3D%220.45%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22135.0%22%20r%3D%223%22%20fill%3D%22%23c8960a%22%20opacity%3D%220.3%22%20filter%3D%22url%28%23gf%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22135.0%22%20r%3D%221.5%22%20fill%3D%22%23e8c55a%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%2288.0%22%20r%3D%2210%22%20fill%3D%22url%28%23futureG%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22101%22%20cy%3D%2291.0%22%20r%3D%227%22%20fill%3D%22url%28%23futureG%29%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22139%22%20cy%3D%2291.0%22%20r%3D%227%22%20fill%3D%22url%28%23futureG%29%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%2288.0%22%20r%3D%224%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.95%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%2288.0%22%20r%3D%221.8%22%20fill%3D%22%23ffffff%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22101%22%20cy%3D%2291.0%22%20r%3D%223.2%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.85%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22101%22%20cy%3D%2291.0%22%20r%3D%221.3%22%20fill%3D%22%23e0fff8%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22139%22%20cy%3D%2291.0%22%20r%3D%223.2%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.85%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22139%22%20cy%3D%2291.0%22%20r%3D%221.3%22%20fill%3D%22%23e0fff8%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2288%22%20cy%3D%22104.0%22%20r%3D%222.5%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22152%22%20cy%3D%22104.0%22%20r%3D%222.5%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2275%22%20cy%3D%2298.0%22%20r%3D%222%22%20fill%3D%22%2300ffcc%22%20opacity%3D%220.55%22%20filter%3D%22url%28%23ff%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22165%22%20cy%3D%2298.0%22%20r%3D%222%22%20fill%3D%22%2300ffcc%22%20opacity%3D%220.55%22%20filter%3D%22url%28%23ff%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2271%22%20cy%3D%22115.0%22%20r%3D%221.8%22%20fill%3D%22%2300ffcc%22%20opacity%3D%220.4%22%20filter%3D%22url%28%23ff%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22169%22%20cy%3D%22115.0%22%20r%3D%221.8%22%20fill%3D%22%2300ffcc%22%20opacity%3D%220.4%22%20filter%3D%22url%28%23ff%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2289%22%20cy%3D%22134.0%22%20r%3D%221.4%22%20fill%3D%22%2300ddaa%22%20opacity%3D%220.3%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22151%22%20cy%3D%22134.0%22%20r%3D%221.4%22%20fill%3D%22%2300ddaa%22%20opacity%3D%220.3%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2293%22%20cy%3D%22148.0%22%20r%3D%221.1%22%20fill%3D%22%2300bbaa%22%20opacity%3D%220.2%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22147%22%20cy%3D%22148.0%22%20r%3D%221.1%22%20fill%3D%22%2300bbaa%22%20opacity%3D%220.2%22%2F%3E%0A%3C%2Fsvg%3E" alt="Notes">
+    <div style="flex:1"></div>
+    <button class="ghost-btn" onclick="showAbout()">? About</button>
+    <button class="ghost-btn" onclick="doLogout()">Logout</button>
+  </div>
+  <div class="lib-body">
+    <div class="lib-toolbar">
+      <span class="lib-heading">Your Notes</span>
+      <button class="btn sm" onclick="openNewNoteModal()">+ New Note</button>
+    </div>
+    <div id="note-grid" class="note-grid">
+      <div class="lib-empty"><span class="spin">◌</span> Loading…</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Editor ─────────────────────────────────────────── -->
+<div id="editor-view">
+  <div class="app-header">
+    <img class="wordmark" style="height:24px;width:24px;cursor:pointer;vertical-align:middle" onclick="closeNote()" title="Back to Library" alt="Notes"  src="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%2244%2069%20152%20152%22%20width%3D%22512%22%20height%3D%22512%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3CradialGradient%20id%3D%22bg%22%20cx%3D%2250%25%22%20cy%3D%2240%25%22%20r%3D%2260%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%232a1f0e%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%2260%25%22%20stop-color%3D%22%231a1208%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%230e0a04%22%2F%3E%0A%20%20%20%20%3C%2FradialGradient%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22trunk%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%220%25%22%20y2%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23c8960a%22%20stop-opacity%3D%220.9%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%2250%25%22%20stop-color%3D%22%23a07008%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%236b4a05%22%20stop-opacity%3D%220.6%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22rootG%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%220%25%22%20y2%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%238b6508%22%20stop-opacity%3D%220.7%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%233d2a02%22%20stop-opacity%3D%220.15%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%20%20%3CradialGradient%20id%3D%22futureG%22%20cx%3D%2250%25%22%20cy%3D%2250%25%22%20r%3D%2250%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%2300ffcc%22%20stop-opacity%3D%220.6%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%2300ffcc%22%20stop-opacity%3D%220%22%2F%3E%0A%20%20%20%20%3C%2FradialGradient%3E%0A%20%20%20%20%3CradialGradient%20id%3D%22pG%22%20cx%3D%2250%25%22%20cy%3D%2250%25%22%20r%3D%2250%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%238b6508%22%20stop-opacity%3D%220.2%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%238b6508%22%20stop-opacity%3D%220%22%2F%3E%0A%20%20%20%20%3C%2FradialGradient%3E%0A%20%20%20%20%3Cfilter%20id%3D%22ff%22%20x%3D%22-100%25%22%20y%3D%22-100%25%22%20width%3D%22300%25%22%20height%3D%22300%25%22%3E%0A%20%20%20%20%20%20%3CfeGaussianBlur%20stdDeviation%3D%222.5%22%20result%3D%22blur%22%2F%3E%0A%20%20%20%20%20%20%3CfeMerge%3E%3CfeMergeNode%20in%3D%22blur%22%2F%3E%3CfeMergeNode%20in%3D%22SourceGraphic%22%2F%3E%3C%2FfeMerge%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%20%20%3Cfilter%20id%3D%22gf%22%20x%3D%22-50%25%22%20y%3D%22-50%25%22%20width%3D%22200%25%22%20height%3D%22200%25%22%3E%0A%20%20%20%20%20%20%3CfeGaussianBlur%20stdDeviation%3D%221.2%22%20result%3D%22blur%22%2F%3E%0A%20%20%20%20%20%20%3CfeMerge%3E%3CfeMergeNode%20in%3D%22blur%22%2F%3E%3CfeMergeNode%20in%3D%22SourceGraphic%22%2F%3E%3C%2FfeMerge%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20x%3D%2244%22%20y%3D%2269%22%20width%3D%22152%22%20height%3D%22152%22%20fill%3D%22url%28%23bg%29%22%2F%3E%0A%20%20%3Cellipse%20cx%3D%22120%22%20cy%3D%22155.0%22%20rx%3D%2255%22%20ry%3D%2255%22%20fill%3D%22url%28%23pG%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22155.0%22%20r%3D%2250%22%20fill%3D%22none%22%20stroke%3D%22%238b6508%22%20stroke-width%3D%220.7%22%20opacity%3D%220.35%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22155.0%22%20r%3D%2236%22%20fill%3D%22none%22%20stroke%3D%22%238b6508%22%20stroke-width%3D%220.3%22%20opacity%3D%220.2%22%20stroke-dasharray%3D%223%2C5%22%2F%3E%0A%20%20%3Cline%20x1%3D%22120%22%20y1%3D%2295.0%22%20x2%3D%22120%22%20y2%3D%22168.0%22%20stroke%3D%22url%28%23trunk%29%22%20stroke-width%3D%222%22%20filter%3D%22url%28%23gf%29%22%20opacity%3D%220.95%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C168.0%20Q107%2C178.0%2098%2C188.0%22%20fill%3D%22none%22%20stroke%3D%22url%28%23rootG%29%22%20stroke-width%3D%221.1%22%20opacity%3D%220.55%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C168.0%20Q120%2C180.0%20120%2C191.0%22%20fill%3D%22none%22%20stroke%3D%22url%28%23rootG%29%22%20stroke-width%3D%221.1%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C168.0%20Q133%2C178.0%20142%2C188.0%22%20fill%3D%22none%22%20stroke%3D%22url%28%23rootG%29%22%20stroke-width%3D%221.1%22%20opacity%3D%220.55%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2298%22%20cy%3D%22188.0%22%20r%3D%221.8%22%20fill%3D%22%238b6508%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22191.0%22%20r%3D%221.8%22%20fill%3D%22%238b6508%22%20opacity%3D%220.45%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22142%22%20cy%3D%22188.0%22%20r%3D%221.8%22%20fill%3D%22%238b6508%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C160.0%20Q107%2C154.0%2095%2C149.0%22%20fill%3D%22none%22%20stroke%3D%22%238b6508%22%20stroke-width%3D%220.9%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C160.0%20Q133%2C154.0%20145%2C149.0%22%20fill%3D%22none%22%20stroke%3D%22%238b6508%22%20stroke-width%3D%220.9%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C148.0%20Q104%2C141.0%2091%2C135.0%22%20fill%3D%22none%22%20stroke%3D%22%23a07008%22%20stroke-width%3D%221%22%20opacity%3D%220.6%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C148.0%20Q136%2C141.0%20149%2C135.0%22%20fill%3D%22none%22%20stroke%3D%22%23a07008%22%20stroke-width%3D%221%22%20opacity%3D%220.6%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C134.0%20Q102%2C127.0%2088%2C121.0%22%20fill%3D%22none%22%20stroke%3D%22%23b08010%22%20stroke-width%3D%221.1%22%20opacity%3D%220.65%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C134.0%20Q138%2C127.0%20152%2C121.0%22%20fill%3D%22none%22%20stroke%3D%22%23b08010%22%20stroke-width%3D%221.1%22%20opacity%3D%220.65%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C120.0%20Q103%2C112.0%2090%2C106.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%221.2%22%20opacity%3D%220.75%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C120.0%20Q137%2C112.0%20150%2C106.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%221.2%22%20opacity%3D%220.75%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C108.0%20Q110%2C100.0%20102%2C93.0%22%20fill%3D%22none%22%20stroke%3D%22%23d4a43a%22%20stroke-width%3D%221.1%22%20opacity%3D%220.8%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C108.0%20Q120%2C98.0%20120%2C90.0%22%20fill%3D%22none%22%20stroke%3D%22%23d4a43a%22%20stroke-width%3D%221.2%22%20opacity%3D%220.85%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C108.0%20Q130%2C100.0%20138%2C93.0%22%20fill%3D%22none%22%20stroke%3D%22%23d4a43a%22%20stroke-width%3D%221.1%22%20opacity%3D%220.8%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M90%2C106.0%20Q82%2C102.0%2076%2C99.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%220.7%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M150%2C106.0%20Q158%2C102.0%20164%2C99.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%220.7%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M88%2C121.0%20Q79%2C118.0%2072%2C116.0%22%20fill%3D%22none%22%20stroke%3D%22%23a07008%22%20stroke-width%3D%220.6%22%20opacity%3D%220.4%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M152%2C121.0%20Q161%2C118.0%20168%2C116.0%22%20fill%3D%22none%22%20stroke%3D%22%23a07008%22%20stroke-width%3D%220.6%22%20opacity%3D%220.4%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M108%2C111.0%20Q97%2C102.0%20102%2C92.0%20Q107%2C82.0%20120%2C81.0%20Q133%2C82.0%20138%2C92.0%20Q143%2C102.0%20132%2C111.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%221.3%22%20opacity%3D%220.7%22%20filter%3D%22url%28%23gf%29%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M132%2C111.0%20Q142%2C118.0%20137%2C128.0%20Q132%2C136.0%20120%2C134.0%22%20fill%3D%22none%22%20stroke%3D%22%23b08010%22%20stroke-width%3D%221.1%22%20opacity%3D%220.6%22%2F%3E%0A%20%20%3Cline%20x1%3D%22112%22%20y1%3D%2281.0%22%20x2%3D%22128%22%20y2%3D%2281.0%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%220.8%22%20opacity%3D%220.45%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22135.0%22%20r%3D%223%22%20fill%3D%22%23c8960a%22%20opacity%3D%220.3%22%20filter%3D%22url%28%23gf%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22135.0%22%20r%3D%221.5%22%20fill%3D%22%23e8c55a%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%2288.0%22%20r%3D%2210%22%20fill%3D%22url%28%23futureG%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22101%22%20cy%3D%2291.0%22%20r%3D%227%22%20fill%3D%22url%28%23futureG%29%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22139%22%20cy%3D%2291.0%22%20r%3D%227%22%20fill%3D%22url%28%23futureG%29%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%2288.0%22%20r%3D%224%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.95%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%2288.0%22%20r%3D%221.8%22%20fill%3D%22%23ffffff%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22101%22%20cy%3D%2291.0%22%20r%3D%223.2%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.85%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22101%22%20cy%3D%2291.0%22%20r%3D%221.3%22%20fill%3D%22%23e0fff8%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22139%22%20cy%3D%2291.0%22%20r%3D%223.2%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.85%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22139%22%20cy%3D%2291.0%22%20r%3D%221.3%22%20fill%3D%22%23e0fff8%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2288%22%20cy%3D%22104.0%22%20r%3D%222.5%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22152%22%20cy%3D%22104.0%22%20r%3D%222.5%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2275%22%20cy%3D%2298.0%22%20r%3D%222%22%20fill%3D%22%2300ffcc%22%20opacity%3D%220.55%22%20filter%3D%22url%28%23ff%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22165%22%20cy%3D%2298.0%22%20r%3D%222%22%20fill%3D%22%2300ffcc%22%20opacity%3D%220.55%22%20filter%3D%22url%28%23ff%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2271%22%20cy%3D%22115.0%22%20r%3D%221.8%22%20fill%3D%22%2300ffcc%22%20opacity%3D%220.4%22%20filter%3D%22url%28%23ff%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22169%22%20cy%3D%22115.0%22%20r%3D%221.8%22%20fill%3D%22%2300ffcc%22%20opacity%3D%220.4%22%20filter%3D%22url%28%23ff%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2289%22%20cy%3D%22134.0%22%20r%3D%221.4%22%20fill%3D%22%2300ddaa%22%20opacity%3D%220.3%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22151%22%20cy%3D%22134.0%22%20r%3D%221.4%22%20fill%3D%22%2300ddaa%22%20opacity%3D%220.3%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2293%22%20cy%3D%22148.0%22%20r%3D%221.1%22%20fill%3D%22%2300bbaa%22%20opacity%3D%220.2%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22147%22%20cy%3D%22148.0%22%20r%3D%221.1%22%20fill%3D%22%2300bbaa%22%20opacity%3D%220.2%22%2F%3E%0A%3C%2Fsvg%3E">
+    <span class="header-sep">›</span>
+    <span id="note-title-display">Untitled</span>
+    <span id="save-indicator">Saving…</span>
+    <div class="menu-wrap">
+      <button class="menu-btn" id="file-btn" onclick="toggleFileMenu()">File ▾</button>
+      <div id="file-menu" class="dropdown hidden">
+        <button class="dd-item" onclick="openRenameModal();closeFileMenu()">Rename…</button>
+        <div class="dd-sep"></div>
+        <button class="dd-item" onclick="duplicateNote();closeFileMenu()">Duplicate</button>
+        <div class="dd-sep"></div>
+        <button class="dd-item" onclick="exportNote();closeFileMenu()">Export…</button>
+        <button class="dd-item" onclick="importNote();closeFileMenu()">Import…</button>
+        <div class="dd-sep"></div>
+        <button class="dd-item" onclick="closeNote();closeFileMenu()">Close</button>
+        <button class="dd-item danger" onclick="openDeleteModal();closeFileMenu()">Delete…</button>
+        <div class="dd-sep"></div>
+        <button class="dd-item" onclick="doLogout();closeFileMenu()">Logout</button>
+      </div>
+    </div>
+    <button class="ghost-btn" onclick="showAbout()" title="About">?</button>
+  </div>
+  <div class="editor-main">
+    <div id="left-panel">
+      <div class="panel-hd">Chunks</div>
+      <div class="panel-actions">
+        <button class="mini-btn" onclick="doUndo()">↩ Undo</button>
+        <button class="mini-btn" onclick="doRedo()">↪ Redo</button>
+        <button class="mini-btn" onclick="doRestore()">⟳ Restore</button>
+      </div>
+      <div id="chunk-list"></div>
+      <div class="panel-foot">
+        <button class="mini-btn" style="width:100%" onclick="newChunk()">+ Chunk</button>
+      </div>
+    </div>
+    <div id="doc-area">
+      <div id="doc-inner">
+        <div id="doc-empty" class="doc-empty">
+          <div class="doc-empty-icon">📓</div>
+          <div class="doc-empty-text">Add a chunk to begin writing.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: New Note ──────────────────────────────── -->
+<div id="modal-newnote" class="modal-back hidden">
+  <div class="modal-box">
+    <div class="modal-title">New Note</div>
+    <input id="newnote-title" class="text-input" type="text" placeholder="Note title"
+      onkeydown="if(event.key==='Enter')confirmNewNote();if(event.key==='Escape')closeNewNoteModal()">
+    <div class="modal-row">
+      <button class="btn sm muted" onclick="closeNewNoteModal()">Cancel</button>
+      <button class="btn sm" onclick="confirmNewNote()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Rename ────────────────────────────────── -->
+<div id="modal-rename" class="modal-back hidden">
+  <div class="modal-box">
+    <div class="modal-title">Rename Note</div>
+    <input id="rename-title" class="text-input" type="text" placeholder="New title"
+      onkeydown="if(event.key==='Enter')confirmRename();if(event.key==='Escape')closeRenameModal()">
+    <div class="modal-row">
+      <button class="btn sm muted" onclick="closeRenameModal()">Cancel</button>
+      <button class="btn sm" onclick="confirmRename()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Delete ────────────────────────────────── -->
+<div id="modal-delete" class="modal-back hidden">
+  <div class="modal-box">
+    <div class="modal-title">Delete Note</div>
+    <div class="modal-body">
+      Delete "<span id="del-note-name"></span>"?<br>
+      This action cannot be undone.
+    </div>
+    <div class="modal-row">
+      <button class="btn sm muted" onclick="closeDeleteModal()">Cancel</button>
+      <button class="btn sm danger" onclick="confirmDelete()">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: About ─────────────────────────────────── -->
+<div id="modal-about" class="modal-back hidden" onclick="if(event.target===this)closeAbout()">
+  <div class="modal-box">
+    <div class="modal-title">Notes — Quick Guide</div>
+
+    <div class="about-desc">Notes is a personal notebook inside the Akasha knowledge system. Write in <strong>chunks</strong> — each chunk is an independent, versioned piece of text that can be reordered, edited, and linked to concepts in the graph.</div>
+
+    <div style="font-size:0.72rem;color:var(--ink3);text-transform:uppercase;letter-spacing:0.1em;margin-top:16px;margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:3px;">Basic Workflow</div>
+    <ol class="about-desc" style="padding-left:18px;margin:0;">
+      <li>Open or create a note from the Library</li>
+      <li>Add chunks to the document</li>
+      <li>Click any chunk to edit it</li>
+      <li>Reorder chunks by dragging in the left panel</li>
+      <li>Use Undo / Redo to recover earlier versions</li>
+    </ol>
+
+    <div style="font-size:0.72rem;color:var(--ink3);text-transform:uppercase;letter-spacing:0.1em;margin-top:16px;margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:3px;">Chunks</div>
+    <div class="about-desc">A chunk is an independent block of text — a paragraph, a list, a quote, or a fragment. Each chunk is versioned separately. The left panel shows all chunks as a list you can reorder by dragging.</div>
+
+    <div style="font-size:0.72rem;color:var(--ink3);text-transform:uppercase;letter-spacing:0.1em;margin-top:16px;margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:3px;">Shortcuts</div>
+    <table class="shortcut-table">
+      <thead><tr><th>Action</th><th>How</th></tr></thead>
+      <tbody>
+        <tr><td>Open a note</td><td>Click a note card in the Library</td></tr>
+        <tr><td>New note</td><td>+ New Note in the Library</td></tr>
+        <tr><td>Edit a chunk</td><td>Click any text in the document</td></tr>
+        <tr><td>Save chunk</td><td>Ctrl+Enter / Cmd+Enter, tap outside, or <strong>Done</strong> button</td></tr>
+        <tr><td>Cancel edit</td><td>Escape &mdash; or Undo (&#x21A9;) on tablet</td></tr>
+        <tr><td>Add a chunk</td><td>+ Chunk (left panel footer)</td></tr>
+        <tr><td>Reorder chunks</td><td>Drag items in the left panel</td></tr>
+        <tr><td>Undo / Redo</td><td>↩ Undo &nbsp;/&nbsp; ↪ Redo (left panel)</td></tr>
+        <tr><td>Restore version</td><td>⟳ Restore (left panel)</td></tr>
+        <tr><td>Rename note</td><td>File › Rename…</td></tr>
+        <tr><td>Duplicate note</td><td>File › Duplicate — creates a copy prefixed with "(Copy)"</td></tr>
+        <tr><td>Export note</td><td>File › Export… — saves an <code>.akasha</code> capsule file</td></tr>
+        <tr><td>Import note</td><td>File › Import… — opens an <code>.akasha</code> capsule file</td></tr>
+        <tr><td>Close note</td><td>File › Close &nbsp;or&nbsp; click "Notes"</td></tr>
+        <tr><td>Delete note</td><td>File › Delete…</td></tr>
+        <tr><td>Logout</td><td>File › Logout</td></tr>
+      </tbody>
+    </table>
+
+    <div style="font-size:0.72rem;color:var(--ink3);text-transform:uppercase;letter-spacing:0.1em;margin-top:16px;margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:3px;">Philosophy</div>
+    <div class="about-desc">Notes is intentionally minimal. Its purpose is not to replace a word processor or publishing tool. It is a thinking space — a place to accumulate fragments, drafts, observations, and ideas as part of a living semantic graph. The chunk structure encourages short, revisable units rather than long monolithic documents.</div>
+
+    <div class="modal-row" style="margin-top:8px;">
+      <button class="btn sm" onclick="closeAbout()">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════
+   RPC
+═══════════════════════════════════════════════════════ */
+let SESSION_TOKEN = '';
+
+async function rpc(method, params = {}) {
+  const res = await fetch('/api/rpc', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0', id: Date.now(), method,
+      params: { session_token: SESSION_TOKEN, data: params },
+    }),
+  });
+  const j = await res.json();
+  if (j.error) throw new Error(j.error.message || JSON.stringify(j.error));
+  return j.result;
+}
+
+/* ═══════════════════════════════════════════════════════
+   State
+═══════════════════════════════════════════════════════ */
+let notes = [];
+let chunks = [];
+let currentNoteTitle = '';
+let editingId = null;
+
+/* ═══════════════════════════════════════════════════════
+   Login / Logout
+═══════════════════════════════════════════════════════ */
+async function doLogin() {
+  const user = document.getElementById('user-input').value.trim();
+  const pass = document.getElementById('token-input').value;
+  if (!user || !pass) {
+    document.getElementById('login-msg').textContent = 'Enter name and passphrase.';
+    return;
+  }
+  document.getElementById('login-msg').textContent = '';
+  try {
+    const res = await fetch('/api/rpc', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0', id: Date.now(), method: 'kernel.auth.verify',
+        params: { data: { user_id: user, passphrase: pass } },
+      }),
+    });
+    const j = await res.json();
+    if (j.error) throw new Error(j.error.message || JSON.stringify(j.error));
+    if (j.result?.status !== 'authenticated') throw new Error('Access denied.');
+    SESSION_TOKEN = j.result.session_token;
+    document.getElementById('login-overlay').style.display = 'none';
+    await rpc('sys.onboarding.seed', { app: 'note' }).catch(() => {});
+    await showLibrary();
+  } catch (e) {
+    document.getElementById('login-msg').textContent = e.message || 'Authentication failed.';
+    SESSION_TOKEN = '';
+  }
+}
+
+document.getElementById('token-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+document.getElementById('user-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('token-input').focus();
+});
+
+function doLogout() {
+  SESSION_TOKEN = '';
+  notes = []; chunks = []; editingId = null; currentNoteTitle = '';
+  setView('');
+  document.getElementById('login-overlay').style.display = 'flex';
+  document.getElementById('user-input').value = '';
+  document.getElementById('token-input').value = '';
+  document.getElementById('login-msg').textContent = '';
+}
+
+/* ═══════════════════════════════════════════════════════
+   Views
+═══════════════════════════════════════════════════════ */
+function setView(name) {
+  document.getElementById('library-view').classList.toggle('active', name === 'library');
+  document.getElementById('editor-view').classList.toggle('active', name === 'editor');
+}
+
+/* ═══════════════════════════════════════════════════════
+   Library
+═══════════════════════════════════════════════════════ */
+async function showLibrary() {
+  setView('library');
+  const grid = document.getElementById('note-grid');
+  grid.innerHTML = '<div class="lib-empty"><span class="spin">◌</span> Loading…</div>';
+  try {
+    const r = await rpc('note.ls', {});
+    notes = r.notes || [];
+    renderNoteGrid();
+  } catch (e) {
+    grid.innerHTML = `<div class="lib-empty">Error: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderNoteGrid() {
+  const grid = document.getElementById('note-grid');
+  if (!notes.length) {
+    grid.innerHTML = '<div class="lib-empty">No notes yet — create your first note above.</div>';
+    return;
+  }
+  grid.innerHTML = notes.map(n => {
+    const title = n.title || 'Untitled';
+    const date  = n.created_at
+      ? new Date(n.created_at * 1000).toLocaleDateString('en', { year: 'numeric', month: 'short', day: 'numeric' })
+      : '';
+    return `<div class="note-card" onclick="openNote(${JSON.stringify(n.note_id)},${JSON.stringify(title)})">
+      <div class="card-title">${escHtml(title)}</div>
+      ${date ? `<div class="card-date">${escHtml(date)}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+/* ═══════════════════════════════════════════════════════
+   Open / Close note
+═══════════════════════════════════════════════════════ */
+async function openNote(noteId, title) {
+  try {
+    await rpc('note.open', { note_id: noteId });
+    currentNoteTitle = title;
+    chunks = [];
+    editingId = null;
+    document.getElementById('note-title-display').textContent = title || 'Untitled';
+    setView('editor');
+    await loadChunks();
+  } catch (e) {
+    toast('Failed to open note: ' + e.message);
+  }
+}
+
+async function closeNote() {
+  if (editingId) await commitEdit(editingId);
+  editingId = null;
+  chunks = [];
+  currentNoteTitle = '';
+  await showLibrary();
+}
+
+/* ═══════════════════════════════════════════════════════
+   Chunk list
+═══════════════════════════════════════════════════════ */
+async function loadChunks() {
+  try {
+    const r = await rpc('note.list', {});
+    chunks = r.chunks || [];
+    renderChunkList();
+    renderDocument();
+  } catch (e) {
+    toast('Failed to load chunks: ' + e.message);
+  }
+}
+
+function renderChunkList() {
+  const el = document.getElementById('chunk-list');
+  if (!chunks.length) {
+    el.innerHTML = '<div style="padding:14px 16px;font-size:0.8rem;color:var(--ink3);font-style:italic">No chunks yet</div>';
+    return;
+  }
+  el.innerHTML = chunks.map((c, i) => `
+    <div class="chunk-item${c.id === editingId ? ' active' : ''}"
+         onclick="scrollToChunk('${escAttr(c.id)}')"
+         draggable="true"
+         ondragstart="dragStart(event,'${escAttr(c.id)}')"
+         ondragover="dragOver(event)"
+         ondrop="dragDrop(event,'${escAttr(c.id)}')">
+      <div class="ci-role">${escHtml(c.role || 'chunk')}</div>
+      <div class="ci-head">${escHtml(c.head || '(empty)')}</div>
+      <div class="ci-num">#${i + 1}</div>
+    </div>`).join('');
+}
+
+function scrollToChunk(id) {
+  const el = document.querySelector(`.chunk-block[data-id="${CSS.escape(id)}"]`);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+/* ═══════════════════════════════════════════════════════
+   Document rendering
+═══════════════════════════════════════════════════════ */
+function renderDocument() {
+  const inner = document.getElementById('doc-inner');
+
+  // Remove old blocks
+  inner.querySelectorAll('.chunk-block, .chunk-divider').forEach(el => el.remove());
+
+  const emptyEl = document.getElementById('doc-empty');
+  if (!chunks.length) {
+    if (emptyEl) emptyEl.style.display = 'flex';
+    return;
+  }
+  if (emptyEl) emptyEl.style.display = 'none';
+
+  const frag = document.createDocumentFragment();
+  chunks.forEach((c, i) => {
+    if (i > 0) {
+      const sep = document.createElement('div');
+      sep.className = 'chunk-divider';
+      frag.appendChild(sep);
+    }
+    frag.appendChild(makeChunkBlock(c));
+  });
+  inner.appendChild(frag);
+}
+
+function makeChunkBlock(c) {
+  const block = document.createElement('div');
+  block.className = 'chunk-block';
+  block.dataset.id = c.id;
+
+  const textEl = document.createElement('div');
+  const rawText = c.content || c.head || '';
+  textEl.className = 'chunk-text' + (rawText ? '' : ' empty');
+  textEl.textContent = rawText || 'Click to write…';
+  textEl.addEventListener('click', () => startEdit(c.id));
+
+  const ta = document.createElement('textarea');
+  ta.className = 'chunk-ta';
+  ta.value = rawText;
+  ta.placeholder = 'Write here…';
+  ta.rows = 1;
+  ta.addEventListener('input', () => autoResize(ta));
+  ta.addEventListener('keydown', e => onChunkKey(e, c.id));
+  ta.addEventListener('blur', () => {
+    if (editingId === c.id) commitEdit(c.id);
+  });
+
+  const editBar = document.createElement('div');
+  editBar.className = 'chunk-edit-bar';
+  const doneBtn = document.createElement('button');
+  doneBtn.className = 'chunk-done-btn';
+  doneBtn.textContent = 'Done';
+  doneBtn.addEventListener('mousedown', e => e.preventDefault()); // prevent blur before click
+  doneBtn.addEventListener('click', () => { if (editingId === c.id) commitEdit(c.id); });
+  editBar.appendChild(doneBtn);
+
+  block.appendChild(textEl);
+  block.appendChild(ta);
+  block.appendChild(editBar);
+  return block;
+}
+
+function autoResize(ta) {
+  ta.style.height = 'auto';
+  ta.style.height = ta.scrollHeight + 'px';
+}
+
+/* ═══════════════════════════════════════════════════════
+   Inline editing
+═══════════════════════════════════════════════════════ */
+async function startEdit(id) {
+  if (editingId === id) return;
+
+  // Commit previous — clear editingId first so blur handler is a no-op
+  if (editingId) {
+    const prev = editingId;
+    editingId = null;
+    await _saveChunk(prev);
+    const pb = document.querySelector(`.chunk-block[data-id="${CSS.escape(prev)}"]`);
+    if (pb) pb.classList.remove('editing');
+  }
+
+  editingId = id;
+  renderChunkList();
+
+  const block = document.querySelector(`.chunk-block[data-id="${CSS.escape(id)}"]`);
+  if (!block) return;
+  block.classList.add('editing');
+  const ta = block.querySelector('.chunk-ta');
+  autoResize(ta);
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+}
+
+async function commitEdit(id) {
+  if (editingId !== id) return;
+  editingId = null;
+
+  const block = document.querySelector(`.chunk-block[data-id="${CSS.escape(id)}"]`);
+  if (!block) return;
+  block.classList.remove('editing');
+
+  const ta     = block.querySelector('.chunk-ta');
+  const textEl = block.querySelector('.chunk-text');
+  const text   = ta.value;
+
+  // Update display
+  if (text.trim()) {
+    textEl.textContent = text;
+    textEl.classList.remove('empty');
+  } else {
+    textEl.textContent = 'Click to write…';
+    textEl.classList.add('empty');
+  }
+
+  // Update local cache
+  const c = chunks.find(x => x.id === id);
+  const old = c ? (c.content || c.head || '') : null;
+  if (c) { c.content = text; c.head = text.split('\n')[0].slice(0, 80); }
+  renderChunkList();
+
+  if (old !== null && text !== old) await _saveChunk(id);
+}
+
+async function _saveChunk(id) {
+  const block = document.querySelector(`.chunk-block[data-id="${CSS.escape(id)}"]`);
+  const ta = block ? block.querySelector('.chunk-ta') : null;
+  const c = chunks.find(x => x.id === id);
+  const text = ta ? ta.value : (c ? (c.content || '') : '');
+  showSaving();
+  try {
+    await rpc('note.edit', { chunk_id: id, text });
+  } catch (e) {
+    toast('Save failed: ' + e.message);
+  } finally {
+    hideSaving();
+  }
+}
+
+function onChunkKey(e, id) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); commitEdit(id); }
+  if (e.key === 'Escape') { e.preventDefault(); cancelEdit(id); }
+}
+
+function cancelEdit(id) {
+  if (editingId !== id) return;
+  editingId = null;
+  const block = document.querySelector(`.chunk-block[data-id="${CSS.escape(id)}"]`);
+  if (!block) return;
+  block.classList.remove('editing');
+  const c = chunks.find(x => x.id === id);
+  if (c) block.querySelector('.chunk-ta').value = c.content || c.head || '';
+  renderChunkList();
+}
+
+function showSaving() { document.getElementById('save-indicator').classList.add('on'); }
+function hideSaving()  { document.getElementById('save-indicator').classList.remove('on'); }
+
+/* ═══════════════════════════════════════════════════════
+   New chunk
+═══════════════════════════════════════════════════════ */
+async function newChunk() {
+  if (editingId) await commitEdit(editingId);
+  try {
+    const r = await rpc('note.add', { text: '' });
+    await loadChunks();
+    const id = r.chunk_id || r.node_id;
+    if (id) setTimeout(() => startEdit(id), 30);
+  } catch (e) {
+    toast('Failed to add chunk: ' + e.message);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Undo / Redo / Restore
+═══════════════════════════════════════════════════════ */
+async function doUndo() {
+  try {
+    const r = await rpc('note.undo', {});
+    if (r.status === 'nothing_to_undo') { toast('Nothing to undo'); return; }
+    toast('Undone'); editingId = null; await loadChunks();
+  } catch (e) { toast(e.message); }
+}
+
+async function doRedo() {
+  try {
+    const r = await rpc('note.redo', {});
+    if (r.status === 'nothing_to_redo') { toast('Nothing to redo'); return; }
+    toast('Redone'); editingId = null; await loadChunks();
+  } catch (e) { toast(e.message); }
+}
+
+async function doRestore() {
+  if (!confirm('Discard all edits and restore original order and content?')) return;
+  try {
+    await rpc('note.restore', {});
+    toast('Restored'); editingId = null; await loadChunks();
+  } catch (e) { toast(e.message); }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Drag reorder
+═══════════════════════════════════════════════════════ */
+let dragId = null;
+function dragStart(e, id) { dragId = id; e.dataTransfer.effectAllowed = 'move'; }
+function dragOver(e)       { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
+
+async function dragDrop(e, targetId) {
+  e.preventDefault();
+  if (!dragId || dragId === targetId) { dragId = null; return; }
+  const tIdx = chunks.findIndex(c => c.id === targetId);
+  const afterId = tIdx > 0 ? chunks[tIdx - 1].id : null;
+  try {
+    await rpc('note.move', { chunk_id: dragId, after: afterId });
+    await loadChunks(); toast('Reordered');
+  } catch (err) { toast('Move failed: ' + err.message); }
+  dragId = null;
+}
+
+/* ═══════════════════════════════════════════════════════
+   File menu
+═══════════════════════════════════════════════════════ */
+function toggleFileMenu() {
+  const m = document.getElementById('file-menu');
+  const b = document.getElementById('file-btn');
+  const open = !m.classList.contains('hidden');
+  m.classList.toggle('hidden', open);
+  b.classList.toggle('open', !open);
+}
+function closeFileMenu() {
+  document.getElementById('file-menu').classList.add('hidden');
+  document.getElementById('file-btn').classList.remove('open');
+}
+document.addEventListener('click', e => {
+  const wrap = document.querySelector('.menu-wrap');
+  if (wrap && !wrap.contains(e.target)) closeFileMenu();
+});
+
+/* ═══════════════════════════════════════════════════════
+   Modal: New Note
+═══════════════════════════════════════════════════════ */
+function openNewNoteModal() {
+  document.getElementById('newnote-title').value = '';
+  document.getElementById('modal-newnote').classList.remove('hidden');
+  setTimeout(() => document.getElementById('newnote-title').focus(), 40);
+}
+function closeNewNoteModal() {
+  document.getElementById('modal-newnote').classList.add('hidden');
+}
+async function confirmNewNote() {
+  const title = document.getElementById('newnote-title').value.trim() || 'Untitled';
+  closeNewNoteModal();
+  try {
+    const r = await rpc('note.new', { title });
+    const noteId = r.note_id || r.root_id;
+    if (!noteId) throw new Error('No note_id returned');
+    await openNote(noteId, title);
+  } catch (e) {
+    toast('Failed to create note: ' + e.message);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Modal: Rename
+═══════════════════════════════════════════════════════ */
+function openRenameModal() {
+  document.getElementById('rename-title').value = currentNoteTitle;
+  document.getElementById('modal-rename').classList.remove('hidden');
+  setTimeout(() => {
+    const i = document.getElementById('rename-title'); i.focus(); i.select();
+  }, 40);
+}
+function closeRenameModal() {
+  document.getElementById('modal-rename').classList.add('hidden');
+}
+async function confirmRename() {
+  const title = document.getElementById('rename-title').value.trim();
+  if (!title) return;
+  closeRenameModal();
+  try {
+    await rpc('note.rename', { title });
+    currentNoteTitle = title;
+    document.getElementById('note-title-display').textContent = title;
+    toast('Renamed');
+  } catch (e) { toast('Rename failed: ' + e.message); }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Modal: Delete
+═══════════════════════════════════════════════════════ */
+function openDeleteModal() {
+  document.getElementById('del-note-name').textContent = currentNoteTitle || 'Untitled';
+  document.getElementById('modal-delete').classList.remove('hidden');
+}
+function closeDeleteModal() {
+  document.getElementById('modal-delete').classList.add('hidden');
+}
+async function confirmDelete() {
+  closeDeleteModal();
+  try {
+    await rpc('note.rm', {});
+    toast('Note deleted');
+    editingId = null; chunks = []; currentNoteTitle = '';
+    await showLibrary();
+  } catch (e) { toast('Delete failed: ' + e.message); }
+}
+
+/* ═══════════════════════════════════════════════════════
+   About
+═══════════════════════════════════════════════════════ */
+function showAbout()  { document.getElementById('modal-about').classList.remove('hidden'); }
+function closeAbout() { document.getElementById('modal-about').classList.add('hidden'); }
+
+/* ═══════════════════════════════════════════════════════
+   Toast
+═══════════════════════════════════════════════════════ */
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+}
+
+/* ═══════════════════════════════════════════════════════
+   Helpers
+═══════════════════════════════════════════════════════ */
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(s) { return escHtml(s); }
+
+/* ═══════════════════════════════════════════════════════
+   Duplicate
+═══════════════════════════════════════════════════════ */
+async function duplicateNote() {
+  if (!currentNoteTitle) { toast('No note open'); return; }
+  try {
+    const res = await rpc('note.clone', {});
+    toast(`Duplicated as "${res.title}"`);
+    await loadNotes();
+  } catch(e) { toast('Duplicate failed: ' + e.message); }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Export / Import  (Akasha capsule format)
+═══════════════════════════════════════════════════════ */
+function _capsuleFileName(title) {
+  const safe = (title || 'note').replace(/[^a-zA-Z0-9_\- ]/g, '').trim().replace(/\s+/g, '_') || 'note';
+  const d = new Date();
+  const ds = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+  return `${safe}_${ds}.akasha`;
+}
+
+async function exportNote() {
+  if (!currentNoteTitle) { toast('No note open'); return; }
+  try {
+    const res = await rpc('note.export', {});
+    const blob = new Blob([res.capsule], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = _capsuleFileName(currentNoteTitle);
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('Exported');
+  } catch(e) { toast('Export failed: ' + e.message); }
+}
+
+function importNote() {
+  document.getElementById('note-import-input').value = '';
+  document.getElementById('note-import-input').click();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('note-import-input').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const res  = await rpc('note.import', { capsule: text });
+      toast(`Imported: ${res.atoms_injected} atoms, ${res.links_queued} links`);
+      await loadNotes();
+    } catch(err) { toast('Import failed: ' + err.message); }
+    e.target.value = '';
+  });
+});
+</script>
+
+<input type="file" id="note-import-input" accept=".akasha,.json" style="display:none">
+</body>
+</html>

@@ -1,0 +1,8 @@
+{
+  "label": "Film, Television & Stage",
+  "description": "Historical film movements (German Expressionism, Italian Neorealism, French New Wave, etc.), cinematographic concepts (montage, mise-en-scène, auteur theory, etc.), film awards, TV dramatic forms, and stage dramatic forms (tragedy, comedy, epic theatre, theatre of the absurd, etc.) with theatrical traditions from Greek tragedy through Brechtian theatre.\n\nImport scripts: IMDb public datasets (films, TV series, directors above quality threshold), Wikidata theatrical works (stage plays, musicals).\n\nAtom IDs: film:movement:*, film:concept:*, film:award:*, film:work:*, film:person:*, stage:form:*, stage:tradition:*, stage:work:*, tv:form:*",
+  "license": "Public domain (IMDb data per their non-commercial license) + CC BY-SA 4.0 (Wikidata)",
+  "source": "https://datasets.imdbws.com/ | https://www.wikidata.org/",
+  "size_hint": "~120 static + thousands from import scripts",
+  "attribution": "IMDb (https://www.imdb.com) — data used per IMDb non-commercial terms | Wikidata"
+}

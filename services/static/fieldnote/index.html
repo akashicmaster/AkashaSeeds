@@ -1,0 +1,1137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Akasha FieldNote</title>
+<style>
+:root {
+  --leather:#3a2416;
+  --leather2:#5b3a24;
+  --leather3:#7b5434;
+  --paper:#efe1bf;
+  --paper2:#e3cf9e;
+  --paper3:#d2b77c;
+  --ink:#2a1b10;
+  --ink2:#5b4028;
+  --muted:#8b765b;
+  --line:#b99960;
+  --gold:#c79a42;
+  --red:#8f2f21;
+  --green:#516d3b;
+  --shadow:rgba(28,16,8,.35);
+}
+
+* { box-sizing:border-box; margin:0; padding:0; }
+
+body {
+  height:100vh;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  font-family: Georgia, "Times New Roman", serif;
+  color:var(--ink);
+  background:
+    radial-gradient(circle at 20% 10%, rgba(255,210,130,.12), transparent 30%),
+    linear-gradient(135deg, #201109, #3a2416 45%, #1a0d07);
+}
+
+body::before {
+  content:"";
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  opacity:.18;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
+}
+
+/* Login */
+#login-overlay {
+  position:fixed;
+  inset:0;
+  z-index:9999;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:
+    radial-gradient(circle at center, rgba(120,80,38,.35), transparent 45%),
+    linear-gradient(145deg, #1e1008, #3b2618 55%, #140906);
+}
+
+.login-card {
+  width:min(420px, 90vw);
+  padding:42px 34px;
+  border-radius:12px;
+  background:
+    linear-gradient(135deg, rgba(122,78,42,.92), rgba(55,34,20,.98)),
+    var(--leather);
+  border:1px solid rgba(220,170,90,.35);
+  box-shadow:0 28px 80px rgba(0,0,0,.55), inset 0 0 32px rgba(0,0,0,.35);
+  text-align:center;
+}
+
+.brand-logo {
+  width:120px;
+  height:120px;
+  object-fit:contain;
+  margin-bottom:14px;
+  filter:drop-shadow(0 0 18px rgba(0,220,180,.35));
+}
+
+.brand-sub {
+  font-size:.78rem;
+  letter-spacing:.22em;
+  color:#d2b77c;
+  text-transform:uppercase;
+  margin-bottom:28px;
+}
+
+.field-input {
+  width:100%;
+  background:rgba(20,10,4,.35);
+  border:1px solid rgba(230,190,110,.45);
+  color:#f3e3bd;
+  padding:11px 14px;
+  margin-bottom:12px;
+  border-radius:4px;
+  font-family:inherit;
+  font-size:1rem;
+  outline:none;
+}
+
+.field-input::placeholder { color:rgba(243,227,189,.55); }
+.field-input:focus { border-color:#f0c772; box-shadow:0 0 0 2px rgba(240,199,114,.14); }
+
+button {
+  font-family:inherit;
+}
+
+.btn {
+  border:1px solid var(--line);
+  color:var(--ink2);
+  background:linear-gradient(#f4e6c6, #d9bd80);
+  padding:7px 13px;
+  border-radius:4px;
+  cursor:pointer;
+  font-size:.86rem;
+  transition:.15s;
+}
+
+.btn:hover {
+  border-color:var(--gold);
+  filter:brightness(1.04);
+}
+
+.btn.primary {
+  background:linear-gradient(#c99a43, #8f6427);
+  color:#fff5d4;
+  border-color:#6f4a1d;
+}
+
+.btn.danger {
+  background:linear-gradient(#9b3a2c, #642016);
+  color:#ffe7df;
+  border-color:#5c1c14;
+}
+
+.btn.ghost {
+  background:transparent;
+  color:var(--paper2);
+  border-color:rgba(230,190,110,.35);
+}
+
+#login-msg {
+  min-height:1.2em;
+  color:#ffd0c6;
+  font-size:.86rem;
+  margin-top:12px;
+  font-style:italic;
+}
+
+/* App */
+#app {
+  display:none;
+  height:100%;
+  flex-direction:column;
+  position:relative;
+  z-index:1;
+  padding:14px;
+}
+
+#book {
+  flex:1;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+  border-radius:14px;
+  overflow:hidden;
+  background:var(--paper);
+  box-shadow:0 24px 70px rgba(0,0,0,.48);
+  border:8px solid var(--leather2);
+}
+
+#header {
+  flex-shrink:0;
+  display:flex;
+  align-items:center;
+  gap:14px;
+  padding:10px 18px;
+  background:
+    linear-gradient(90deg, var(--leather), var(--leather2));
+  color:#f4dfae;
+  border-bottom:3px solid #2b180c;
+}
+
+.logo-img {
+  width:32px;
+  height:32px;
+  object-fit:contain;
+  flex-shrink:0;
+  filter:drop-shadow(0 0 6px rgba(0,220,180,.4));
+}
+
+#fieldnote-title-display {
+  flex:1;
+  min-width:0;
+  color:#ffeec1;
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+  font-style:italic;
+}
+
+#auth-label {
+  font-size:.78rem;
+  color:#d4b574;
+  white-space:nowrap;
+}
+
+#main {
+  flex:1;
+  min-height:0;
+  display:flex;
+  background:
+    linear-gradient(90deg, rgba(80,45,20,.16), transparent 22%, transparent 78%, rgba(80,45,20,.12)),
+    var(--paper);
+}
+
+/* Sidebar */
+#sidebar {
+  width:285px;
+  flex-shrink:0;
+  display:flex;
+  flex-direction:column;
+  background:
+    linear-gradient(#e7d5aa, #d9c18a);
+  border-right:2px solid var(--line);
+  min-height:0;
+}
+
+.panel-header {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  padding:11px 14px;
+  border-bottom:1px solid var(--line);
+  background:rgba(90,55,25,.1);
+}
+
+.panel-label {
+  font-size:.76rem;
+  letter-spacing:.15em;
+  text-transform:uppercase;
+  color:var(--leather2);
+  font-weight:bold;
+}
+
+#fieldnote-list {
+  flex:1;
+  overflow-y:auto;
+  padding:8px;
+}
+
+.fn-item {
+  padding:10px 11px;
+  border-radius:6px;
+  cursor:pointer;
+  border:1px solid transparent;
+  margin-bottom:6px;
+  background:rgba(255,248,225,.28);
+}
+
+.fn-item:hover {
+  background:rgba(255,248,225,.55);
+  border-color:rgba(150,105,45,.25);
+}
+
+.fn-item.active {
+  background:#f6e8c6;
+  border-color:var(--gold);
+  box-shadow:0 2px 8px rgba(70,40,15,.12);
+}
+
+.fn-title {
+  color:var(--ink);
+  font-size:.9rem;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.fn-meta {
+  color:var(--muted);
+  font-size:.74rem;
+  margin-top:3px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.empty {
+  color:var(--muted);
+  padding:16px;
+  font-size:.9rem;
+  font-style:italic;
+  text-align:center;
+}
+
+/* Content */
+#content-area {
+  flex:1;
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+}
+
+#toolbar {
+  flex-shrink:0;
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
+  padding:10px 14px;
+  background:
+    linear-gradient(rgba(255,255,255,.18), rgba(130,95,45,.06)),
+    var(--paper2);
+  border-bottom:1px solid var(--line);
+}
+
+#toolbar input,
+#input-area textarea,
+#input-area select {
+  background:#fff3cf;
+  color:var(--ink);
+  border:1px solid var(--line);
+  border-radius:4px;
+  padding:7px 9px;
+  font-family:inherit;
+  outline:none;
+}
+
+#toolbar input:focus,
+#input-area textarea:focus,
+#input-area select:focus {
+  border-color:var(--gold);
+  box-shadow:0 0 0 2px rgba(199,154,66,.18);
+}
+
+#inp-title { flex:1; min-width:180px; }
+.ctx { width:120px; }
+
+#input-area {
+  flex-shrink:0;
+  display:grid;
+  grid-template-columns: 130px 130px 110px 1fr auto;
+  gap:8px;
+  padding:12px 14px;
+  background:#ead8aa;
+  border-bottom:1px solid var(--line);
+}
+
+#obs-input {
+  min-height:74px;
+  max-height:170px;
+  resize:vertical;
+  line-height:1.55;
+  font-size:.95rem;
+}
+
+#readout {
+  flex:1;
+  min-height:0;
+  overflow-y:auto;
+  padding:26px 34px 40px;
+  background:
+    linear-gradient(rgba(255,255,255,.25), rgba(255,255,255,.08)),
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 31px,
+      rgba(120,90,45,.16) 32px
+    ),
+    var(--paper);
+}
+
+.obs {
+  position:relative;
+  padding:10px 0 10px 16px;
+  margin-bottom:14px;
+  border-left:4px solid var(--green);
+  background:rgba(255,248,225,.32);
+  border-radius:0 6px 6px 0;
+}
+
+.obs-time {
+  font-size:.74rem;
+  margin-bottom:4px;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.obs-body {
+  white-space:pre-wrap;
+  color:var(--ink);
+  font-size:1rem;
+  line-height:1.65;
+}
+
+#status-bar {
+  flex-shrink:0;
+  padding:6px 14px;
+  background:var(--leather);
+  color:#d9bd80;
+  font-size:.78rem;
+  border-top:2px solid #2b180c;
+}
+
+/* Confirm */
+#confirm-modal {
+  display:none;
+  position:fixed;
+  inset:0;
+  z-index:500;
+  background:rgba(20,10,4,.72);
+  align-items:center;
+  justify-content:center;
+}
+
+#confirm-modal.visible { display:flex; }
+
+#confirm-box {
+  width:min(390px, 90vw);
+  padding:28px;
+  border-radius:10px;
+  background:linear-gradient(#f1dfb7, #d7ba7d);
+  border:3px solid var(--red);
+  box-shadow:0 18px 60px rgba(0,0,0,.45);
+  text-align:center;
+}
+
+#confirm-box p {
+  margin-bottom:20px;
+  line-height:1.5;
+}
+
+.confirm-btns {
+  display:flex;
+  justify-content:center;
+  gap:12px;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width:8px; height:8px; }
+::-webkit-scrollbar-track { background:rgba(80,50,20,.12); }
+::-webkit-scrollbar-thumb { background:rgba(80,50,20,.35); border-radius:8px; }
+
+/* Guide Modal */
+#guide-modal {
+  display:none;
+  position:fixed;
+  inset:0;
+  z-index:600;
+  background:rgba(20,10,4,.76);
+  overflow-y:auto;
+  padding:40px 0;
+}
+#guide-modal.visible { display:block; }
+#guide-box {
+  width:min(680px, 92vw);
+  margin:0 auto;
+  padding:32px 36px 28px;
+  border-radius:10px;
+  background:linear-gradient(#f5e8c2, #e6cc90);
+  border:3px solid var(--line);
+  box-shadow:0 18px 60px rgba(0,0,0,.5);
+}
+.guide-h1 {
+  font-family:'Cormorant Garamond',Georgia,serif;
+  font-size:1.45rem; font-weight:700; color:var(--ink); margin-bottom:4px;
+}
+.guide-tagline { font-size:.82rem; color:var(--ink3); letter-spacing:.06em; margin-bottom:2px; }
+.guide-h2 {
+  font-family:'Cormorant Garamond',Georgia,serif;
+  font-size:1rem; font-weight:700; color:var(--leather);
+  margin:20px 0 7px; padding-bottom:3px; border-bottom:1px solid var(--line);
+}
+.guide-p { font-size:.87rem; color:var(--ink2); line-height:1.72; margin:5px 0; }
+.guide-ul { font-size:.87rem; color:var(--ink2); line-height:1.72; padding-left:18px; margin:5px 0; }
+.guide-sep { border:none; border-top:1px solid rgba(120,90,45,.3); margin:18px 0; }
+.guide-table { width:100%; border-collapse:collapse; font-size:.84rem; margin:8px 0; }
+.guide-table th {
+  text-align:left; color:var(--ink3); font-weight:400;
+  font-size:.7rem; letter-spacing:.1em; text-transform:uppercase;
+  padding:4px 0; border-bottom:1px solid var(--line);
+}
+.guide-table td {
+  padding:5px 8px 5px 0; color:var(--ink2);
+  border-bottom:1px solid rgba(120,90,45,.18); vertical-align:top;
+}
+.guide-table td:first-child {
+  font-family:monospace; font-size:.8rem; color:var(--gold);
+  white-space:nowrap; width:140px; padding-right:16px;
+}
+.guide-kbd {
+  display:inline-block; font-family:monospace; font-size:.8rem;
+  background:rgba(100,70,30,.12); border:1px solid var(--line);
+  border-radius:3px; padding:1px 5px; color:var(--leather);
+}
+.guide-foot { display:flex; justify-content:flex-end; margin-top:22px; }
+
+@media (max-width:900px) {
+  #sidebar { width:230px; }
+  #input-area { grid-template-columns: 1fr 1fr 90px; }
+  #obs-input { grid-column:1 / -2; }
+}
+
+@media (max-width:640px) {
+  #app { padding:0; }
+  #book { border-radius:0; border-width:0; }
+  #sidebar { display:none; }
+  #header { gap:8px; padding:9px 10px; }
+  .logo-img { width:26px; height:26px; }
+  #input-area { grid-template-columns:1fr; }
+  #readout { padding:18px 18px 32px; }
+}
+</style>
+</head>
+
+<body>
+
+<div id="login-overlay">
+  <div class="login-card">
+    <img class="brand-logo"  src="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%2244%2069%20152%20152%22%20width%3D%22512%22%20height%3D%22512%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3CradialGradient%20id%3D%22bg%22%20cx%3D%2250%25%22%20cy%3D%2240%25%22%20r%3D%2260%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%232a1f0e%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%2260%25%22%20stop-color%3D%22%231a1208%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%230e0a04%22%2F%3E%0A%20%20%20%20%3C%2FradialGradient%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22trunk%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%220%25%22%20y2%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23c8960a%22%20stop-opacity%3D%220.9%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%2250%25%22%20stop-color%3D%22%23a07008%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%236b4a05%22%20stop-opacity%3D%220.6%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22rootG%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%220%25%22%20y2%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%238b6508%22%20stop-opacity%3D%220.7%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%233d2a02%22%20stop-opacity%3D%220.15%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%20%20%3CradialGradient%20id%3D%22futureG%22%20cx%3D%2250%25%22%20cy%3D%2250%25%22%20r%3D%2250%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%2300ffcc%22%20stop-opacity%3D%220.6%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%2300ffcc%22%20stop-opacity%3D%220%22%2F%3E%0A%20%20%20%20%3C%2FradialGradient%3E%0A%20%20%20%20%3CradialGradient%20id%3D%22pG%22%20cx%3D%2250%25%22%20cy%3D%2250%25%22%20r%3D%2250%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%238b6508%22%20stop-opacity%3D%220.2%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%238b6508%22%20stop-opacity%3D%220%22%2F%3E%0A%20%20%20%20%3C%2FradialGradient%3E%0A%20%20%20%20%3Cfilter%20id%3D%22ff%22%20x%3D%22-100%25%22%20y%3D%22-100%25%22%20width%3D%22300%25%22%20height%3D%22300%25%22%3E%0A%20%20%20%20%20%20%3CfeGaussianBlur%20stdDeviation%3D%222.5%22%20result%3D%22blur%22%2F%3E%0A%20%20%20%20%20%20%3CfeMerge%3E%3CfeMergeNode%20in%3D%22blur%22%2F%3E%3CfeMergeNode%20in%3D%22SourceGraphic%22%2F%3E%3C%2FfeMerge%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%20%20%3Cfilter%20id%3D%22gf%22%20x%3D%22-50%25%22%20y%3D%22-50%25%22%20width%3D%22200%25%22%20height%3D%22200%25%22%3E%0A%20%20%20%20%20%20%3CfeGaussianBlur%20stdDeviation%3D%221.2%22%20result%3D%22blur%22%2F%3E%0A%20%20%20%20%20%20%3CfeMerge%3E%3CfeMergeNode%20in%3D%22blur%22%2F%3E%3CfeMergeNode%20in%3D%22SourceGraphic%22%2F%3E%3C%2FfeMerge%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20x%3D%2244%22%20y%3D%2269%22%20width%3D%22152%22%20height%3D%22152%22%20fill%3D%22url%28%23bg%29%22%2F%3E%0A%20%20%3Cellipse%20cx%3D%22120%22%20cy%3D%22155.0%22%20rx%3D%2255%22%20ry%3D%2255%22%20fill%3D%22url%28%23pG%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22155.0%22%20r%3D%2250%22%20fill%3D%22none%22%20stroke%3D%22%238b6508%22%20stroke-width%3D%220.7%22%20opacity%3D%220.35%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22155.0%22%20r%3D%2236%22%20fill%3D%22none%22%20stroke%3D%22%238b6508%22%20stroke-width%3D%220.3%22%20opacity%3D%220.2%22%20stroke-dasharray%3D%223%2C5%22%2F%3E%0A%20%20%3Cline%20x1%3D%22120%22%20y1%3D%2295.0%22%20x2%3D%22120%22%20y2%3D%22168.0%22%20stroke%3D%22url%28%23trunk%29%22%20stroke-width%3D%222%22%20filter%3D%22url%28%23gf%29%22%20opacity%3D%220.95%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C168.0%20Q107%2C178.0%2098%2C188.0%22%20fill%3D%22none%22%20stroke%3D%22url%28%23rootG%29%22%20stroke-width%3D%221.1%22%20opacity%3D%220.55%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C168.0%20Q120%2C180.0%20120%2C191.0%22%20fill%3D%22none%22%20stroke%3D%22url%28%23rootG%29%22%20stroke-width%3D%221.1%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C168.0%20Q133%2C178.0%20142%2C188.0%22%20fill%3D%22none%22%20stroke%3D%22url%28%23rootG%29%22%20stroke-width%3D%221.1%22%20opacity%3D%220.55%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2298%22%20cy%3D%22188.0%22%20r%3D%221.8%22%20fill%3D%22%238b6508%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22191.0%22%20r%3D%221.8%22%20fill%3D%22%238b6508%22%20opacity%3D%220.45%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22142%22%20cy%3D%22188.0%22%20r%3D%221.8%22%20fill%3D%22%238b6508%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C160.0%20Q107%2C154.0%2095%2C149.0%22%20fill%3D%22none%22%20stroke%3D%22%238b6508%22%20stroke-width%3D%220.9%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C160.0%20Q133%2C154.0%20145%2C149.0%22%20fill%3D%22none%22%20stroke%3D%22%238b6508%22%20stroke-width%3D%220.9%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C148.0%20Q104%2C141.0%2091%2C135.0%22%20fill%3D%22none%22%20stroke%3D%22%23a07008%22%20stroke-width%3D%221%22%20opacity%3D%220.6%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C148.0%20Q136%2C141.0%20149%2C135.0%22%20fill%3D%22none%22%20stroke%3D%22%23a07008%22%20stroke-width%3D%221%22%20opacity%3D%220.6%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C134.0%20Q102%2C127.0%2088%2C121.0%22%20fill%3D%22none%22%20stroke%3D%22%23b08010%22%20stroke-width%3D%221.1%22%20opacity%3D%220.65%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C134.0%20Q138%2C127.0%20152%2C121.0%22%20fill%3D%22none%22%20stroke%3D%22%23b08010%22%20stroke-width%3D%221.1%22%20opacity%3D%220.65%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C120.0%20Q103%2C112.0%2090%2C106.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%221.2%22%20opacity%3D%220.75%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C120.0%20Q137%2C112.0%20150%2C106.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%221.2%22%20opacity%3D%220.75%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C108.0%20Q110%2C100.0%20102%2C93.0%22%20fill%3D%22none%22%20stroke%3D%22%23d4a43a%22%20stroke-width%3D%221.1%22%20opacity%3D%220.8%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C108.0%20Q120%2C98.0%20120%2C90.0%22%20fill%3D%22none%22%20stroke%3D%22%23d4a43a%22%20stroke-width%3D%221.2%22%20opacity%3D%220.85%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C108.0%20Q130%2C100.0%20138%2C93.0%22%20fill%3D%22none%22%20stroke%3D%22%23d4a43a%22%20stroke-width%3D%221.1%22%20opacity%3D%220.8%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M90%2C106.0%20Q82%2C102.0%2076%2C99.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%220.7%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M150%2C106.0%20Q158%2C102.0%20164%2C99.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%220.7%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M88%2C121.0%20Q79%2C118.0%2072%2C116.0%22%20fill%3D%22none%22%20stroke%3D%22%23a07008%22%20stroke-width%3D%220.6%22%20opacity%3D%220.4%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M152%2C121.0%20Q161%2C118.0%20168%2C116.0%22%20fill%3D%22none%22%20stroke%3D%22%23a07008%22%20stroke-width%3D%220.6%22%20opacity%3D%220.4%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M108%2C111.0%20Q97%2C102.0%20102%2C92.0%20Q107%2C82.0%20120%2C81.0%20Q133%2C82.0%20138%2C92.0%20Q143%2C102.0%20132%2C111.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%221.3%22%20opacity%3D%220.7%22%20filter%3D%22url%28%23gf%29%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M132%2C111.0%20Q142%2C118.0%20137%2C128.0%20Q132%2C136.0%20120%2C134.0%22%20fill%3D%22none%22%20stroke%3D%22%23b08010%22%20stroke-width%3D%221.1%22%20opacity%3D%220.6%22%2F%3E%0A%20%20%3Cline%20x1%3D%22112%22%20y1%3D%2281.0%22%20x2%3D%22128%22%20y2%3D%2281.0%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%220.8%22%20opacity%3D%220.45%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22135.0%22%20r%3D%223%22%20fill%3D%22%23c8960a%22%20opacity%3D%220.3%22%20filter%3D%22url%28%23gf%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22135.0%22%20r%3D%221.5%22%20fill%3D%22%23e8c55a%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%2288.0%22%20r%3D%2210%22%20fill%3D%22url%28%23futureG%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22101%22%20cy%3D%2291.0%22%20r%3D%227%22%20fill%3D%22url%28%23futureG%29%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22139%22%20cy%3D%2291.0%22%20r%3D%227%22%20fill%3D%22url%28%23futureG%29%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%2288.0%22%20r%3D%224%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.95%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%2288.0%22%20r%3D%221.8%22%20fill%3D%22%23ffffff%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22101%22%20cy%3D%2291.0%22%20r%3D%223.2%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.85%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22101%22%20cy%3D%2291.0%22%20r%3D%221.3%22%20fill%3D%22%23e0fff8%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22139%22%20cy%3D%2291.0%22%20r%3D%223.2%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.85%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22139%22%20cy%3D%2291.0%22%20r%3D%221.3%22%20fill%3D%22%23e0fff8%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2288%22%20cy%3D%22104.0%22%20r%3D%222.5%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22152%22%20cy%3D%22104.0%22%20r%3D%222.5%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2275%22%20cy%3D%2298.0%22%20r%3D%222%22%20fill%3D%22%2300ffcc%22%20opacity%3D%220.55%22%20filter%3D%22url%28%23ff%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22165%22%20cy%3D%2298.0%22%20r%3D%222%22%20fill%3D%22%2300ffcc%22%20opacity%3D%220.55%22%20filter%3D%22url%28%23ff%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2271%22%20cy%3D%22115.0%22%20r%3D%221.8%22%20fill%3D%22%2300ffcc%22%20opacity%3D%220.4%22%20filter%3D%22url%28%23ff%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22169%22%20cy%3D%22115.0%22%20r%3D%221.8%22%20fill%3D%22%2300ffcc%22%20opacity%3D%220.4%22%20filter%3D%22url%28%23ff%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2289%22%20cy%3D%22134.0%22%20r%3D%221.4%22%20fill%3D%22%2300ddaa%22%20opacity%3D%220.3%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22151%22%20cy%3D%22134.0%22%20r%3D%221.4%22%20fill%3D%22%2300ddaa%22%20opacity%3D%220.3%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2293%22%20cy%3D%22148.0%22%20r%3D%221.1%22%20fill%3D%22%2300bbaa%22%20opacity%3D%220.2%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22147%22%20cy%3D%22148.0%22%20r%3D%221.1%22%20fill%3D%22%2300bbaa%22%20opacity%3D%220.2%22%2F%3E%0A%3C%2Fsvg%3E" alt="Akasha">
+    <div class="brand-sub">Akasha Expedition Journal</div>
+    <input id="inp-user" class="field-input" type="text" placeholder="Identity" autocomplete="off">
+    <input id="inp-pass" class="field-input" type="password" placeholder="Passphrase" autocomplete="off">
+    <button id="btn-login" class="btn ghost">Open the Field Book</button>
+    <div id="login-msg"></div>
+  </div>
+</div>
+
+<div id="app">
+  <div id="book">
+    <div id="header">
+      <img class="logo-img"  src="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%2244%2069%20152%20152%22%20width%3D%22512%22%20height%3D%22512%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3CradialGradient%20id%3D%22bg%22%20cx%3D%2250%25%22%20cy%3D%2240%25%22%20r%3D%2260%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%232a1f0e%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%2260%25%22%20stop-color%3D%22%231a1208%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%230e0a04%22%2F%3E%0A%20%20%20%20%3C%2FradialGradient%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22trunk%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%220%25%22%20y2%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23c8960a%22%20stop-opacity%3D%220.9%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%2250%25%22%20stop-color%3D%22%23a07008%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%236b4a05%22%20stop-opacity%3D%220.6%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22rootG%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%220%25%22%20y2%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%238b6508%22%20stop-opacity%3D%220.7%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%233d2a02%22%20stop-opacity%3D%220.15%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%20%20%3CradialGradient%20id%3D%22futureG%22%20cx%3D%2250%25%22%20cy%3D%2250%25%22%20r%3D%2250%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%2300ffcc%22%20stop-opacity%3D%220.6%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%2300ffcc%22%20stop-opacity%3D%220%22%2F%3E%0A%20%20%20%20%3C%2FradialGradient%3E%0A%20%20%20%20%3CradialGradient%20id%3D%22pG%22%20cx%3D%2250%25%22%20cy%3D%2250%25%22%20r%3D%2250%25%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%238b6508%22%20stop-opacity%3D%220.2%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%238b6508%22%20stop-opacity%3D%220%22%2F%3E%0A%20%20%20%20%3C%2FradialGradient%3E%0A%20%20%20%20%3Cfilter%20id%3D%22ff%22%20x%3D%22-100%25%22%20y%3D%22-100%25%22%20width%3D%22300%25%22%20height%3D%22300%25%22%3E%0A%20%20%20%20%20%20%3CfeGaussianBlur%20stdDeviation%3D%222.5%22%20result%3D%22blur%22%2F%3E%0A%20%20%20%20%20%20%3CfeMerge%3E%3CfeMergeNode%20in%3D%22blur%22%2F%3E%3CfeMergeNode%20in%3D%22SourceGraphic%22%2F%3E%3C%2FfeMerge%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%20%20%3Cfilter%20id%3D%22gf%22%20x%3D%22-50%25%22%20y%3D%22-50%25%22%20width%3D%22200%25%22%20height%3D%22200%25%22%3E%0A%20%20%20%20%20%20%3CfeGaussianBlur%20stdDeviation%3D%221.2%22%20result%3D%22blur%22%2F%3E%0A%20%20%20%20%20%20%3CfeMerge%3E%3CfeMergeNode%20in%3D%22blur%22%2F%3E%3CfeMergeNode%20in%3D%22SourceGraphic%22%2F%3E%3C%2FfeMerge%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20x%3D%2244%22%20y%3D%2269%22%20width%3D%22152%22%20height%3D%22152%22%20fill%3D%22url%28%23bg%29%22%2F%3E%0A%20%20%3Cellipse%20cx%3D%22120%22%20cy%3D%22155.0%22%20rx%3D%2255%22%20ry%3D%2255%22%20fill%3D%22url%28%23pG%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22155.0%22%20r%3D%2250%22%20fill%3D%22none%22%20stroke%3D%22%238b6508%22%20stroke-width%3D%220.7%22%20opacity%3D%220.35%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22155.0%22%20r%3D%2236%22%20fill%3D%22none%22%20stroke%3D%22%238b6508%22%20stroke-width%3D%220.3%22%20opacity%3D%220.2%22%20stroke-dasharray%3D%223%2C5%22%2F%3E%0A%20%20%3Cline%20x1%3D%22120%22%20y1%3D%2295.0%22%20x2%3D%22120%22%20y2%3D%22168.0%22%20stroke%3D%22url%28%23trunk%29%22%20stroke-width%3D%222%22%20filter%3D%22url%28%23gf%29%22%20opacity%3D%220.95%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C168.0%20Q107%2C178.0%2098%2C188.0%22%20fill%3D%22none%22%20stroke%3D%22url%28%23rootG%29%22%20stroke-width%3D%221.1%22%20opacity%3D%220.55%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C168.0%20Q120%2C180.0%20120%2C191.0%22%20fill%3D%22none%22%20stroke%3D%22url%28%23rootG%29%22%20stroke-width%3D%221.1%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C168.0%20Q133%2C178.0%20142%2C188.0%22%20fill%3D%22none%22%20stroke%3D%22url%28%23rootG%29%22%20stroke-width%3D%221.1%22%20opacity%3D%220.55%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2298%22%20cy%3D%22188.0%22%20r%3D%221.8%22%20fill%3D%22%238b6508%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22191.0%22%20r%3D%221.8%22%20fill%3D%22%238b6508%22%20opacity%3D%220.45%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22142%22%20cy%3D%22188.0%22%20r%3D%221.8%22%20fill%3D%22%238b6508%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C160.0%20Q107%2C154.0%2095%2C149.0%22%20fill%3D%22none%22%20stroke%3D%22%238b6508%22%20stroke-width%3D%220.9%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C160.0%20Q133%2C154.0%20145%2C149.0%22%20fill%3D%22none%22%20stroke%3D%22%238b6508%22%20stroke-width%3D%220.9%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C148.0%20Q104%2C141.0%2091%2C135.0%22%20fill%3D%22none%22%20stroke%3D%22%23a07008%22%20stroke-width%3D%221%22%20opacity%3D%220.6%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C148.0%20Q136%2C141.0%20149%2C135.0%22%20fill%3D%22none%22%20stroke%3D%22%23a07008%22%20stroke-width%3D%221%22%20opacity%3D%220.6%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C134.0%20Q102%2C127.0%2088%2C121.0%22%20fill%3D%22none%22%20stroke%3D%22%23b08010%22%20stroke-width%3D%221.1%22%20opacity%3D%220.65%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C134.0%20Q138%2C127.0%20152%2C121.0%22%20fill%3D%22none%22%20stroke%3D%22%23b08010%22%20stroke-width%3D%221.1%22%20opacity%3D%220.65%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C120.0%20Q103%2C112.0%2090%2C106.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%221.2%22%20opacity%3D%220.75%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C120.0%20Q137%2C112.0%20150%2C106.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%221.2%22%20opacity%3D%220.75%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C108.0%20Q110%2C100.0%20102%2C93.0%22%20fill%3D%22none%22%20stroke%3D%22%23d4a43a%22%20stroke-width%3D%221.1%22%20opacity%3D%220.8%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C108.0%20Q120%2C98.0%20120%2C90.0%22%20fill%3D%22none%22%20stroke%3D%22%23d4a43a%22%20stroke-width%3D%221.2%22%20opacity%3D%220.85%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M120%2C108.0%20Q130%2C100.0%20138%2C93.0%22%20fill%3D%22none%22%20stroke%3D%22%23d4a43a%22%20stroke-width%3D%221.1%22%20opacity%3D%220.8%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M90%2C106.0%20Q82%2C102.0%2076%2C99.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%220.7%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M150%2C106.0%20Q158%2C102.0%20164%2C99.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%220.7%22%20opacity%3D%220.5%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M88%2C121.0%20Q79%2C118.0%2072%2C116.0%22%20fill%3D%22none%22%20stroke%3D%22%23a07008%22%20stroke-width%3D%220.6%22%20opacity%3D%220.4%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M152%2C121.0%20Q161%2C118.0%20168%2C116.0%22%20fill%3D%22none%22%20stroke%3D%22%23a07008%22%20stroke-width%3D%220.6%22%20opacity%3D%220.4%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M108%2C111.0%20Q97%2C102.0%20102%2C92.0%20Q107%2C82.0%20120%2C81.0%20Q133%2C82.0%20138%2C92.0%20Q143%2C102.0%20132%2C111.0%22%20fill%3D%22none%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%221.3%22%20opacity%3D%220.7%22%20filter%3D%22url%28%23gf%29%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M132%2C111.0%20Q142%2C118.0%20137%2C128.0%20Q132%2C136.0%20120%2C134.0%22%20fill%3D%22none%22%20stroke%3D%22%23b08010%22%20stroke-width%3D%221.1%22%20opacity%3D%220.6%22%2F%3E%0A%20%20%3Cline%20x1%3D%22112%22%20y1%3D%2281.0%22%20x2%3D%22128%22%20y2%3D%2281.0%22%20stroke%3D%22%23c8960a%22%20stroke-width%3D%220.8%22%20opacity%3D%220.45%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22135.0%22%20r%3D%223%22%20fill%3D%22%23c8960a%22%20opacity%3D%220.3%22%20filter%3D%22url%28%23gf%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%22135.0%22%20r%3D%221.5%22%20fill%3D%22%23e8c55a%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%2288.0%22%20r%3D%2210%22%20fill%3D%22url%28%23futureG%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22101%22%20cy%3D%2291.0%22%20r%3D%227%22%20fill%3D%22url%28%23futureG%29%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22139%22%20cy%3D%2291.0%22%20r%3D%227%22%20fill%3D%22url%28%23futureG%29%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%2288.0%22%20r%3D%224%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.95%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22120%22%20cy%3D%2288.0%22%20r%3D%221.8%22%20fill%3D%22%23ffffff%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22101%22%20cy%3D%2291.0%22%20r%3D%223.2%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.85%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22101%22%20cy%3D%2291.0%22%20r%3D%221.3%22%20fill%3D%22%23e0fff8%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22139%22%20cy%3D%2291.0%22%20r%3D%223.2%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.85%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22139%22%20cy%3D%2291.0%22%20r%3D%221.3%22%20fill%3D%22%23e0fff8%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2288%22%20cy%3D%22104.0%22%20r%3D%222.5%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22152%22%20cy%3D%22104.0%22%20r%3D%222.5%22%20fill%3D%22%2300ffcc%22%20filter%3D%22url%28%23ff%29%22%20opacity%3D%220.7%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2275%22%20cy%3D%2298.0%22%20r%3D%222%22%20fill%3D%22%2300ffcc%22%20opacity%3D%220.55%22%20filter%3D%22url%28%23ff%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22165%22%20cy%3D%2298.0%22%20r%3D%222%22%20fill%3D%22%2300ffcc%22%20opacity%3D%220.55%22%20filter%3D%22url%28%23ff%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2271%22%20cy%3D%22115.0%22%20r%3D%221.8%22%20fill%3D%22%2300ffcc%22%20opacity%3D%220.4%22%20filter%3D%22url%28%23ff%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22169%22%20cy%3D%22115.0%22%20r%3D%221.8%22%20fill%3D%22%2300ffcc%22%20opacity%3D%220.4%22%20filter%3D%22url%28%23ff%29%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2289%22%20cy%3D%22134.0%22%20r%3D%221.4%22%20fill%3D%22%2300ddaa%22%20opacity%3D%220.3%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22151%22%20cy%3D%22134.0%22%20r%3D%221.4%22%20fill%3D%22%2300ddaa%22%20opacity%3D%220.3%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2293%22%20cy%3D%22148.0%22%20r%3D%221.1%22%20fill%3D%22%2300bbaa%22%20opacity%3D%220.2%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22147%22%20cy%3D%22148.0%22%20r%3D%221.1%22%20fill%3D%22%2300bbaa%22%20opacity%3D%220.2%22%2F%3E%0A%3C%2Fsvg%3E" alt="Akasha">
+      <div id="fieldnote-title-display">— no fieldnote open —</div>
+      <div id="auth-label">◉ —</div>
+    </div>
+
+    <div id="main">
+      <div id="sidebar">
+        <div class="panel-header">
+          <span class="panel-label">Field Books</span>
+          <button id="btn-reload-list" class="btn">↻</button>
+        </div>
+        <div id="fieldnote-list"><div class="empty">—</div></div>
+      </div>
+
+      <div id="content-area">
+        <div id="toolbar">
+          <input id="inp-title" type="text" placeholder="FieldNote title…">
+          <input id="inp-project" class="ctx" type="text" placeholder="Project">
+          <input id="inp-region" class="ctx" type="text" placeholder="Region">
+          <input id="inp-season" class="ctx" type="text" placeholder="Season">
+          <button id="btn-new" class="btn primary">New</button>
+          <button id="btn-read" class="btn">↻ Read</button>
+          <button id="btn-delete" class="btn danger" style="display:none">Delete</button>
+          <button id="btn-export" class="btn" style="display:none" onclick="exportFieldNote()">Export…</button>
+          <button id="btn-import" class="btn" onclick="importFieldNote()">Import…</button>
+          <button class="btn" onclick="showGuide()" title="Quick Guide" style="margin-left:auto">?</button>
+        </div>
+
+        <div id="input-area">
+          <select id="inp-role">
+            <option value="observation">observation</option>
+            <option value="site">site</option>
+            <option value="layer">layer</option>
+            <option value="find">find</option>
+            <option value="source">source</option>
+            <option value="media">media</option>
+          </select>
+
+          <input id="inp-period" type="text" placeholder="Period / Layer">
+
+          <input id="inp-confidence" type="number" min="0" max="1" step="0.1" value="0.8" title="Confidence 0.0–1.0">
+
+          <textarea id="obs-input" placeholder="Record the first trace… (Ctrl/Cmd+Enter to add)"></textarea>
+
+          <button id="btn-add" class="btn primary">Add</button>
+        </div>
+
+        <div id="readout">
+          <div class="empty">Select a FieldNote from the list, or create one above.</div>
+        </div>
+
+        <div id="status-bar">Ready.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="confirm-modal">
+  <div id="confirm-box">
+    <p>
+      Delete FieldNote <strong id="confirm-title">—</strong>?<br>
+      This action cannot be undone.
+    </p>
+    <div class="confirm-btns">
+      <button id="btn-confirm-delete" class="btn danger">Delete</button>
+      <button id="btn-cancel-delete" class="btn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="guide-modal" onclick="if(event.target===this)closeGuide()">
+  <div id="guide-box">
+    <div class="guide-h1">FieldNote — Quick Guide</div>
+    <hr class="guide-sep">
+
+    <div class="guide-h2">What Is FieldNote?</div>
+    <div class="guide-p">FieldNote is a lightweight expedition journal for recording observations, findings, locations, hypotheses, and traces during research or exploration work. Everything is stored inside Akasha as structured semantic observations.</div>
+    <div class="guide-p">A FieldNote can be used for:</div>
+    <ul class="guide-ul">
+      <li>archaeology</li>
+      <li>field biology</li>
+      <li>qualitative research</li>
+      <li>historical investigation</li>
+      <li>worldbuilding</li>
+      <li>travel notes</li>
+      <li>speculative design</li>
+      <li>investigative writing</li>
+    </ul>
+    <div class="guide-p">Think of it as a living research notebook connected to a semantic graph.</div>
+
+    <hr class="guide-sep">
+
+    <div class="guide-h2">Basic Workflow</div>
+    <ol class="guide-ul">
+      <li>Create a FieldNote</li>
+      <li>Open it</li>
+      <li>Add observations</li>
+      <li>Review accumulated traces</li>
+    </ol>
+
+    <hr class="guide-sep">
+
+    <div class="guide-h2">Login</div>
+    <div class="guide-p">Enter your identity and your Akasha passphrase, then press <strong>Open the Field Book</strong>.</div>
+
+    <hr class="guide-sep">
+
+    <div class="guide-h2">Creating a New FieldNote</div>
+    <div class="guide-p">At the top toolbar, enter a title and optionally add a project, region, and season. Then press <strong>New</strong>.</div>
+    <table class="guide-table">
+      <thead><tr><th>Field</th><th>Example</th></tr></thead>
+      <tbody>
+        <tr><td>Title</td><td>Northern Ruins Survey</td></tr>
+        <tr><td>Project</td><td>Atlas Expedition</td></tr>
+        <tr><td>Region</td><td>Sector B-12</td></tr>
+        <tr><td>Season</td><td>Autumn 2026</td></tr>
+      </tbody>
+    </table>
+
+    <hr class="guide-sep">
+
+    <div class="guide-h2">Opening Existing FieldNotes</div>
+    <div class="guide-p">The left sidebar contains all available FieldNotes. Click any entry to open it. The current FieldNote is highlighted.</div>
+
+    <hr class="guide-sep">
+
+    <div class="guide-h2">Recording Observations</div>
+    <div class="guide-p">Use the lower input area. Fill in the fields, then press <strong>Add</strong> or use <span class="guide-kbd">Ctrl+Enter</span> (Windows/Linux) or <span class="guide-kbd">Cmd+Enter</span> (macOS/iPad).</div>
+    <table class="guide-table">
+      <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td>Role</td><td>Type of observation</td></tr>
+        <tr><td>Period / Layer</td><td>Historical period, layer, or context</td></tr>
+        <tr><td>Confidence</td><td>Confidence estimate (0.0–1.0)</td></tr>
+        <tr><td>Observation Text</td><td>Main observation</td></tr>
+      </tbody>
+    </table>
+
+    <hr class="guide-sep">
+
+    <div class="guide-h2">Observation Roles</div>
+    <table class="guide-table">
+      <thead><tr><th>Role</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td>observation</td><td>General observation</td></tr>
+        <tr><td>site</td><td>Location or area</td></tr>
+        <tr><td>layer</td><td>Stratigraphic or conceptual layer</td></tr>
+        <tr><td>find</td><td>Artifact or discovery</td></tr>
+        <tr><td>source</td><td>External reference</td></tr>
+        <tr><td>media</td><td>Image, audio, or recording reference</td></tr>
+      </tbody>
+    </table>
+
+    <hr class="guide-sep">
+
+    <div class="guide-h2">Reading Observations</div>
+    <div class="guide-p">Press <strong>↻ Read</strong> to reload the current FieldNote. Observations appear in chronological order. Different roles are color-coded.</div>
+
+    <hr class="guide-sep">
+
+    <div class="guide-h2">Deleting a FieldNote</div>
+    <div class="guide-p">Open the FieldNote first, then press <strong>Delete</strong>. A confirmation dialog will appear. Deletion cannot be undone.</div>
+
+    <hr class="guide-sep">
+
+    <div class="guide-h2">Export &amp; Import</div>
+    <div class="guide-p"><strong>Export…</strong> — saves the current FieldNote (root + all observations + links) as an <code>.akasha</code> capsule file to your device. The button is visible only when a FieldNote is open.</div>
+    <div class="guide-p"><strong>Import…</strong> — opens a file picker. Select an <code>.akasha</code> capsule file to load its atoms into Akasha. Imported atoms are placed in an isolated pending scope until verified. The original FieldNote on the source device is not affected.</div>
+
+    <hr class="guide-sep">
+
+    <div class="guide-h2">Notes About Confidence</div>
+    <div class="guide-p">Confidence is optional. This is not statistical certainty — it is a human field judgment.</div>
+    <table class="guide-table">
+      <thead><tr><th>Value</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td>1.0</td><td>Very certain</td></tr>
+        <tr><td>0.8</td><td>Strong hypothesis</td></tr>
+        <tr><td>0.5</td><td>Tentative</td></tr>
+        <tr><td>0.2</td><td>Weak indication</td></tr>
+      </tbody>
+    </table>
+
+    <hr class="guide-sep">
+
+    <div class="guide-h2">Suggested Workflow</div>
+    <ol class="guide-ul">
+      <li>Record raw observations quickly</li>
+      <li>Separate observations from interpretation</li>
+      <li>Add confidence later</li>
+      <li>Re-read notes after accumulation</li>
+      <li>Look for emerging patterns</li>
+    </ol>
+    <div class="guide-p">FieldNote works best when used continuously over time.</div>
+
+    <hr class="guide-sep">
+
+    <div class="guide-h2">Philosophy</div>
+    <div class="guide-p">FieldNote is intentionally lightweight. It is not trying to replace GIS systems, laboratory databases, publishing platforms, or institutional archives. Instead, it acts as a semantic field journal for living observations and evolving interpretation.</div>
+    <div class="guide-p">The goal is not only to store information. The goal is to preserve traces of thought while the investigation is still alive.</div>
+
+    <div class="guide-foot">
+      <button class="btn" onclick="closeGuide()">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '/api/rpc';
+
+let sessionToken = '';
+let currentUser = '';
+let activeFieldNoteId = null;
+let activeFieldNoteTitle = '';
+
+const ROLE_COLOR = {
+  site:        '#4f6f9f',
+  layer:       '#7a579a',
+  find:        '#b67828',
+  observation: '#516d3b',
+  source:      '#77705f',
+  media:       '#6d6d6d'
+};
+
+function escHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function status(message) {
+  document.getElementById('status-bar').textContent = message;
+}
+
+async function rpc(method, data = {}) {
+  const resp = await fetch(API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: Date.now(),
+      method,
+      params: { session_token: sessionToken, data }
+    })
+  });
+
+  const json = await resp.json();
+  if (json.error) {
+    throw new Error(json.error.message || JSON.stringify(json.error));
+  }
+  return json.result;
+}
+
+async function login() {
+  const user = document.getElementById('inp-user').value.trim();
+  const pass = document.getElementById('inp-pass').value;
+  const msg  = document.getElementById('login-msg');
+
+  if (!user || !pass) {
+    msg.textContent = 'Enter identity and passphrase.';
+    return;
+  }
+
+  msg.textContent = 'Opening field book…';
+
+  try {
+    const raw = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 'auth',
+        method: 'kernel.auth.verify',
+        params: { data: { user_id: user, passphrase: pass } }
+      })
+    }).then(r => r.json());
+
+    if (raw.error) throw new Error(raw.error.message || 'Authentication failed.');
+    if (raw.result?.status !== 'authenticated') throw new Error('Access denied.');
+
+    sessionToken = raw.result.session_token;
+    currentUser  = raw.result.user_id || user;
+
+    document.getElementById('auth-label').textContent = `◉ ${currentUser}`;
+    document.getElementById('login-overlay').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+
+    await rpc('sys.onboarding.seed', { app: 'fieldnote' }).catch(() => {});
+    await loadFieldNotes();
+    status('Ready.');
+  } catch (e) {
+    msg.textContent = e.message || 'Authentication failed.';
+    sessionToken = '';
+  }
+}
+
+async function loadFieldNotes() {
+  const list = document.getElementById('fieldnote-list');
+  list.innerHTML = '<div class="empty">Loading field books…</div>';
+
+  try {
+    const res   = await rpc('fieldnote.ls');
+    const items = res.fieldnotes || [];
+
+    if (!items.length) {
+      list.innerHTML = '<div class="empty">No FieldNotes yet.</div>';
+      return;
+    }
+
+    list.innerHTML = '';
+
+    for (const fn of items) {
+      const node = document.createElement('div');
+      node.className = 'fn-item' + (fn.fieldnote_id === activeFieldNoteId ? ' active' : '');
+      node.dataset.id = fn.fieldnote_id;
+
+      const date = fn.created_at
+        ? new Date(fn.created_at * 1000).toLocaleDateString(undefined, { month:'short', day:'numeric' })
+        : '';
+
+      const meta = [fn.project, fn.region, fn.season, date].filter(Boolean).join(' · ');
+
+      node.innerHTML = `
+        <div class="fn-title" title="${escHtml(fn.title)}">${escHtml(fn.title || '—')}</div>
+        <div class="fn-meta">${escHtml(meta || '—')}</div>
+      `;
+
+      node.addEventListener('click', () => openFieldNote(fn.fieldnote_id));
+      list.appendChild(node);
+    }
+  } catch (e) {
+    list.innerHTML = `<div class="empty" style="color:var(--red)">${escHtml(e.message)}</div>`;
+  }
+}
+
+async function newFieldNote() {
+  const title   = document.getElementById('inp-title').value.trim();
+  const project = document.getElementById('inp-project').value.trim() || null;
+  const region  = document.getElementById('inp-region').value.trim()  || null;
+  const season  = document.getElementById('inp-season').value.trim()  || null;
+
+  if (!title) {
+    status('Enter a FieldNote title first.');
+    return;
+  }
+
+  try {
+    const res = await rpc('fieldnote.new', { title, project, region, season });
+
+    activeFieldNoteId    = res.fieldnote_id;
+    activeFieldNoteTitle = res.title || title;
+
+    document.getElementById('fieldnote-title-display').textContent =
+      formatTitle(activeFieldNoteTitle, project, region, season);
+    document.getElementById('btn-delete').style.display = 'inline-block';
+    document.getElementById('btn-export').style.display = 'inline-block';
+    document.getElementById('inp-title').value = '';
+
+    renderEmpty('No observations yet. Begin with the first trace.');
+    status(`Created: ${activeFieldNoteTitle}`);
+
+    await loadFieldNotes();
+  } catch (e) {
+    status(`Create failed: ${e.message}`);
+  }
+}
+
+function formatTitle(title, project, region, season) {
+  const ctx = [project, region, season].filter(Boolean).join(' · ');
+  return ctx ? `${title} — ${ctx}` : title;
+}
+
+async function openFieldNote(fieldnoteId) {
+  try {
+    const res = await rpc('fieldnote.open', { fieldnote_id: fieldnoteId });
+
+    activeFieldNoteId    = res.fieldnote_id;
+    activeFieldNoteTitle = res.title || fieldnoteId.substring(0, 12);
+
+    document.getElementById('fieldnote-title-display').textContent =
+      formatTitle(activeFieldNoteTitle, res.project, res.region, res.season);
+    document.getElementById('btn-delete').style.display = 'inline-block';
+    document.getElementById('btn-export').style.display = 'inline-block';
+
+    await loadFieldNotes();
+    await refreshFieldNote();
+
+    status(`Opened: ${activeFieldNoteTitle}`);
+  } catch (e) {
+    status(`Open failed: ${e.message}`);
+  }
+}
+
+async function addObservation() {
+  if (!activeFieldNoteId) {
+    status('No FieldNote open.');
+    return;
+  }
+
+  const text = document.getElementById('obs-input').value.trim();
+  if (!text) {
+    status('Enter observation text first.');
+    return;
+  }
+
+  const role          = document.getElementById('inp-role').value || 'observation';
+  const period        = document.getElementById('inp-period').value.trim() || null;
+  const confidenceRaw = document.getElementById('inp-confidence').value;
+  const confidence    = confidenceRaw === '' ? null : Number(confidenceRaw);
+
+  const payload = { text, role };
+  if (period) payload.period = period;
+  if (confidence != null && !Number.isNaN(confidence)) {
+    payload.confidence = Math.max(0, Math.min(1, confidence));
+  }
+
+  try {
+    await rpc('fieldnote.add', payload);
+
+    document.getElementById('obs-input').value = '';
+    status('Observation added.');
+
+    await refreshFieldNote();
+  } catch (e) {
+    status(`Add failed: ${e.message}`);
+  }
+}
+
+async function refreshFieldNote() {
+  if (!activeFieldNoteId) return;
+
+  try {
+    const res = await rpc('fieldnote.read');
+    renderObservations(res.observations || []);
+    status(`Loaded ${res.count ?? 0} observations.`);
+  } catch (e) {
+    status(`Read failed: ${e.message}`);
+  }
+}
+
+function renderObservations(items) {
+  const readout = document.getElementById('readout');
+
+  if (!items.length) {
+    renderEmpty('No observations yet. Begin with the first trace.');
+    return;
+  }
+
+  readout.innerHTML = '';
+
+  for (const item of items) {
+    const role  = item.role || 'observation';
+    const color = ROLE_COLOR[role] || '#77705f';
+
+    const period = item.period ? ` · ${item.period}` : '';
+    const conf   = item.confidence != null
+      ? ` · conf:${Number(item.confidence).toFixed(1)}`
+      : '';
+
+    const time = item.created_at
+      ? new Date(item.created_at * 1000).toLocaleString()
+      : '';
+
+    const obs = document.createElement('div');
+    obs.className = 'obs';
+    obs.style.borderLeftColor = color;
+
+    obs.innerHTML = `
+      <div class="obs-time" style="color:${escHtml(color)}">
+        ${escHtml(role.toUpperCase())}${escHtml(period)}${escHtml(conf)}
+        <span style="color:var(--muted)"> · ${escHtml(time)}</span>
+      </div>
+      <div class="obs-body">${escHtml(item.content || '')}</div>
+    `;
+
+    readout.appendChild(obs);
+  }
+
+  readout.scrollTop = readout.scrollHeight;
+}
+
+function renderEmpty(message) {
+  document.getElementById('readout').innerHTML =
+    `<div class="empty">${escHtml(message)}</div>`;
+}
+
+function confirmDelete() {
+  if (!activeFieldNoteId) return;
+  document.getElementById('confirm-title').textContent = `"${activeFieldNoteTitle}"`;
+  document.getElementById('confirm-modal').classList.add('visible');
+}
+
+function closeConfirm() {
+  document.getElementById('confirm-modal').classList.remove('visible');
+}
+
+async function deleteFieldNote() {
+  closeConfirm();
+
+  try {
+    await rpc('fieldnote.rm');
+
+    activeFieldNoteId    = null;
+    activeFieldNoteTitle = '';
+
+    document.getElementById('fieldnote-title-display').textContent = '— no fieldnote open —';
+    document.getElementById('btn-delete').style.display = 'none';
+    document.getElementById('btn-export').style.display = 'none';
+
+    renderEmpty('Select a FieldNote from the list, or create one above.');
+    status('FieldNote deleted.');
+
+    await loadFieldNotes();
+  } catch (e) {
+    status(`Delete failed: ${e.message}`);
+  }
+}
+
+function obsKey(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault();
+    addObservation();
+  }
+}
+
+function bindEvents() {
+  document.getElementById('btn-login').addEventListener('click', login);
+  document.getElementById('btn-reload-list').addEventListener('click', loadFieldNotes);
+  document.getElementById('btn-new').addEventListener('click', newFieldNote);
+  document.getElementById('btn-read').addEventListener('click', refreshFieldNote);
+  document.getElementById('btn-delete').addEventListener('click', confirmDelete);
+  document.getElementById('btn-add').addEventListener('click', addObservation);
+  document.getElementById('btn-confirm-delete').addEventListener('click', deleteFieldNote);
+  document.getElementById('btn-cancel-delete').addEventListener('click', closeConfirm);
+
+  document.getElementById('obs-input').addEventListener('keydown', obsKey);
+
+  document.getElementById('inp-pass').addEventListener('keydown', e => {
+    if (e.key === 'Enter') login();
+  });
+
+  document.getElementById('inp-user').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('inp-pass').focus();
+  });
+
+  document.getElementById('confirm-modal').addEventListener('click', e => {
+    if (e.target === document.getElementById('confirm-modal')) closeConfirm();
+  });
+}
+
+bindEvents();
+
+function showGuide()  { document.getElementById('guide-modal').classList.add('visible'); }
+function closeGuide() { document.getElementById('guide-modal').classList.remove('visible'); }
+
+/* ── Export / Import (Akasha capsule format) ────────────────────────── */
+function _capsuleFileName(title) {
+  const safe = (title || 'fieldnote').replace(/[^a-zA-Z0-9_\- ]/g, '').trim().replace(/\s+/g, '_') || 'fieldnote';
+  const d  = new Date();
+  const ds = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+  return `${safe}_${ds}.akasha`;
+}
+
+async function exportFieldNote() {
+  if (!activeFieldNoteId) { status('No fieldnote open'); return; }
+  try {
+    const res  = await rpc('fieldnote.export', {});
+    const blob = new Blob([res.capsule], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = _capsuleFileName(activeFieldNoteTitle);
+    a.click();
+    URL.revokeObjectURL(url);
+    status('Exported');
+  } catch(e) { status('Export failed: ' + e.message); }
+}
+
+function importFieldNote() {
+  document.getElementById('fn-import-input').value = '';
+  document.getElementById('fn-import-input').click();
+}
+
+document.getElementById('fn-import-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const res  = await rpc('fieldnote.import', { capsule: text });
+    status(`Imported: ${res.atoms_injected} atoms, ${res.links_queued} links`);
+    await loadFieldNotes();
+  } catch(err) { status('Import failed: ' + err.message); }
+  e.target.value = '';
+});
+</script>
+
+<input type="file" id="fn-import-input" accept=".akasha,.json" style="display:none">
+</body>
+</html>

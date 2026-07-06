@@ -1,0 +1,8 @@
+{
+  "label": "Geology & Earth Sciences",
+  "description": "Complete ICS 2024 geological time scale (eons, eras, periods, epochs), major and minor tectonic plates, boundary types, and geological concepts. Import scripts for IMA-approved minerals (RRUFF database) and active volcanoes (Smithsonian GVP).\n\nAtom IDs: geo:time:eon:*, geo:time:era:*, geo:time:period:*, geo:time:epoch:*, geo:plate:*, mineral:*, geo:volcano:*",
+  "license": "Public domain (ICS/USGS/RRUFF) + CC BY 4.0 (IMA mineral data)",
+  "source": "https://stratigraphy.org/ | https://rruff.info/ | https://volcano.si.edu/",
+  "size_hint": "~80 static + thousands from mineral/volcano import scripts",
+  "attribution": "International Commission on Stratigraphy (ICS) | RRUFF Project / IMA | Smithsonian Global Volcanism Program"
+}

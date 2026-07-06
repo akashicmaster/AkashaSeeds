@@ -1,0 +1,8 @@
+{
+  "label": "Pleiades Ancient World Gazetteer",
+  "description": "~38,000 ancient Greek, Roman, and Mediterranean world places — cities, temples, roads, ports, theatres, aqueducts, sanctuaries, and more. Includes coordinates, place types, and time period coverage from the Archaic through Late Antique periods.",
+  "license": "CC BY 3.0 (Pleiades Project)",
+  "source": "https://pleiades.stoa.org/",
+  "size_hint": "~38K atoms",
+  "attribution": "Pleiades Project, Tom Elliott et al. — https://pleiades.stoa.org/"
+}

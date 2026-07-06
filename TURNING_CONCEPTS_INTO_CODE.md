@@ -30,7 +30,7 @@ As a result, Akasha can quickly become:
 
 ## What Akasha Actually Is
 
-Akasha is a system for turning human concepts into persistent semantic structures.
+Akasha is a concept-oriented operating system — a persistent semantic environment where you can handle concepts and Concept Models with the same freedom and fluency that an operating system gives you over files and processes.
 
 Most software stores:
 - files,
@@ -39,10 +39,9 @@ Most software stores:
 - or messages.
 
 Akasha stores:
-- meaning,
-- relationships,
-- interpretations,
-- states,
+- atoms (content-addressed nodes) and typed links,
+- interpretations and judgments,
+- states and state changes,
 - events,
 - and evolving structures of thought.
 
@@ -60,22 +59,45 @@ That question leads to a Concept Model.
 
 A Concept Model is a structured way of representing a meaningful human activity.
 
-| Human activity | Concept Model |
-| :--- | :--- |
-| Writing ideas | Note |
-| Recording observations | FieldNote |
-| Collecting responses | Survey |
-| Finding patterns | Aggregation |
-| Building interpretations | Synthesis |
-| Organizing communication | Presentation |
-| Managing persistent fictional state | World |
-| Modeling identity / persona | Cast |
+| Human activity | Concept Model | CLI prefix |
+| :--- | :--- | :--- |
+| Writing ideas | Note (`note.*`) | `n.` |
+| Recording observations | FieldNote (`fieldnote.*`) | `fn.` |
+| Collecting responses | Survey (`survey.*`) | `sv.` |
+| Finding patterns | Aggregation (`agg.*`) | `ag.` |
+| Building interpretations | Synthesis (`synth.*`) | `sy.` |
+| Managing persistent fictional state | World (`world.*`) | `wd.` |
+| Modeling identity / persona | Cast (`cast.*`) | `cs.` |
+| Structured data from any source | Record (`rec.*`) | `rec.` |
+| Navigating semantic vocabulary | Thesaurus (`thesaurus.*`) | `thesaurus.` |
 
 A Concept Model is not a file type.  
 It is:
 - a way of organizing meaning,
 - a way of preserving relationships,
 - and a way of representing change over time.
+
+The same Atoms can be viewed simultaneously through multiple Concept Models — as a navigation node, a data record, and a point on a scatter plot — without any duplication of data.
+
+---
+
+## Operand · Operator · Agent
+
+Every action in Akasha is governed by a single organizing principle:
+
+**Operand** — data. An Atom carries no behaviour. It is content-addressed text with no methods.
+
+**Operator** — operation. Defined independently of the data it transforms. A `rec.table` operator reads attribute links from any atom set and renders a table. It does not care how the atoms were created.
+
+**Agent** — subject. Applies operators to operands. An agent may be a human typing in a terminal, an LLM, a sensor, or an automated script. The operator does not know or care which.
+
+This is deliberately different from object-oriented design, where behaviour is embedded inside data objects. When behaviour needs to change in OO, the object changes — or requires inheritance, wrapping, or design patterns to work around the coupling.
+
+Akasha does not do this.
+
+**Adding a new operator is a new class file. Atoms remain immutable. Agents can apply any operator they are authorized for.**
+
+This principle governs every layer of Akasha — from graph primitives up through Concept Models, session access control, and LLM integration. When you design a Concept Model, you are designing operators that act on atoms. The atoms know nothing about the operators, and the operators know nothing about who or what is calling them.
 
 ---
 
@@ -139,12 +161,16 @@ They are conceptual structures.
 A good Concept Model should feel obvious to the expert using it.  
 Operations should resemble meaningful actions.
 
-**Good:**
+**Good** *(example syntax — illustrates intent, not exact CLI form)*:
 ```
-world.event
-survey.q.add
-synth.claim.add
-pres.frame.add
+world.event "The king died"
+world.place.state castle succession_crisis
+
+survey.new name=field_survey_2024
+survey.q.add name=... question="How would you rate...?"
+
+rec.new type=observation content="Dense canopy cover"
+rec.set key=... attr=biodiversity_index val=0.87
 ```
 
 **Bad:**
@@ -158,17 +184,57 @@ The system should reflect human reasoning, not implementation mechanics.
 
 ---
 
+## From Any Source Into Structured Analysis
+
+One of the most practical expressions of Akasha's design is the `lens` scanner.
+
+`lens` projects any source — an existing set, an ontology subtree, a traversal result — into a structured Concept Model view. It discovers the attributes already present on each atom from their links. You do not declare a schema first.
+
+```
+# Scan the built-in fruits set — sweetness/acidity attributes already in the ontology
+lens src=set:fruits
+
+# Project the scan into a record set
+lens.flatten into=fruit_view
+
+# Display as a formatted table
+rec.table in_set=set:fruit_view
+
+# Project onto a 4-quadrant scatter plot — no browser required
+quadrant.plot in_set=set:fruit_view \
+    x=acidity y=sweetness \
+    q1="tangy sweet" q2="mellow sweet" \
+    q3="bland"       q4="sharp"
+```
+
+You can also add analytical attributes to atoms that already exist in the graph, without touching their structure:
+
+```
+# Annotate existing ontology atoms with a rec: attribute link
+rec.set key=concept:aristotle  attr=influence_score val=0.95
+rec.set key=concept:heraclitus attr=influence_score val=0.88
+rec.idx key=concept:aristotle  sets=rec:philosophers
+rec.idx key=concept:heraclitus sets=rec:philosophers
+
+# The original atoms are untouched — only rec: links were added
+rec.table in_set=set:rec:philosophers
+```
+
+This is the Operand/Operator/Agent principle in practice: atoms are untouched data, `rec.*` operators act on them from outside, and you are the agent deciding what to measure.
+
+---
+
 ## Structure Is More Important Than Format
 
 Akasha separates content from structure.
 
 For example:  
-A Presentation model does not contain the research itself.  
+A Record model does not contain the research itself.  
 It contains:
-- arrangement,
-- framing,
-- sequencing,
-- emphasis.
+- attributes,
+- measurements,
+- computed positions,
+- and analytical projections.
 
 Likewise:
 - a Synthesis references evidence,
@@ -191,7 +257,7 @@ One of the most powerful ideas in Akasha is the World model.
 A World is not merely lore, geography, or story text.  
 It is a persistent state system.
 
-For example:
+For example *(example syntax — illustrates intent)*:
 
 ```
 world.event "The king died"
@@ -225,6 +291,7 @@ The LLM helps by:
 - proposing operators,
 - organizing relationships,
 - writing implementation code,
+- generating `.ak` ontology files and Concept Model classes,
 - and accelerating iteration.
 
 This changes software development fundamentally.  
@@ -252,7 +319,7 @@ Examples: events, places, actors, claims, observations, measurements, regions, t
 
 What connections matter?
 
-Examples: supports, contradicts, occurred_at, belongs_to, derived_from, affects, references.
+Examples: `supports`, `contradicts`, `occurred_at`, `belongs_to`, `derived_from`, `affects`, `references`.
 
 ### 4. Identify meaningful actions
 
@@ -352,6 +419,7 @@ LLMs are extremely effective at:
 - generating repetitive implementation code,
 - maintaining naming consistency,
 - drafting operators,
+- generating `.ak` ontology files in bulk,
 - and extending existing patterns.
 
 They are much weaker at:
@@ -375,7 +443,7 @@ Before writing code, try describing — without technical terminology — what e
 **Good:**
 - "Events permanently change world state."
 - "Claims must be traceable to evidence."
-- "Presentations organize emphasis and sequence."
+- "Every observation needs a location and a timestamp."
 
 **Bad:**
 - "We need distributed semantic graph orchestration."
@@ -425,6 +493,7 @@ event recorded
 ```
 
 ```
+# example syntax
 world.event "The king died"
 
 world.place.state castle succession_crisis
@@ -539,64 +608,54 @@ longitudinal care observations · patient narrative systems · therapeutic refle
 
 ---
 
-## 🚀 Start Small: The Cookbook Series
+## 🚀 Start Small: Three Tracks Into Akasha
 
 The easiest way to understand Akasha is not to read theory for three weeks.
 
 It is to build something small.
 
-Akasha includes a growing Cookbook series designed around short, practical exercises:
+The Cookbook is organized into three tracks — not by skill level, but by what you actually want to do:
 
-- small semantic workflows,
-- tiny research assistants,
-- one-page browser tools,
-- ontology experiments,
-- and LLM collaboration patterns.
+---
 
-The Cookbook intentionally begins with immediately useful examples rather than abstract programming exercises.
+**🔴 Red — CLI Track** · [`docs/cookbook/red/`](docs/cookbook/red/)
 
-Instead of:
+*For non-programmers. No code required.*
 
-- printing "Hello, world!",
-- sorting arbitrary numbers,
-- or memorizing syntax,
+Everything achievable with CLI commands alone — atoms, links, sets, concept models, scatter plots, lens scanning. If you are a researcher, writer, or analyst who wants to think in Akasha without writing Python or JavaScript, start here.
 
-you begin by building:
+| Chapter | What you build |
+| :--- | :--- |
+| 0 — Basic Operations | Atoms, links, sets, aliases, navigation |
+| 1 — Concept Models | Records, tables, scatter plots, lens scanning from the shell |
 
-- web-assisted research workflows,
-- semantic note systems,
-- small browser applications,
-- concept extraction tools,
-- and lightweight cognitive utilities.
+---
 
-Two recommended starting points:
+**🔵 Blue — Programmer Track** · [`docs/cookbook/blue/`](docs/cookbook/blue/)
 
-**📖 Programming Beginners — Day 1**
+*For developers. Web interfaces and Python extensions.*
 
-Build a tiny research assistant using only a few lines of CSL.
+Build your own browser application over Akasha's JSON-RPC API, then extend the concept model system in Python. A single HTML file is all it takes to create a custom view of your data.
 
-You will:
+| Chapter | What you build |
+| :--- | :--- |
+| 0 — Basic Operations | Web interface via `POST /rpc`; `fetch()` in plain JS; guest sessions |
+| 1 — Concept Models | Custom concept model class in Python; `BaseConcept` API; TextViewConcept |
 
-- search the web,
-- collect sources,
-- fetch articles,
-- and create reusable semantic workflows.
+---
 
-→ [`docs/cookbook/cookbook-beginners.md`](docs/cookbook/cookbook-beginners.md)
+**🟢 Green — Ontology Track** · [`docs/cookbook/green/`](docs/cookbook/green/)
 
-**🤝 Working with LLMs — Day 1**
+*For ontology builders. `.ak` files and LLM-assisted data.*
 
-Build a real one-page browser application with an LLM as your coding partner.
+Design namespaces, write `.ak` batch files, and enrich the built-in ontology with domain knowledge. LLMs generate `.ak` content in bulk; you review, refine, and load.
 
-You will:
+| Chapter | What you build |
+| :--- | :--- |
+| 0 — Basic Operations | `.ak` files: `def`, `ln`, `al`, `set.add` (`.ak` primitive; CLI uses `s.add`); namespace design; loading and verification |
+| 1 — Concept Models | Ontology enrichment with `rec:` attributes; LLM-assisted attribute generation |
 
-- write a specification prompt,
-- generate a standalone HTML tool,
-- test it locally,
-- repair bugs collaboratively,
-- and improve it incrementally.
-
-→ [`docs/cookbook/cookbook-llm-beginners.md`](docs/cookbook/cookbook-llm-beginners.md)
+---
 
 The important idea is this:
 
@@ -631,4 +690,4 @@ The purpose is to help humans:
 
 ---
 
-*→ Back to [README](README.md) · [Ontology Reference](docs/ontology/) · [Concept Model Spec](docs/concept-model/concept-model-spec.md)*
+*→ Back to [README](README.md) · [Quick Start](quick-start.md) · [Ontology Reference](docs/ontology/) · [Concept Model Spec](docs/concept-model/concept-model-spec.md)*

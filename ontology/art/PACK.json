@@ -1,0 +1,8 @@
+{
+  "label": "Visual Art & Architecture",
+  "description": "Painting movements from Palaeolithic cave art (Chauvet, Lascaux, Altamira) through 20th century abstraction, plus East Asian (ukiyo-e, Kano, shanshui), South Asian (Mughal, Rajput), Islamic (Persian miniature, calligraphy, geometric art), and Pre-Columbian traditions. Architectural styles from Egyptian pyramids and Greek orders to Bauhaus, Brutalism, and Metabolism. Painting techniques (fresco, tempera, oil, sfumato, chiaroscuro) and structural elements (arch, vault, dome, flying buttress, dougong, muqarnas).\n\nImport scripts: Metropolitan Museum Open Access API (paintings pre-1900), Wikidata notable historic buildings.\n\nAtom IDs: art:movement:*, art:technique:*, arch:style:*, arch:element:*, arch:building:*, art:work:*",
+  "license": "Public domain (terminology) + CC0 (Met Open Access) + CC BY-SA 4.0 (Wikidata)",
+  "source": "https://collectionapi.metmuseum.org/ | https://www.wikidata.org/",
+  "size_hint": "~151 static + thousands from import scripts",
+  "attribution": "The Metropolitan Museum of Art Open Access | Wikidata | Grove Art Online (terminology only)"
+}

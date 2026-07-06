@@ -1,0 +1,8 @@
+{
+  "label": "Music, Dance & Performing Arts",
+  "description": "Classical and ethnic music traditions (Western periods, gagaku, Hindustani, Carnatic, maqam, gamelan, etc.), Hornbostel-Sachs instrument taxonomy with 60+ traditional instruments, musical forms (fugue, raga, tala, jo-ha-kyu, etc.), and classical dance and theatre traditions (Noh, Kabuki, Bunraku, Bharatanatyam, Wayang kulit, Commedia dell'arte, etc.).\n\nImport scripts: UNESCO Intangible Cultural Heritage performing arts elements, Wikidata pre-20th century classical composers.\n\nAtom IDs: music:tradition:*, music:form:*, instr:*, perf:dance:*, perf:theatre:*, music:composer:*, ich:element:*",
+  "license": "Public domain (terminology) + CC BY-SA 4.0 (Wikidata/DBpedia abstracts where used)",
+  "source": "https://ich.unesco.org/ | https://www.wikidata.org/ | https://imslp.org/",
+  "size_hint": "~240 static + hundreds from import scripts",
+  "attribution": "UNESCO Intangible Cultural Heritage | Wikidata | IMSLP Petrucci Music Library | Grove Music Online (terminology only)"
+}

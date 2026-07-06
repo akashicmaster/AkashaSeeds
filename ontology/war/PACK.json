@@ -1,0 +1,8 @@
+{
+  "label": "War History & Conflict Zones",
+  "description": "Military theory (Sun Tzu, Clausewitz, Mao, Boyd), types of warfare (guerrilla, blitzkrieg, hybrid, cyber), laws of war (Geneva Conventions, R2P, ius ad bellum/in bello), landmark historical wars from Persian Wars to Iran-Iraq War, and active/recent conflict zones (Russia-Ukraine, Gaza, Sudan, Sahel, DRC, Myanmar, etc.) with frozen conflicts and territorial disputes.\n\nImport scripts: Wikidata wars and conflicts (SPARQL), UCDP Armed Conflict Dataset API.\n\nAtom IDs: war:type:*, war:tactic:*, war:theory:*, war:law:*, war:conflict:*, conflict:zone:*, conflict:frozen:*, war:ucdp:*",
+  "license": "Public domain (military terminology) + CC BY (UCDP data)",
+  "source": "https://ucdp.uu.se/ | https://www.wikidata.org/ | https://acleddata.com/",
+  "size_hint": "~143 static + hundreds from import scripts",
+  "attribution": "Uppsala Conflict Data Program (UCDP/PRIO Armed Conflict Dataset) | Wikidata | SIPRI"
+}

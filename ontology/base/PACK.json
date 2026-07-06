@@ -1,0 +1,7 @@
+{
+  "label": "基本パッケージ",
+  "description": "Core vocabulary and fundamental concepts. Provides the complete foundation for an Akasha quick start: atoms, verbs, emotions, geography, history, science, math, logic, and philosophy.",
+  "license": "MIT (software and editorial content); WordNet 3.1 (word_core_*.ak — see LICENSE.md)",
+  "source": "internal + Princeton University WordNet 3.1 (https://wordnet.princeton.edu/license-and-commercial-use)",
+  "version": "1.0"
+}

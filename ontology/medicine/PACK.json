@@ -1,0 +1,8 @@
+{
+  "label": "Medical Subject Headings (MeSH)",
+  "description": "Medical terms from NLM MeSH: diseases, anatomy, pharmacology, psychiatry, and adjacent fields. ~15K terms from the NLM Descriptor vocabulary (categories A-G,N excluding bulk chemicals).",
+  "license": "Public Domain (National Library of Medicine)",
+  "source": "https://www.nlm.nih.gov/mesh/",
+  "size_hint": "~15K atoms",
+  "attribution": "Medical Subject Headings (MeSH), National Library of Medicine"
+}

@@ -1,0 +1,8 @@
+{
+  "label": "Natural Resources & Critical Minerals",
+  "description": "Energy resources (fossil fuels, nuclear, renewables), USGS 2022 critical minerals (~50 entries including rare earth elements and platinum group metals), and ecosystem resources (freshwater, forests, oceans, soil, fisheries).\n\nAtom IDs: resource:energy:*, resource:mineral:*, resource:ecosystem:*",
+  "license": "Public domain (USGS data)",
+  "source": "https://www.usgs.gov/programs/national-minerals-information-center | https://www.iea.org/",
+  "size_hint": "~70 atoms",
+  "attribution": "USGS National Minerals Information Center | IEA"
+}

@@ -1,0 +1,8 @@
+{
+  "label": "Weather & Atmosphere",
+  "description": "WMO cloud genera, precipitation types, storm categories, atmospheric phenomena and layers, Beaufort/Saffir-Simpson/Fujita scales, Köppen climate zones, and ocean-atmosphere systems (ENSO, NAO, etc.).\n\nAtom IDs: weather:cloud:*, weather:storm:*, weather:phenomenon:*, weather:climate:*, weather:layer:*, weather:scale:*",
+  "license": "Public domain",
+  "source": "https://public.wmo.int/ | https://www.noaa.gov/",
+  "size_hint": "~80 atoms",
+  "attribution": "World Meteorological Organization (WMO) | NOAA"
+}

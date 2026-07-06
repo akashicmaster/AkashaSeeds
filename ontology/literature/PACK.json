@@ -1,0 +1,8 @@
+{
+  "label": "Project Gutenberg Literary Works",
+  "description": "Classical and historical literary works from the Project Gutenberg catalog. Full texts are not stored — each atom contains title, author, genre, and a gutenberg.org URL. Where available, Wikipedia summaries (via DBpedia) are used as descriptions.\n\nDefault scope: works with classical/literary subject tags in major world languages. Expand with --all for the full 70K catalog.\n\nAtom IDs: lit:work:{title}, lit:author:{name}",
+  "license": "Public domain (Project Gutenberg) + CC BY-SA 4.0 (DBpedia abstracts where used)",
+  "source": "https://www.gutenberg.org/",
+  "size_hint": "~3K–70K works depending on filter",
+  "attribution": "Project Gutenberg — https://www.gutenberg.org/ | DBpedia — https://dbpedia.org/"
+}

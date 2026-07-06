@@ -1,0 +1,26 @@
+# ── Akasha Runtime Requirements ──────────────────────────────────────────────
+#
+# Core (always required):
+#   None — Akasha runs on Python 3.8+ stdlib only (httpd mode).
+#
+# Archives / thesaurus10 (VPS public deployment):
+#   pip install fastapi uvicorn[standard]
+#
+# Optional extras:
+#   pip install requests        # remote fetch apps
+#   pip install sentence-transformers torch  # semantic embedding (if enabled)
+#
+# NLP (auto-installed by Symbiosis at boot if absent on 64-bit systems):
+#   pip install spacy           # core NLP library
+#   Language models (downloaded on first use; or run manually):
+#     python -m spacy download en_core_web_sm   # English
+#     python -m spacy download ja_core_news_sm  # Japanese  (requires fugashi + ipadic)
+#     python -m spacy download de_core_news_sm  # German
+#     python -m spacy download zh_core_web_sm   # Chinese
+#     python -m spacy download fr_core_news_sm  # French
+#     python -m spacy download es_core_news_sm  # Spanish
+#   Japanese morphological analysis (optional, improves ja model quality):
+#     pip install fugashi[unidic-lite]
+
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0

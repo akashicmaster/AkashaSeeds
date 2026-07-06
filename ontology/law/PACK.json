@@ -1,0 +1,8 @@
+{
+  "label": "Legal History & Jurisprudence",
+  "description": "Legal traditions from ancient Sumer to 19th century codification (Roman, Islamic, Jewish, Chinese, Japanese, common law, civil law), ~40 historical law codes from Code of Ur-Nammu to BGB, and ~70 foundational legal concepts (lex talionis, habeas corpus, stare decisis, mens rea, ius gentium, ijma, ijtihad, responsa).\n\nImport scripts: Wikidata landmark court cases (Marbury v. Madison, etc.), Yale Avalon Project historical legal documents index.\n\nAtom IDs: law:tradition:*, law:code:*, law:concept:*, law:case:*, law:doc:*",
+  "license": "Public domain (legal terminology and historical texts)",
+  "source": "https://avalon.law.yale.edu/ | https://www.wikidata.org/ | https://ucdp.uu.se/",
+  "size_hint": "~165 static + hundreds from import scripts",
+  "attribution": "Yale Avalon Project | Wikidata | Uppsala Conflict Data Program (UCDP)"
+}
