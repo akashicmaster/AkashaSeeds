@@ -178,6 +178,28 @@ class CslRuntime:
 
     # ── Method dispatch ───────────────────────────────────────────────────
 
+    def _authorize_or_raise(self, method: str, params: Dict[str, Any]) -> None:
+        """Authorize a registry-dispatched method against the session's role, using
+        the injected kernel dispatcher's IAM. No-op when there is no auth context
+        (standalone runtime) — there is then nothing to bypass. Raises PermissionError
+        on denial, which surfaces as a normal CSL execution error."""
+        iam = getattr(self._dispatcher, "iam", None)
+        role = getattr(self.session, "role", None)
+        if iam is None or role is None:
+            return
+        try:
+            from lib.akasha.kernel_methods import METHOD_TO_ACTION
+            action = METHOD_TO_ACTION.get(method, method)
+            allowed = iam.authorize(role, action, params)
+        except PermissionError:
+            raise
+        except Exception:
+            return  # authorize unavailable / signature mismatch — don't wedge execution
+        if not allowed:
+            raise PermissionError(
+                f"CSL: capability denied for '{method}' "
+                f"(role {getattr(role, 'value', role)})")
+
     def _dispatch(self, method: str, params: Dict[str, Any]) -> Any:
         """
         Dispatch a method call and return the bare result value.
@@ -188,8 +210,13 @@ class CslRuntime:
           3. Direct call on session object (fallback)
           4. Raise RuntimeError
         """
-        # 1. Try ConceptRegistry
+        # 1. Try ConceptRegistry. The registry short-circuit skips _authenticated_
+        # dispatch, so authorize the method against the session's role FIRST — else
+        # csl.run (authorized once as `write`) could reach any registry-handled method
+        # under that one coarse capability, skipping the method's own action gate.
+        # (Step 2's kernel dispatch already authorizes, so the gate is only needed here.)
         if self._registry is not None and self._registry.can_handle(method):
+            self._authorize_or_raise(method, params)
             rid = "_csl_"
             response = self._registry.dispatch(method, self.session, params, rid)
             return self._unwrap_response(method, response)

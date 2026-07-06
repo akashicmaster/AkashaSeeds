@@ -153,6 +153,14 @@ METHOD_TO_ACTION: Dict[str, str] = {
     "job.ls":     "read",
     "job.stat":   "read",
     "job.cancel": "drop",
+    # Workflow — a stored CSL script run as an orchestrated JCL job.
+    # workflow.run submits a job, so it carries the same admin/librarian gate as
+    # job.submit; def/ls/get/rm are ordinary graph ops.
+    "workflow.def": "write",
+    "workflow.run": "job.submit",
+    "workflow.ls":  "read",
+    "workflow.get": "read",
+    "workflow.rm":  "drop",
     # Locale
     "locale.get": "status",
     "locale.set": "status",

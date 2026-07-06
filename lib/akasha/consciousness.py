@@ -271,10 +271,7 @@ class ConsciousnessEngine:
     # =========================================================================
     def generate_view(self, focus_key: str, allowed_scopes: List[str] = None) -> Dict[str, Any]:
         """Generates the field of view including N-D vectors and signposts."""
-        is_col = False
-        with self.cortex.core.conn as conn:
-            if conn.execute("SELECT 1 FROM collections WHERE name=?", (focus_key,)).fetchone():
-                is_col = True
+        is_col = self.cortex.core.collection_exists(focus_key)
                 
         if is_col:
             return self.generate_collection_view(focus_key, allowed_scopes)
@@ -511,10 +508,7 @@ class ConsciousnessEngine:
 
     def zoom_out(self, focus_key: str, allowed_scopes: List[str] = None) -> Dict[str, Any]:
         """Generates the macro environment data, respecting security boundaries."""
-        is_col = False
-        with self.cortex.core.conn as conn:
-            if conn.execute("SELECT 1 FROM collections WHERE name=?", (focus_key,)).fetchone():
-                is_col = True
+        is_col = self.cortex.core.collection_exists(focus_key)
 
         collections = []
         macro_nodes = []
@@ -533,9 +527,7 @@ class ConsciousnessEngine:
                 macro_nodes.append({"key": k, "preview": str(c)[:20], "cosmos_nd": vec})
         
         else:
-            with self.cortex.core.conn as conn:
-                rows = conn.execute("SELECT DISTINCT name FROM collections WHERE key=?", (focus_key,)).fetchall()
-                collections = [r["name"] for r in rows]
+            collections = self.cortex.core.get_collections_for_key(focus_key)
 
             # Clear temporary macro sets
             self.cortex.clear_set("temp_macro")

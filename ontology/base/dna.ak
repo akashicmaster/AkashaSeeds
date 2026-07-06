@@ -67,8 +67,10 @@ def "dna:taste:hot" "Hot taste; the burning sensation of capsaicin and heat."
 def "dna:taste:salty" "Salty taste; the mineral sharpness of sodium."
 
 def "dna:taste:sour" "Sour taste; the sharp or acidic flavour."
+al dna:taste:sour sour
 
 def "dna:taste:sweet" "Sweet taste; a pleasurable gustatory sensation."
+al dna:taste:sweet sweet
 
 def "dna:taste:umami" "Umami taste; the savory fifth taste associated with glutamate."
 

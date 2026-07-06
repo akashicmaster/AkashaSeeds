@@ -758,15 +758,15 @@ code {
       <div class="step">
         <span class="step-num">02</span>
         <div class="step-body">
-          <strong>Extract</strong>
-          <span>Run the seed once. It unpacks itself into a working directory.</span>
+          <strong>Run the seed</strong>
+          <span>Run it once inside an empty folder. It unpacks the full system there and starts Akasha immediately. The built-in ontology loads in the background.</span>
         </div>
       </div>
       <div class="step">
         <span class="step-num">03</span>
         <div class="step-body">
-          <strong>Start</strong>
-          <span>Launch Akasha. The built-in ontology loads automatically.</span>
+          <strong>Restart anytime</strong>
+          <span>From the second time on, launch with <code>python akasha.py</code> — startup is fast and your data persists.</span>
         </div>
       </div>
     </div>
@@ -779,31 +779,31 @@ code {
         <span class="terminal-title">shell</span>
       </div>
 
-      <div class="terminal-line comment"><span class="terminal-cmd"># Step 1 — extract the seed</span></div>
+      <div class="terminal-line comment"><span class="terminal-cmd"># Step 1 — make a home for Akasha</span></div>
+      <div class="terminal-line">
+        <span class="terminal-prompt">$</span>
+        <span class="terminal-cmd">mkdir akasha &amp;&amp; cd akasha</span>
+      </div>
+      <div class="terminal-line gap"></div>
+
+      <div class="terminal-line comment"><span class="terminal-cmd"># Step 2 — run the seed: unpacks and starts immediately</span></div>
       <div class="terminal-line">
         <span class="terminal-prompt">$</span>
         <span class="terminal-cmd">python akasha_seeds_seeds.py</span>
       </div>
       <div class="terminal-line gap"></div>
 
-      <div class="terminal-line comment"><span class="terminal-cmd"># Step 2 — enter the extracted directory</span></div>
+      <div class="terminal-line comment"><span class="terminal-cmd"># Now write your first atom</span></div>
       <div class="terminal-line">
-        <span class="terminal-prompt">$</span>
-        <span class="terminal-cmd">cd akasha/</span>
+        <span class="terminal-prompt">akasha/you $</span>
+        <span class="terminal-cmd">w "My first observation."</span>
       </div>
       <div class="terminal-line gap"></div>
 
-      <div class="terminal-line comment"><span class="terminal-cmd"># Step 3 — start Akasha</span></div>
+      <div class="terminal-line comment"><span class="terminal-cmd"># From the second time on, start directly</span></div>
       <div class="terminal-line">
         <span class="terminal-prompt">$</span>
         <span class="terminal-cmd">python akasha.py</span>
-      </div>
-      <div class="terminal-line gap"></div>
-
-      <div class="terminal-line comment"><span class="terminal-cmd"># Now write your first atom</span></div>
-      <div class="terminal-line">
-        <span class="terminal-prompt">akasha&gt;</span>
-        <span class="terminal-cmd">w "My first observation."</span>
       </div>
     </div>
 

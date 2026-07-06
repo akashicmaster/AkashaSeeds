@@ -706,9 +706,9 @@ class CommandRouter:
                 name = rest[0] if rest else ""
                 return cls._create_payload("dont.ls", {"name": name}, session_token)
 
-        # Special handling for 'exp' — explore with key=value filter syntax
+        # Special handling for 'exp' / 'explore' — explore with key=value filter syntax
         # exp ns=myth  |  exp set=deity  |  exp type=rec  |  exp icarus%  |  exp myth
-        if cmd == "exp":
+        if cmd in ("exp", "explore"):
             params = {}
             for token in args:
                 if "=" in token:

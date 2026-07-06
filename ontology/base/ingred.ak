@@ -56,6 +56,9 @@ ln ingred:fruit:banana dna:texture:soft calc:associated_with
 def "ingred:fruit:orange" "A round citrus fruit with sweet and tart juice."
 ln ingred:fruit:orange chem:odor:limonene @contains
 ln ingred:fruit:orange verb:cook:zest sys:refers_to
+ln ingred:fruit:orange dna:color:orange calc:associated_with
+ln ingred:fruit:orange dna:taste:sweet calc:associated_with
+ln ingred:fruit:orange dna:taste:sour calc:associated_with
 
 def "ingred:fruit:lemon" "A yellow citrus fruit known for its acidic juice and aromatic rind."
 ln ingred:fruit:lemon chem:odor:limonene @contains

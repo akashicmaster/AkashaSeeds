@@ -2686,7 +2686,7 @@ def "word:en:pilgrimage" "A journey to a sacred place."
 ln pilgrimage pilgrimage calc:associated_with
 
 
-def "word:en:notices" "An announcement containing information about an event; ; ; "a notice of sale."
+def "word:en:notices" "An announcement containing information about an event; ; ; a notice of sale."
 
 
 def "word:en:publisher" "A firm in the publishing business."

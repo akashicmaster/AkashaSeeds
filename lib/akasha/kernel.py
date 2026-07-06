@@ -56,6 +56,18 @@ TRUST_LOCAL    = "local"
 TRUST_INTERNAL = "internal"
 _TRUSTED_TRANSPORTS = frozenset({TRUST_LOCAL, TRUST_INTERNAL})
 
+# IAM actions whose handlers write graph atoms/links synchronously in the dispatch
+# thread. Every graph-writing verb — memory write, alias, set.add, all concept-model
+# op_new/op_set writes — maps to "write"; the link/meta verbs map to their own
+# tokens; sync.pull writes atoms pulled from a peer. These are the methods the
+# per-turn workspace seam wraps (single-route guard). Reads, status, drop (physical
+# delete, never a commit()/put_link()) and job.submit (enqueues an async JCL job
+# that writes under its OWN workspace) are intentionally absent — they never trip
+# the guard, so wrapping them would only add empty-workspace overhead.
+_WRITE_ACTIONS = frozenset({
+    "write", "link.create", "link.reinforce", "meta.set", "sync.pull",
+})
+
 # Optional engines — degrade gracefully if missing
 try:
     from lib.harmonia.engine import HarmoniaEngine
@@ -97,12 +109,21 @@ try:
 except ImportError:
     SurveyConcept = None  # type: ignore
 
+from lib.akasha.jcl.workspace_context import (
+    active as _workspace_active,
+    _in_workspace,
+)
+from lib.akasha.jcl import workflow_vocab as _wf
+
 try:
     from lib.akasha.jcl import JCLWorker, JCLJob, JCLStep
+    from lib.akasha.jcl.job import CLASS_BATCH_ATOM, CLASS_LINK
 except ImportError:
     JCLWorker = None  # type: ignore
     JCLJob    = None  # type: ignore
     JCLStep   = None  # type: ignore
+    CLASS_BATCH_ATOM = "batch_atom"  # type: ignore
+    CLASS_LINK       = "link"        # type: ignore
 
 try:
     from lib.akasha.concepts.human import HumanConcept as _HumanConcept
@@ -472,7 +493,14 @@ class KernelDispatcher:
         # With max_workers>1 the sentinel can fire while large earlier files are
         # still being processed, causing intermittent "not found" on recent atoms.
         # This matches the JCL design principle: serial writes over parallelism.
-        self.jcl_worker = JCLWorker(self, max_workers=1) if JCLWorker else None
+        #
+        # Ownership: the JCL executor is Harmonia's initiator, not a kernel sibling.
+        # The kernel builds it (it needs the dispatch ref) and hands ownership to
+        # Harmonia; from here the kernel submits jobs via `harmonia.submit_job(...)`,
+        # and `self.jcl_worker` is a read-only view onto Harmonia's executor.
+        _jcl = JCLWorker(self, max_workers=1) if JCLWorker else None
+        if self.harmonia and _jcl:
+            self.harmonia.attach_jcl(_jcl)
 
         logger.info(
             f"[Kernel] Dispatcher online — series={series}, "
@@ -487,6 +515,12 @@ class KernelDispatcher:
             import threading as _t
             _t.Thread(target=self._boot_load_ontology, daemon=True,
                       name="ont-boot-loader").start()
+
+    @property
+    def jcl_worker(self):
+        """Read-only view onto Harmonia's JCL executor (job submission goes through
+        `self.harmonia.submit_job`, not this)."""
+        return self.harmonia.jcl if self.harmonia else None
 
     # ------------------------------------------------------------------
     # Boot-time ontology loader
@@ -544,7 +578,8 @@ class KernelDispatcher:
                 steps = [JCLStep(method=s["method"], params=s.get("params", {}))
                          for s in steps_raw]
                 job = JCLJob(owner="admin", label=label, steps=steps, fail_fast=False)
-                self.jcl_worker.submit(job)
+                # Ontology atom phase — Class 2 (consistent as a set, not real-time).
+                self.harmonia.submit_job(job, job_class=CLASS_BATCH_ATOM)
 
             # ── .ak files (vocab / thesaurus links) ───────────────────────────
             _AK_WRITE = frozenset({"w", "write", "kernel.memory.write",
@@ -567,7 +602,8 @@ class KernelDispatcher:
                 try:
                     parts = _shlex.split(line)
                 except ValueError:
-                    parts = line.split()
+                    # Defensive strip: remove surrounding quotes left by plain split
+                    parts = [p.strip('"\'') for p in line.split()]
                 if not parts:
                     return None
                 cmd = parts[0].lower()
@@ -806,7 +842,7 @@ class KernelDispatcher:
                         # Write it now as a lightweight standalone job.
                         logger.info("[Kernel] Pack '%s': all file sentinels present — writing pack sentinel",
                                     pack_name)
-                        self.jcl_worker.submit(JCLJob(
+                        self.harmonia.submit_job(JCLJob(
                             owner="admin",
                             label=f"ont.ak.atoms_sentinel:{pack_name}",
                             steps=[
@@ -816,7 +852,7 @@ class KernelDispatcher:
                                         params={"id": atoms_key, "name": atoms_alias}),
                             ],
                             fail_fast=False,
-                        ))
+                        ), job_class=CLASS_BATCH_ATOM)
 
                     logger.info("[Kernel] Pack '%s': waiting for phase-1 sentinel (max %ds)…",
                                 pack_name, pack_max_wait)
@@ -839,7 +875,7 @@ class KernelDispatcher:
                                            "params": {"text": done_text, "scope": "universal"}})
                     all_link_steps.append({"method": "alias",
                                            "params": {"id": done_key, "name": done_alias}})
-                    self.jcl_worker.submit(JCLJob(
+                    self.harmonia.submit_job(JCLJob(
                         owner="admin",
                         label=f"ont.ak.links:{pack_name}",
                         steps=[JCLStep(method=s["method"], params=s.get("params", {}))
@@ -847,7 +883,7 @@ class KernelDispatcher:
                         fail_fast=False,
                     ))
                 else:
-                    self.jcl_worker.submit(JCLJob(
+                    self.harmonia.submit_job(JCLJob(
                         owner="admin", label=f"ont.ak.sentinel:{pack_name}", steps=[
                             JCLStep(method="write",
                                     params={"text": done_text, "scope": "universal"}),
@@ -876,7 +912,7 @@ class KernelDispatcher:
                 # Idempotent: duplicate put_link calls are silently ignored by the backend.
                 _p3_queued = False
                 if all_atom_defs and self.jcl_worker and JCLJob and JCLStep:
-                    self.jcl_worker.submit(JCLJob(
+                    self.harmonia.submit_job(JCLJob(
                         owner="admin",
                         label=f"sys.weaver.batch:{pack_name}",
                         steps=[JCLStep(method="sys.weaver.weave_batch",
@@ -1163,7 +1199,44 @@ class KernelDispatcher:
         # THIS token, not shared across every connection that presents the same
         # client_id — prevents su state bleeding between concurrent sessions.
         su_key = "su_target:" + hashlib.sha256(raw_token.encode()).hexdigest()[:16]
+
+        # ── Single-route write turn ───────────────────────────────────────────
+        # A synchronous graph-writing method runs inside ONE Harmonia workspace so
+        # its atom/link bundle (祖語 + w + set + alias — the ~4-6-write critical
+        # bundle) is atomic and reversible: commit on success, rollback on any error.
+        # This is the seam the hard guard enforces — a composite write with no
+        # workspace is rejected once ENFORCE is on. Skipped when a workspace is
+        # already active on this thread: a JCL step re-enters dispatch under its
+        # job's workspace and must not nest (nor steal) a second tracked context.
+        if (action in _WRITE_ACTIONS and self.harmonia
+                and not _workspace_active()[0] and not _in_workspace()):
+            return self._write_turn(method, data, session, ctx, history, rid, su_key)
         return self._route(method, data, session, ctx, history, rid, su_key)
+
+    def _write_turn(self, method, data, session, ctx, history, rid, su_key) -> dict:
+        """Run a write-action dispatch inside one atomic, reversible workspace.
+
+        Opened on the session's local cortex (the engine that records the tracking
+        set). Universal/nucleus writes route to a different engine, so they are
+        presence-guarded but not per-atom tracked — acceptable: those are idempotent
+        content-addressed system writes, not the user's reversible conversation
+        bundle. evidence=False keeps the per-turn workspace off the critical path."""
+        # HIGH priority (0): a user turn is the perceived-immediate critical path;
+        # its writes are ordered ahead of background batch/link work at the WriteQueue.
+        tx_id = self.harmonia.begin_workspace(
+            session.local_cortex, f"turn:{method}", tracked=True, evidence=False,
+            priority=0)
+        try:
+            resp = self._route(method, data, session, ctx, history, rid, su_key)
+        except Exception:
+            self.harmonia.rollback_workspace(session.local_cortex, tx_id)
+            raise
+        if isinstance(resp, dict) and "error" in resp:
+            # Failed op → all-or-nothing: drop anything the handler already wrote.
+            self.harmonia.rollback_workspace(session.local_cortex, tx_id)
+        else:
+            self.harmonia.commit_workspace(session.local_cortex, tx_id)
+        return resp
 
     # ------------------------------------------------------------------
     # Routing table
@@ -1386,6 +1459,12 @@ class KernelDispatcher:
         if method == "job.stat":   return self._handle_job_stat(rid, data, session)
         if method == "job.cancel": return self._handle_job_cancel(rid, data, session)
 
+        # ── Workflow (stored CSL script → orchestrated JCL job) ────────
+        if method == "workflow.def": return self._handle_workflow_def(rid, data, session, ctx)
+        if method == "workflow.run": return self._handle_workflow_run(rid, data, session, ctx)
+        if method == "workflow.ls":  return self._handle_workflow_ls(rid, data, session, ctx)
+        if method == "workflow.get": return self._handle_workflow_get(rid, data, session, ctx)
+
         # ── Locale ────────────────────────────────────────────────────
         if method == "locale.get": return self._handle_locale_get(rid, session)
         if method == "locale.set": return self._handle_locale_set(rid, data, session)
@@ -1398,6 +1477,10 @@ class KernelDispatcher:
         if _concept_registry:
             _reg_result = _concept_registry.dispatch_if_handled(method, session, data, rid)
             if _reg_result is not None:
+                # Propagate the created atom key so $it/$0 resolve correctly
+                _reg_payload = _reg_result.get("result", {})
+                if isinstance(_reg_payload, dict) and "key" in _reg_payload:
+                    session.last_written_id = _reg_payload["key"]
                 return _reg_result
 
         # ── FieldNote ─────────────────────────────────────────────────
@@ -2173,7 +2256,12 @@ class KernelDispatcher:
             from lib.akasha.consciousness import ConsciousnessEngine
             consciousness = ConsciousnessEngine(bare_cortex)
 
-        result = consciousness.genesis_rite(akasha_name, user_name, passphrase_hash, session)
+        # The genesis ceremony writes the akasha-name / keeper anchor atoms outside
+        # any request workspace (it runs before the first session/turn). Exempt those
+        # system writes from the single-route guard.
+        from lib.akasha.jcl.workspace_context import system_context as _sys_ctx
+        with _sys_ctx():
+            result = consciousness.genesis_rite(akasha_name, user_name, passphrase_hash, session)
 
         # If rite succeeded, register the genesis admin in the persistent IAM store
         if result.get("status") == "bound":
@@ -2539,7 +2627,7 @@ class KernelDispatcher:
         params = {"key": key, "text": text}
         if is_guest:
             params["_for_client"] = cid
-        self.jcl_worker.submit(JCLJob(
+        self.harmonia.submit_job(JCLJob(
             owner=jcl_owner,
             label=label[:60],
             steps=[JCLStep(method=method, params=params)],
@@ -2588,7 +2676,7 @@ class KernelDispatcher:
         params = {"key": atom_id, "text": text, "is_nucleus": is_nucleus, "locale": locale}
         if is_guest:
             params["_for_client"] = cid
-        self.jcl_worker.submit(JCLJob(
+        self.harmonia.submit_job(JCLJob(
             owner=jcl_owner,
             label=lbl,
             steps=[JCLStep(method="sys.weaver.decompose", params=params)],
@@ -3121,12 +3209,27 @@ class KernelDispatcher:
         def _best_alias(key: str) -> str:
             als = ctx.core.get_aliases_by_key(key)
             if not als:
+                _nuc = getattr(ctx, '_nucleus', None)
+                if _nuc:
+                    als = _nuc.core.get_aliases_by_key(key)
+            if not als:
                 return key[:16]
             return min(als, key=lambda a: (a.count(":"), len(a)))
 
         if mode == "namespaces":
             depth = int(data.get("depth") or 1)
             items = ctx.core.get_namespace_counts(depth=depth)
+            _nuc = getattr(ctx, '_nucleus', None)
+            if _nuc:
+                nuc_items = _nuc.core.get_namespace_counts(depth=depth)
+                local_ns = {i["ns"]: i for i in items}
+                for ni in nuc_items:
+                    ns_key = ni["ns"]
+                    if ns_key in local_ns:
+                        local_ns[ns_key]["count"] += ni["count"]
+                    else:
+                        items.append(ni)
+                        local_ns[ns_key] = ni
             if sort == "alpha":
                 items.sort(key=lambda x: x["ns"])
             return _ok(rid, {"mode": mode, "count": len(items), "items": items[:limit]})
@@ -3164,28 +3267,27 @@ class KernelDispatcher:
                 items.sort(key=lambda x: x["alias"])
             return _ok(rid, {"mode": mode, "count": len(items), "items": items[:limit]})
 
-        # default: atoms — one row per distinct atom key, primary alias + content preview
+        # default: atoms — one row per distinct atom key, primary alias + content preview.
+        # Composed from ISA primitives (alias pattern match + per-key content) rather
+        # than a relational JOIN, so it holds on non-SQL backends too.
         pat = f"{ns}:%" if ns else "%:%"
-        _atom_sql = (
-            "SELECT a.alias, a.key, c.content FROM aliases a "
-            "JOIN chunks c ON a.key=c.key "
-            "WHERE a.alias LIKE ? ORDER BY a.alias LIMIT ?"
-        )
-        all_rows = list(ctx.core.conn.execute(_atom_sql, (pat, limit * 2)).fetchall())
-        # Include nucleus atoms (vocabulary lives there, not in the session-local DB)
+        alias_rows = list(ctx.core.get_aliases_by_pattern(pat))
         _nucleus = getattr(ctx, '_nucleus', None)
         if _nucleus:
-            all_rows += list(_nucleus.core.conn.execute(_atom_sql, (pat, limit * 2)).fetchall())
+            alias_rows += list(_nucleus.core.get_aliases_by_pattern(pat))
         seen: set = set()
         items = []
-        for r in all_rows:
-            if r["key"] in seen:
+        for r in alias_rows[: limit * 4]:
+            key = r["key"]
+            if key in seen:
                 continue
-            seen.add(r["key"])
-            preview = (r["content"] or "")[:100].replace("\n", " ")
-            items.append({"alias": r["alias"], "key": r["key"][:12], "preview": preview})
-        if sort == "alpha":
-            items.sort(key=lambda x: x["alias"])
+            seen.add(key)
+            row = ctx.core.get_chunk_raw(key)
+            if row is None and _nucleus:
+                row = _nucleus.core.get_chunk_raw(key)
+            preview = ((row["content"] if row else "") or "")[:100].replace("\n", " ")
+            items.append({"alias": r["alias"], "key": key[:12], "preview": preview})
+        items.sort(key=lambda x: x["alias"])
         return _ok(rid, {"mode": mode, "count": len(items), "items": items[:limit]})
 
     # ------------------------------------------------------------------
@@ -3770,8 +3872,7 @@ class KernelDispatcher:
             nucleus_core = getattr(src, 'core', None)
             if nucleus_core:
                 try:
-                    nucleus_core.conn.execute("DELETE FROM alias_collision_log")
-                    nucleus_core._commit()
+                    nucleus_core.clear_alias_collision_log()
                 except Exception:
                     pass
         overwrites = sum(1 for e in entries_raw if e.get("event") == "overwrite")
@@ -3798,9 +3899,8 @@ class KernelDispatcher:
         atom_count = link_count = alias_count = 0
         if nucleus:
             try:
-                atom_count  = nucleus.core.conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
-                link_count  = nucleus.core.conn.execute("SELECT COUNT(*) FROM links").fetchone()[0]
-                alias_count = nucleus.core.conn.execute("SELECT COUNT(*) FROM aliases").fetchone()[0]
+                _t = nucleus.core.get_store_totals()
+                atom_count, link_count, alias_count = _t["chunks"], _t["links"], _t["aliases"]
             except Exception:
                 pass
 
@@ -4273,6 +4373,11 @@ class KernelDispatcher:
         target = data.get("id", "")
         if not name or not target:
             return _err(rid, -32602, "set.add requires 'name' and 'id'")
+        # 'ws:' (Harmonia workspace tracking, reclaimed by the boot orphan scan) and
+        # 'wf:' (named workflow definitions) are reserved set-name prefixes.
+        if name.startswith("ws:") or name.startswith("wf:"):
+            return _err(rid, -32602,
+                        f"Set name prefix '{name.split(':', 1)[0]}:' is reserved for internal use.")
         key = ctx.resolve_alias(target) or target
         # If key belongs to nucleus, track the set membership there so all cells see it.
         nucleus = getattr(session, 'nucleus', None)
@@ -4620,15 +4725,49 @@ class KernelDispatcher:
                 return _err(rid, -32003, _vmsg)
         except ImportError:
             pass
+        # Optional slice-3 scheduling declarations: PERT dependencies (this job waits
+        # for the named job_ids), bounded retry, and a soft wall-clock budget. All
+        # bounded at admission so a single job cannot wedge or hog the one worker.
+        _JOB_MAX_RETRIES = 8       # mirrors worker._MAX_RETRIES_CEILING
+        _JOB_MAX_TIMEOUT = 3600.0  # 1 h soft ceiling
+        depends_on = data.get("depends_on") or []
+        if isinstance(depends_on, str):
+            depends_on = [depends_on]
+        depends_on = [str(d) for d in depends_on]
+        # Dependencies may only reference the submitter's OWN jobs (unless admin) — a
+        # cross-owner dep would let one client couple its scheduling to another's job.
+        is_admin = "scope:sys:admin" in session.active_scopes
+        if depends_on and not is_admin:
+            for dep_id in depends_on:
+                dep = self.jcl_worker.get_job(dep_id) if self.jcl_worker else None
+                if dep is not None and dep.owner != session.client_id:
+                    return _err(rid, -32003,
+                                "depends_on may only reference your own jobs.")
+        try:
+            max_retries = min(max(0, int(data.get("max_retries", 0))), _JOB_MAX_RETRIES)
+        except (TypeError, ValueError):
+            max_retries = 0
+        timeout_s = data.get("timeout_s")
+        try:
+            timeout_s = float(timeout_s) if timeout_s is not None else None
+            if timeout_s is not None:
+                timeout_s = max(0.0, min(timeout_s, _JOB_MAX_TIMEOUT))
+        except (TypeError, ValueError):
+            timeout_s = None
         job = JCLJob(
             owner=session.client_id,
             label=data.get("label", ""),
             steps=steps,
             fail_fast=bool(data.get("fail_fast", True)),
+            depends_on=depends_on,
+            max_retries=max_retries,
+            timeout_s=timeout_s,
         )
-        self.jcl_worker.submit(job)
+        # A user-submitted batch requires consistency as a set — Class 2.
+        self.harmonia.submit_job(job, job_class=CLASS_BATCH_ATOM)
         return _ok(rid, {"job_id": job.job_id, "label": job.label,
-                         "step_count": job.step_count, "status": job.status})
+                         "step_count": job.step_count, "status": job.status,
+                         "depends_on": job.depends_on})
 
     def _handle_job_ls(self, rid, data, session) -> dict:
         if not self.jcl_worker:
@@ -4689,6 +4828,101 @@ class KernelDispatcher:
             return _err(rid, -32002, "JCL worker not available")
         cancelled = self.jcl_worker.cancel(job_id, requester=session.client_id)
         return _ok(rid, {"cancelled": cancelled, "job_id": job_id})
+
+    # ------------------------------------------------------------------
+    # Workflow (workflow.*) — a stored CSL script run as an orchestrated JCL job.
+    #
+    # Minimal reception layer (jcl/workflow_vocab). A workflow is one executable
+    # atom whose body is a CSL script; running it submits ONE bounded JCL job with a
+    # single `csl.run` step, so it inherits the whole orchestration stack (priority,
+    # bounded retry/timeout, single-route guard, workspace rollback). Step-granular
+    # DAG projection (ref:therefore/ref:if traversal, $var→edges, conditions) is the
+    # post-launch work the reserved vocabulary is there to receive.
+    # ------------------------------------------------------------------
+
+    def _handle_workflow_def(self, rid, data, session, ctx) -> dict:
+        name   = (data.get("name") or "").strip()
+        script = data.get("script") or ""
+        if not name or not script:
+            return _err(rid, -32602, "workflow.def requires 'name' and 'script'")
+        # Reject only genuine SYNTAX errors at definition time (tokenize/parse). We do
+        # NOT run the semantic method-existence validator here: it loads its own
+        # ConceptRegistry which can differ from the live kernel's, producing false
+        # "unknown method" rejections for perfectly valid concept-model calls. Real
+        # method/param errors surface at run time via csl.run.
+        try:
+            from lib.akasha.csl import tokenize, parse
+            parse(tokenize(script))
+        except ImportError:
+            pass
+        except Exception as _pe:
+            return _err(rid, -32602, f"workflow CSL syntax error: {_pe}")
+        cid = session.client_id
+        key = ctx.put_chunk(
+            content=script,
+            meta={"type": _wf.META_WORKFLOW, "name": name,
+                  "description": data.get("description", "")},
+            author=cid,
+            scopes=[_wf.SCOPE_EXECUTABLE, f"owner:user_{cid}", f"view:user_{cid}"],
+        )
+        ctx.set_alias(key, f"{_wf.WF_ALIAS_PREFIX}{name}")
+        return _ok(rid, {"status": "defined", "name": name, "key": key,
+                         "alias": f"{_wf.WF_ALIAS_PREFIX}{name}"})
+
+    def _handle_workflow_run(self, rid, data, session, ctx) -> dict:
+        # workflow.run submits a JCL job → same gate as job.submit.
+        scopes = session.active_scopes
+        if "scope:sys:admin" not in scopes and "role:librarian" not in scopes:
+            return _err(rid, -32003, "workflow.run requires admin or librarian role")
+        if not self.jcl_worker or not JCLJob or not JCLStep:
+            return _err(rid, -32002, "JCL worker not available")
+        name = (data.get("name") or "").strip()
+        if not name:
+            return _err(rid, -32602, "workflow.run requires 'name'")
+        key = ctx.resolve_alias(f"{_wf.WF_ALIAS_PREFIX}{name}")
+        if not key:
+            return _err(rid, -32001, f"Workflow '{name}' not found.")
+        meta = ctx.get_meta(key) or {}
+        if meta.get("type") != _wf.META_WORKFLOW:
+            return _err(rid, -32001, f"'{name}' is not a workflow definition.")
+        script = ctx.get_chunk(key) or ""
+        if not script:
+            return _err(rid, -32001, f"Workflow '{name}' has no script body.")
+        # One bounded JCL job, one csl.run step: the CSL runtime resolves the script's
+        # named $vars inline; Harmonia provides the orchestration around it.
+        job = JCLJob(
+            owner=session.client_id,
+            label=f"wf:{name}",
+            steps=[JCLStep(method="csl.run", params={"script": script})],
+            fail_fast=True,
+        )
+        self.harmonia.submit_job(job, job_class=CLASS_BATCH_ATOM)
+        return _ok(rid, {"status": "submitted", "workflow": name,
+                         "job_id": job.job_id, "job_label": job.label})
+
+    def _handle_workflow_ls(self, rid, data, session, ctx) -> dict:
+        rows = ctx.get_aliases_by_pattern(f"{_wf.WF_ALIAS_PREFIX}%") or []
+        out = []
+        for r in rows:
+            alias = r.get("alias") if isinstance(r, dict) else r
+            key   = r.get("key") if isinstance(r, dict) else ctx.resolve_alias(alias)
+            meta  = (ctx.get_meta(key) or {}) if key else {}
+            if meta.get("type") == _wf.META_WORKFLOW:
+                out.append({"name": meta.get("name", alias[len(_wf.WF_ALIAS_PREFIX):]),
+                            "alias": alias, "description": meta.get("description", "")})
+        return _ok(rid, {"workflows": out, "count": len(out)})
+
+    def _handle_workflow_get(self, rid, data, session, ctx) -> dict:
+        name = (data.get("name") or "").strip()
+        if not name:
+            return _err(rid, -32602, "workflow.get requires 'name'")
+        key = ctx.resolve_alias(f"{_wf.WF_ALIAS_PREFIX}{name}")
+        if not key:
+            return _err(rid, -32001, f"Workflow '{name}' not found.")
+        meta = ctx.get_meta(key) or {}
+        return _ok(rid, {"name": name, "key": key,
+                         "description": meta.get("description", ""),
+                         "script": ctx.get_chunk(key) or ""})
 
     # ------------------------------------------------------------------
     # Locale (locale.*)
@@ -5347,12 +5581,13 @@ class KernelDispatcher:
     def _handle_cross_axes(self, rid, data, session, ctx, scopes) -> dict:
         concepts_raw = data.get("concepts", [])
         if isinstance(concepts_raw, str):
-            concepts = concepts_raw.split()
+            concepts = [c.strip() for c in concepts_raw.split() if c.strip()]
         else:
-            concepts = list(concepts_raw)
+            concepts = [c for c in list(concepts_raw) if c]
 
-        if not concepts:
-            return _err(rid, -32602, "sys.cross.axes requires 'concepts'")
+        # No concepts specified: enumerate all registered models
+        if not concepts and _concept_registry:
+            concepts = list(_concept_registry.get_concept_prefixes().values())
 
         set_names: List[str] = []
         resolved_names: List[str] = []
@@ -5363,7 +5598,7 @@ class KernelDispatcher:
                 resolved_names.append(c)
 
         if not set_names:
-            return _err(rid, -32002, "None of the specified concepts have an active root in this session.")
+            return _ok(rid, {"concepts": [], "available_axes": [], "recommended": None})
 
         try:
             result = ctx.cross_axes(set_names, resolved_names, allowed_scopes=scopes)

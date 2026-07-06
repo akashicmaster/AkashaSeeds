@@ -52,6 +52,8 @@ import importlib.util
 import logging
 from typing import List, Dict, Any, Optional, Callable, Set
 from lib.akasha.core import AkashaCore
+from lib.akasha.jcl.workspace_context import active as _workspace_active
+from lib.akasha.jcl.workspace_context import guard as _workspace_guard
 
 _onto_logger = logging.getLogger("Akasha.Ontology")
 
@@ -206,6 +208,11 @@ class AkashaEngine:
                status: str = "verified", context_links: List[Dict] = None, 
                scopes: List[str] = None) -> Dict[str, str]:
         """Commits an atom to the graph and assigns it to multidimensional scope sets."""
+        # Single-route guard (ENFORCE=True): a memory write MUST run under a Harmonia
+        # workspace or an explicit system_context exemption, else this raises. (During
+        # the historical rollout the guard ran in observe mode and only recorded
+        # unguarded writes for a coverage map; it now rejects them.)
+        _workspace_guard(author)
         key = hashlib.sha256(content.encode('utf-8')).hexdigest() if content else uuid.uuid4().hex
         meta_str = json.dumps(meta, ensure_ascii=False) if meta else "{}"
         
@@ -244,10 +251,18 @@ class AkashaEngine:
             is_primitive = role in [
                 "token", "annotation", "meta:title", "meta:author", "meta:isbn"
             ] or (meta and meta.get("type") == "primitive:chunk")
-            
+
             if not is_primitive:
                 self._commit_listener(key, content, meta, scopes or [])
-            
+
+        # 6. Workspace tracking — if a tracked Harmonia workspace is active on this
+        # thread and this is the tracking engine, record the key so the unit is
+        # reversible (rollback drops it; commit releases it). Untracked → no-op
+        # (one thread-local read). See jcl/workspace_context.
+        _tx, _eng = _workspace_active()
+        if _tx and _eng is self:
+            self.core.add_to_collection(_tx, key)
+
         return {"key": key, "status": "committed"}
 
     def put_chunk(self, content: str, meta: dict = None, author: str = "system", 
@@ -419,6 +434,7 @@ class AkashaEngine:
 
     def put_link(self, src: str, dst: str, rel: str = "sys:associated_with",
                  w: float = 1.0, author: str = "system", status: str = "verified"):
+        _workspace_guard(author)
         self.core.put_link_raw(src, dst, rel, w=w, author=author, status=status, ts=time.time())
         if rel in _AUTO_COLLECTION_RELS:
             nucleus = getattr(self, '_nucleus', None)
@@ -602,6 +618,19 @@ class AkashaEngine:
             if bare_lower != bare and not self.core.get_key_by_alias(bare_lower):
                 self.core.put_alias(key, bare_lower)
 
+        # Cross-DB bundle tracking (orchestration-architecture.md E.4). If this NEW
+        # proto-word was created inside a tracked conversation bundle, record it in the
+        # nucleus's ws:{tx_id} set so the bundle's nucleus footprint is durable and
+        # reconcilable by the boot orphan scan. Proto-words are commit-forward: shared,
+        # content-addressed, and possibly referenced by already-committed bundles, so
+        # rollback / the orphan scan clear the tracking set but never drop the atom.
+        _txid, _ = _workspace_active()
+        if _txid:
+            try:
+                (nucleus if nucleus else self).core.add_to_collection(_txid, key)
+            except Exception:
+                pass
+
         _onto_logger.debug("[protoword:auto] '%s' → %s (nucleus=%s)", bare, key[:8], nucleus is not None)
         return key
 
@@ -638,9 +667,7 @@ class AkashaEngine:
         Returns the number of alias derivations processed.
         """
         # Snapshot pending work BEFORE drain so we can post-process after rows are gone
-        pending = self.core.conn.execute(
-            "SELECT key, alias FROM pending_derivations ORDER BY id"
-        ).fetchall()
+        pending = self.core.peek_pending_derivations()
         n = self.core.drain_derivations()
         seen: set = set()
         for row in pending:
@@ -724,6 +751,14 @@ class AkashaEngine:
     )
 
     def add_to_set(self, name: str, key: str):
+        # `ws:` is RESERVED for Harmonia workspace tracking sets (ws:{tx_id}). The
+        # boot orphan scan drops the members of any stray ws:* collection, so letting
+        # user-facing set membership create one would risk deleting real atoms on the
+        # next restart. Internal tracking bypasses this method (it calls
+        # core.add_to_collection directly), so this reservation costs it nothing.
+        # `wf:` is RESERVED for named workflow definitions (jcl/workflow_vocab).
+        if name.startswith("ws:") or name.startswith("wf:"):
+            raise ValueError(f"Set name prefix '{name.split(':', 1)[0]}:' is reserved for internal use.")
         _SYS_PREFIXES = ("leaf:", "ns:", "lang:", "scope:", "sys:")
         if not any(name.startswith(p) for p in _SYS_PREFIXES):
             proto_key = self._ensure_protoword(name)
@@ -1021,9 +1056,10 @@ class AkashaEngine:
 
         # ── target auto-detection ─────────────────────────────────────────
         if target.startswith("set:"):
-            members  = self.core.get_collection_members(target)[: self._TREE_MAX_CHILDREN]
+            _member_rows = self.list_set(target, allowed_scopes=None)
+            members = [r["key"] for r in _member_rows]
             children_list: List[Dict] = []
-            for k in members:
+            for k in members[: self._TREE_MAX_CHILDREN]:
                 if total[0] >= self._TREE_MAX_NODES:
                     break
                 if not _visible(k):
@@ -1564,20 +1600,21 @@ class AkashaEngine:
     def get_alias_collision_log(self, since: float = 0.0, limit: int = 200, unresolved_only: bool = False) -> list:
         return self.core.get_alias_collision_log(since=since, limit=limit, unresolved_only=unresolved_only)
     def get_system_stats(self) -> Dict[str, Any]:
-        stats = {}
-        with self.core.conn as conn:
-            stats["total_atoms"] = conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
-            stats["total_links"] = conn.execute("SELECT COUNT(*) FROM links").fetchone()[0]
-            stats["total_aliases"] = conn.execute("SELECT COUNT(*) FROM aliases").fetchone()[0]
-            stats["total_collections"] = conn.execute("SELECT COUNT(DISTINCT name) FROM collections").fetchone()[0]
+        t = self.core.get_store_totals()
+        stats = {
+            "total_atoms":       t["chunks"],
+            "total_links":       t["links"],
+            "total_aliases":     t["aliases"],
+            "total_collections": t["collections"],
+        }
         # Include nucleus (vocabulary and shared atoms live there, not in local DB)
         nucleus = getattr(self, '_nucleus', None)
         if nucleus:
-            nc = nucleus.core.conn
-            stats["total_atoms"]       += nc.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
-            stats["total_links"]       += nc.execute("SELECT COUNT(*) FROM links").fetchone()[0]
-            stats["total_aliases"]     += nc.execute("SELECT COUNT(*) FROM aliases").fetchone()[0]
-            stats["total_collections"] += nc.execute("SELECT COUNT(DISTINCT name) FROM collections").fetchone()[0]
+            nt = nucleus.core.get_store_totals()
+            stats["total_atoms"]       += nt["chunks"]
+            stats["total_links"]       += nt["links"]
+            stats["total_aliases"]     += nt["aliases"]
+            stats["total_collections"] += nt["collections"]
         return stats
 
 class NucleusEngine:
@@ -1607,8 +1644,7 @@ class NucleusEngine:
         return self.core.get_chunk_raw(key)
 
     def get_aliases_by_key(self, key: str) -> List[str]:
-        rows = self.core.conn.execute("SELECT alias FROM aliases WHERE key=?", (key,)).fetchall()
-        return [r["alias"] for r in rows]
+        return self.core.get_aliases_by_key(key)
 
     # --- Universal atom write (librarian / shared-knowledge mode) ---
     def put_atom(self, content: str, meta: dict, author: str, alias: str = None) -> str:
@@ -1729,18 +1765,14 @@ class NucleusEngine:
                                            author="system", status="inferred", ts=time.time())
             else:
                 self.core.put_alias(key, alias)
-            # Route collection derivation through the WriteQueue so it serialises
-            # with all other @_queued writes and never races the WQ thread.
-            _core = self.core
-            _alias, _key = alias, key
-            _core._wq.submit(lambda: (_core._derive_alias_collections(_alias, _key),
-                                      _core._commit()))
+            # Collection derivation is serialised by the backend (its own durable
+            # write path) — the composite layer does not touch the write queue.
+            self.core.derive_alias_collections(alias, key)
             self._resolve_pending_links_for_alias(alias, key)
         else:
             existing = self.core.get_key_by_alias(alias)
             if existing is None:
-                self.core.put_alias(key, alias)
-                self.core._commit()
+                self.core.put_alias(key, alias)   # put_alias already commits
                 self._resolve_pending_links_for_alias(alias, key)
             elif existing != key:
                 self.core.put_link_raw(key, existing, "specializes",
@@ -1753,6 +1785,9 @@ class NucleusEngine:
 
     # --- Delegation set support on nucleus (mirrors GroupEngine interface) ---
     def add_to_set(self, name: str, key: str) -> None:
+        # 'ws:' (workspace tracking) and 'wf:' (workflow defs) are reserved prefixes.
+        if name.startswith("ws:") or name.startswith("wf:"):
+            raise ValueError(f"Set name prefix '{name.split(':', 1)[0]}:' is reserved for internal use.")
         self.core.add_to_collection(name, key)
 
     def list_set(self, name: str) -> List[dict]:
@@ -1795,8 +1830,7 @@ class GroupEngine:
         return self.core.get_chunk_raw(key)
 
     def get_aliases_by_key(self, key: str) -> List[str]:
-        rows = self.core.conn.execute("SELECT alias FROM aliases WHERE key=?", (key,)).fetchall()
-        return [r["alias"] for r in rows]
+        return self.core.get_aliases_by_key(key)
 
     def check_access(self, key: str) -> bool:
         return self.core.check_chunk_access_any(key, [self.scope])
@@ -1818,6 +1852,9 @@ class GroupEngine:
 
     # --- Delegation set support ---
     def add_to_set(self, name: str, key: str) -> None:
+        # 'ws:' (workspace tracking) and 'wf:' (workflow defs) are reserved prefixes.
+        if name.startswith("ws:") or name.startswith("wf:"):
+            raise ValueError(f"Set name prefix '{name.split(':', 1)[0]}:' is reserved for internal use.")
         self.core.add_to_collection(name, key)
 
     def list_set(self, name: str) -> List[dict]:

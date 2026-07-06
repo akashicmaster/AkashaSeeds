@@ -56,7 +56,10 @@ class QuadrantConcept(BaseConcept):
     @staticmethod
     def _to_float(s: Any) -> Optional[float]:
         try:
-            return float(str(s).replace(",", "").replace("_", ""))
+            sv = str(s)
+            if sv.startswith("[") and "\n" in sv:
+                sv = sv.split("\n", 1)[1]
+            return float(sv.replace(",", "").replace("_", ""))
         except (ValueError, TypeError):
             return None
 
@@ -130,7 +133,9 @@ class QuadrantConcept(BaseConcept):
             if rel_lbl:
                 lbl = attr_map.get(label) or (self.cortex.get_chunk(k) or "")[:24]
             else:
-                lbl = (self.cortex.get_chunk(k) or "")[:24]
+                # Prefer rec:content attribute over raw atom content so that
+                # lens.flatten snap atoms show the source's readable name
+                lbl = attr_map.get("content") or (self.cortex.get_chunk(k) or "")[:24]
 
             points.append({"label": lbl, "x": x_f, "y": y_f})
 

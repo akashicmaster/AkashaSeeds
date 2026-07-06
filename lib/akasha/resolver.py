@@ -59,7 +59,9 @@ class ContextResolver:
             # $it always points to what the user last wrote, not an internal node
             return getattr(session, 'last_written_id', None) or (_history_key(history[0]) if history else None)
         if target == "$0":
-            return _history_key(history[0]) if history else None
+            # Prefer last_written_id when set — concept model ops (rec.new etc.) set it
+            # to the primary created atom, which may differ from history[0] (last put_chunk)
+            return getattr(session, 'last_written_id', None) or (_history_key(history[0]) if history else None)
 
         if str(target).startswith("$") and target[1:].isdigit():
             idx = int(target[1:])

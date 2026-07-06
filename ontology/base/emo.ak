@@ -1,5 +1,5 @@
 # Akasha ontology — namespace: emo
-# atoms: 29
+# atoms: 30
 
 def "emo:admiration" "Respect and warm approval."
 
@@ -60,6 +60,10 @@ def "emo:interest" "The state of wanting to know or learn about something."
 def "emo:joy" "A feeling of great pleasure and happiness."
 
 def "emo:nostalgia" "A sentimental longing for the past."
+
+def "emo:passion" "Intense enthusiasm or compelling desire for something."
+ln emo:passion emo:excitement sys:is_a
+ln emo:passion emo:joy sys:is_a
 ln emo:nostalgia emo:sadness sys:is_a
 ln emo:nostalgia emo:joy sys:is_a
 ln emo:nostalgia concept:home calc:associated_with

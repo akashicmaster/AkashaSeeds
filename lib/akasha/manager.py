@@ -55,6 +55,14 @@ class AkashaSession:
         self.nucleus = nucleus if nucleus is not None else NucleusEngine(f"{base_dir}/central/nucleus.db")
         self.local_cortex.attach_nucleus(self.nucleus)  # proto-word dual-write + fallback
 
+        # Boot orphan scan (slice 4) for this cell's private cortex: roll back any
+        # conversation bundle whose process crashed mid-transaction (its ws:{tx_id}
+        # tracking set survived without a commit/rollback). drop_members=True — the
+        # cortex atoms are private and uncommitted, so dropping them restores the
+        # crash-stop 'last write only' guarantee. Runs once at cortex open, before the
+        # session serves any request; a fresh/guest cortex has no orphans (fast no-op).
+        HarmoniaEngine.reconcile_orphan_workspaces(self.local_cortex, drop_members=True)
+
         # Group knowledge spaces — shared engines passed in from AkashaManager pool.
         # If group_engines is provided (normal path via AkashaManager), use it directly.
         # Fallback: create per-session (backwards compat / standalone use).
@@ -121,14 +129,20 @@ class AkashaSession:
         
         # Secure the session anchor so only the owner (and admins) can see/modify it
         private_scopes = [f"owner:user_{self.client_id}", f"view:user_{self.client_id}"]
-        
-        node_id = self.local_cortex.put_chunk(
-            content=f"Shared Consciousness Anchor for {self.client_id}",
-            meta=initial_meta,
-            author=self.client_id,
-            scopes=private_scopes
-        )
-        self.local_cortex.set_alias(node_id, alias_name)
+
+        # Session-lifecycle write, not a user memory op: it runs at session
+        # creation, outside any request workspace. Exempt it from the single-route
+        # guard via system_context (still content-addressed and auditable — the
+        # exemption is only from the workspace requirement).
+        from lib.akasha.jcl.workspace_context import system_context as _sys_ctx
+        with _sys_ctx():
+            node_id = self.local_cortex.put_chunk(
+                content=f"Shared Consciousness Anchor for {self.client_id}",
+                meta=initial_meta,
+                author=self.client_id,
+                scopes=private_scopes
+            )
+            self.local_cortex.set_alias(node_id, alias_name)
         return node_id
 
     # --- Locale Persistence ---
@@ -197,6 +211,12 @@ class AkashaManager:
         _os.makedirs(_os.path.join(base_dir, "central"), exist_ok=True)
         self.shared_nucleus = NucleusEngine(nucleus_path)
         atexit.register(self.shared_nucleus.close)
+
+        # Boot orphan scan (slice 4): heal any nucleus tracking sets left by a bundle
+        # whose process crashed mid-transaction on the previous run. Runs before any
+        # session exists, so nothing live can be mistaken for an orphan. Proto-words
+        # are kept (drop_members=False) — shared/content-addressed, dropping is unsafe.
+        HarmoniaEngine.reconcile_orphan_workspaces(self.shared_nucleus, drop_members=False)
 
         # Seed ref: cognitive primitives (idempotent — no-op if already present).
         # Must run before .ak ontology loading and before any user sessions exist.

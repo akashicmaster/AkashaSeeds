@@ -1,9 +1,10 @@
 # Akasha ontology — namespace: color
 # Basic colour atoms; each linked to emotions and primal concepts.
 # Warm / cool / neutral sets for palette-level queries.
-# atoms: 13
+# atoms: 13  (aliases added: red, yellow, green)
 
 def "color:red" "Red — the colour of blood and fire; warm, energetic, intense."
+al color:red red
 ln color:red emo:anger calc:associated_with
 ln color:red emo:romance calc:associated_with
 ln color:red emo:excitement calc:associated_with
@@ -20,6 +21,7 @@ set.add name="set:color:warm" id="color:orange"
 set.add name="set:color:index" id="color:orange"
 
 def "color:yellow" "Yellow — the colour of sunlight and gold; bright, optimistic, warm."
+al color:yellow yellow
 ln color:yellow emo:joy calc:associated_with
 ln color:yellow emo:awe calc:associated_with
 ln color:yellow concept:sun thesaurus:related
@@ -35,6 +37,7 @@ set.add name="set:color:warm" id="color:pink"
 set.add name="set:color:index" id="color:pink"
 
 def "color:green" "Green — the colour of leaves and growth; calm, vital, balanced."
+al color:green green
 ln color:green emo:calmness calc:associated_with
 ln color:green emo:relief calc:associated_with
 ln color:green concept:nature thesaurus:related

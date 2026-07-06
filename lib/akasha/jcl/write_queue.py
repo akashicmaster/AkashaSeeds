@@ -31,6 +31,7 @@ Role in the homoiconic job graph:
 """
 
 import queue
+import itertools
 import threading
 import concurrent.futures
 import logging
@@ -41,7 +42,15 @@ logger = logging.getLogger("Harmonia.WriteQueue")
 
 class WriteQueue:
     def __init__(self, name: str = "write-queue"):
-        self._q: queue.SimpleQueue = queue.SimpleQueue()
+        # PriorityQueue, not FIFO: when several writer threads have work waiting,
+        # the single worker serves the lowest priority number first (0=HIGH
+        # conversation .. 3=IDLE background), so an interactive write is never made
+        # to wait behind queued background writes at this — the actual — write
+        # serialization point. A monotonic seq breaks ties FIFO within a priority and
+        # guarantees the (fn, future) payload is never compared. Still ONE worker:
+        # priority changes ORDER, never adds parallelism (serial-writes invariant).
+        self._q: "queue.PriorityQueue" = queue.PriorityQueue()
+        self._seq = itertools.count()
         self._worker: Optional[threading.Thread] = None
         t = threading.Thread(target=self._run, daemon=True, name=name)
         t.start()
@@ -49,7 +58,7 @@ class WriteQueue:
     def _run(self) -> None:
         self._worker = threading.current_thread()
         while True:
-            item = self._q.get()
+            _prio, _seq, item = self._q.get()
             if item is None:       # shutdown sentinel
                 return
             fn, future = item
@@ -58,20 +67,30 @@ class WriteQueue:
             except Exception as exc:
                 future.set_exception(exc)
 
-    def submit(self, fn: Callable[[], Any]) -> Any:
+    def submit(self, fn: Callable[[], Any], priority: Optional[int] = None) -> Any:
         """
         Submit a zero-argument callable; block until it executes and return
         its result.  Exceptions from fn propagate to the calling thread.
+
+        Priority (lower = served first) defaults to the priority of the active
+        Harmonia workspace on the calling thread (workspace_context.current_priority
+        — HIGH for a conversation turn, LOW for background jobs), so callers need no
+        changes: the projection Harmonia computed at admission flows through to the
+        write point automatically. An explicit priority argument overrides it.
 
         If called from within the worker thread (re-entrant call), fn()
         runs directly to avoid deadlock.
         """
         if threading.current_thread() is self._worker:
             return fn()
+        if priority is None:
+            from lib.akasha.jcl.workspace_context import current_priority
+            priority = current_priority()
         f: concurrent.futures.Future = concurrent.futures.Future()
-        self._q.put((fn, f))
+        self._q.put((int(priority), next(self._seq), (fn, f)))
         return f.result()
 
     def shutdown(self) -> None:
         """Signal the worker to stop after draining pending items."""
-        self._q.put(None)
+        # Highest priority number so it drains only after real work already queued.
+        self._q.put((9999, next(self._seq), None))

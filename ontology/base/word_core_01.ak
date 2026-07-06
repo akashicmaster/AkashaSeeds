@@ -3985,7 +3985,7 @@ def "word:en:technique" "A practical method or art applied to some particular ta
 def "word:en:stared" "Look at with fixed eyes."
 
 
-def "word:en:notice" "An announcement containing information about an event; ; ; "a notice of sale."
+def "word:en:notice" "An announcement containing information about an event; ; ; a notice of sale."
 
 
 def "word:en:formula" "A group of symbols that make a mathematical statement."

@@ -154,6 +154,12 @@ ln hill concept:mountain thesaurus:related
 ln star concept:star thesaurus:related
 ln stars concept:star thesaurus:related
 
+# ── Mythology proto-word bridges ───────────────────────────────────────────────
+
+ln myth concept:mythology thesaurus:related
+ln myths concept:mythology thesaurus:related
+ln mythology concept:mythology thesaurus:related
+
 # ── Kinship extended ───────────────────────────────────────────────────────────
 
 ln grandmother kin:ancestor_of thesaurus:related

@@ -283,6 +283,16 @@ class AkashaBackend(ABC):
     def drain_derivations(self) -> int:
         """Process all pending derivations. Returns count processed."""
 
+    @abstractmethod
+    def derive_alias_collections(self, alias: str, key: str) -> None:
+        """Derive and persist collection memberships implied by an alias's
+        namespace structure, serialised as a single durable write.
+
+        Replaces callers reaching into a backend-private write queue: the backend
+        owns how this is made durable and ordered (WriteQueue commit for SQLite,
+        a batched put for a cloud backend, etc.).
+        """
+
     # ── Pending Links (DTN) ────────────────────────────────────────────────────
 
     @abstractmethod
@@ -362,4 +372,48 @@ class AkashaBackend(ABC):
         Used by onto.scope.drop to find atoms to delete.
         Implementations must query chunk_access directly — do NOT iterate
         get_all_keys() + check_chunk_access_any(); that is O(n) round-trips.
+        """
+
+    # ── Aggregates & existence ──────────────────────────────────────────────────
+
+    @abstractmethod
+    def get_store_totals(self) -> dict:
+        """Return whole-store counts: {"chunks", "links", "aliases", "collections"}.
+
+        A single primitive so upper layers never issue COUNT(*) themselves.
+        Non-SQL backends may maintain running counters or a metadata record.
+        """
+
+    @abstractmethod
+    def collection_exists(self, name: str) -> bool:
+        """True if the named collection has at least one member.
+
+        Cheaper than get_collection_members(name) when only existence is needed
+        (a KV backend can answer with a single bounded lookup / SCAN LIMIT 1).
+        """
+
+    # ── Alias collision log ──────────────────────────────────────────────────────
+
+    @abstractmethod
+    def clear_alias_collision_log(self) -> int:
+        """Delete all alias-collision records. Returns the number removed."""
+
+    # ── Deferred Derivation Queue (peek) ─────────────────────────────────────────
+
+    @abstractmethod
+    def peek_pending_derivations(self) -> List[dict]:
+        """Return the pending derivation rows [{key, alias}] WITHOUT draining them.
+
+        Lets a caller snapshot the queue before drain_derivations() removes the
+        rows, so post-processing can run against what was drained.
+        """
+
+    # ── Lifecycle ────────────────────────────────────────────────────────────────
+
+    @abstractmethod
+    def close(self) -> None:
+        """Flush/checkpoint and release resources (connections, write queue).
+
+        Called on graceful shutdown and when a per-slot store is wiped. A cloud
+        backend closes its client/session; a hardware backend flushes its cache.
         """

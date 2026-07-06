@@ -71,6 +71,9 @@ def _infer_type(values: List[str]) -> str:
 
     for v in sample:
         sv = v.strip()
+        # Strip [key]\n header written by the def command before type-probing
+        if sv.startswith("[") and "\n" in sv:
+            sv = sv.split("\n", 1)[1].strip()
         if sv.lower() in bool_words:
             counts["bool"] += 1
             continue

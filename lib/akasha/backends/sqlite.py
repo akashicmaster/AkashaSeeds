@@ -488,6 +488,17 @@ class SQLiteBackend(AkashaBackend):
             self._commit()
         return count
 
+    def peek_pending_derivations(self) -> List[dict]:
+        rows = self.conn.execute(
+            "SELECT key, alias FROM pending_derivations ORDER BY id"
+        ).fetchall()
+        return [{"key": r["key"], "alias": r["alias"]} for r in rows]
+
+    @_queued
+    def derive_alias_collections(self, alias: str, key: str) -> None:
+        self._derive_alias_collections(alias, key)
+        self._commit()
+
     # ── Aliases ────────────────────────────────────────────────────────────────
 
     @_queued
@@ -549,6 +560,12 @@ class SQLiteBackend(AkashaBackend):
             "UPDATE alias_collision_log SET resolved = 1 WHERE alias = ? AND resolved = 0",
             (alias,)
         )
+        self._commit()
+        return cur.rowcount
+
+    @_queued
+    def clear_alias_collision_log(self) -> int:
+        cur = self.conn.execute("DELETE FROM alias_collision_log")
         self._commit()
         return cur.rowcount
 
@@ -709,6 +726,11 @@ class SQLiteBackend(AkashaBackend):
             "SELECT key FROM collections WHERE name=?", (name,)
         ).fetchall()]
 
+    def collection_exists(self, name: str) -> bool:
+        return self.conn.execute(
+            "SELECT 1 FROM collections WHERE name=? LIMIT 1", (name,)
+        ).fetchone() is not None
+
     def get_collections_for_key(self, key: str) -> List[str]:
         return [r["name"] for r in self.conn.execute(
             "SELECT name FROM collections WHERE key=?", (key,)
@@ -866,6 +888,16 @@ class SQLiteBackend(AkashaBackend):
             "SELECT src, dst, rel, author, updated_at as timestamp FROM links WHERE updated_at > ?",
             (since,)
         ).fetchall()]
+
+    def get_store_totals(self) -> dict:
+        """Whole-store counts in one primitive (chunks/links/aliases/collections)."""
+        c = self.conn
+        return {
+            "chunks":      c.execute("SELECT COUNT(*) FROM chunks").fetchone()[0],
+            "links":       c.execute("SELECT COUNT(*) FROM links").fetchone()[0],
+            "aliases":     c.execute("SELECT COUNT(*) FROM aliases").fetchone()[0],
+            "collections": c.execute("SELECT COUNT(DISTINCT name) FROM collections").fetchone()[0],
+        }
 
     def get_namespace_counts(self, depth: int = 1) -> List[dict]:
         """

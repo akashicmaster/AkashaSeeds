@@ -3,7 +3,7 @@
 # Each is richly connected to emotions, colours and sensory atoms so that
 # graph traversal from any concept fans out across multiple domains.
 # These atoms also serve as stable targets for the bare-word links in emo.ak.
-# atoms: 35
+# atoms: 38
 
 def "concept:fire" "Fire — heat and light from combustion; source of warmth, cooking and danger."
 ln concept:fire emo:passion calc:associated_with
@@ -271,3 +271,27 @@ ln concept:star emo:nostalgia calc:associated_with
 ln concept:star emo:romance calc:associated_with
 ln concept:star color:gold thesaurus:related
 ln concept:star color:white thesaurus:related
+
+# ── Mythology ──────────────────────────────────────────────────────────────────
+
+def "concept:mythology" "Mythology — the body of traditional stories explaining nature, history and customs of a people through gods, heroes and supernatural events."
+al concept:mythology mythology
+ln concept:mythology emo:awe calc:associated_with
+ln concept:mythology emo:nostalgia calc:associated_with
+ln concept:mythology emo:entrancement calc:associated_with
+
+def "concept:icarus" "Icarus — the youth of Greek myth who flew too close to the sun on wax wings; symbol of hubris, ambition and fatal overreach."
+al concept:icarus icarus
+ln concept:icarus emo:awe calc:associated_with
+ln concept:icarus emo:fear calc:associated_with
+ln concept:icarus emo:excitement calc:associated_with
+ln concept:icarus concept:mythology sys:part_of
+set.add name="set:concept:myth" id="concept:icarus"
+
+def "concept:daedalus" "Daedalus — the craftsman of Greek myth who built the labyrinth and fashioned wings; symbol of ingenuity, artistry and the price of creation."
+al concept:daedalus daedalus
+ln concept:daedalus emo:admiration calc:associated_with
+ln concept:daedalus emo:awe calc:associated_with
+ln concept:daedalus emo:satisfaction calc:associated_with
+ln concept:daedalus concept:mythology sys:part_of
+set.add name="set:concept:myth" id="concept:daedalus"

@@ -6348,7 +6348,7 @@ ln precedented unprecedented sys:antonym
 def "word:en:squarely" "Directly and without evasion; not roundabout."
 
 
-def "word:en:manufactured" "Put together out of artificial or natural components or parts; ; ; He manufactured a popular cereal"."
+def "word:en:manufactured" "Put together out of artificial or natural components or parts; ; ; He manufactured a popular cereal."
 
 
 def "word:en:artillery" "Large but transportable armament."

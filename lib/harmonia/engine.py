@@ -140,6 +140,10 @@ class HarmoniaTransaction:
     name: str
     start_time: float
     status: str = "active" # active, committed, rolled_back
+    # When True, every graph write on the owning thread is recorded into this tx's
+    # tracking set (jcl/workspace_context), making the unit reversible: rollback
+    # drops the tracked keys, commit releases them. Untracked = legacy behaviour.
+    tracked: bool = False
 
 class HarmoniaEngine:
     """
@@ -152,7 +156,68 @@ class HarmoniaEngine:
         self._plugins: Dict[str, Callable] = {}
         # Tracks live transactional workspaces to prevent state corruption
         self._active_workspaces: Dict[str, HarmoniaTransaction] = {}
+        # JCL executor — Harmonia's initiator (see docstring Phase 1-4). Attached at
+        # boot by the kernel; Harmonia owns job submission from here on. JCL is
+        # subordinate to Harmonia, not a sibling of the kernel.
+        self._jcl = None
         logger.debug("[HarmoniaEngine] Motor Cortex initialized.")
+
+    # =========================================================================
+    # Job admission — the single route for background/memory-mutating jobs
+    # =========================================================================
+
+    def attach_jcl(self, jcl_worker) -> None:
+        """Mount the JCL executor as Harmonia's initiator (called once at boot)."""
+        self._jcl = jcl_worker
+
+    @property
+    def jcl(self):
+        """The JCL executor Harmonia drives (None if unavailable)."""
+        return self._jcl
+
+    def submit_job(self, job, job_class: str = None):
+        """
+        Single admission point for JCL jobs. All background / memory-mutating work
+        enters here so Harmonia — not the kernel — owns scheduling.
+
+        Admission assigns the job's write-transaction CLASS (Appendix C taxonomy),
+        which is the primary scheduling axis. Priority is a *projection* over the
+        scheduling axes (today: class only — see priority_of); more axes (owner,
+        cost, deadline) can be added later without changing callers, because memory
+        is modelled as a multi-dimensional tensor.
+
+        Phase 1 pre-admission and Phase 2 priority ordering both hook in here. The
+        class is recorded and its priority computed at admission, and the executor
+        HONOURS that projection: the JCL worker queue and the WriteQueue are both
+        priority queues (slice 3), so higher-priority work is scheduled first — a
+        single worker still runs one unit at a time (priority changes ORDER, never
+        parallelism). Returns the submitted job, or None if no executor is attached.
+        """
+        if self._jcl is None:
+            return None
+        if job_class is not None:
+            job.job_class = job_class
+        # Project the scheduling axes onto the scalar the executor orders by.
+        # Done here, once, at admission — the executor never re-derives it.
+        job.priority = self.priority_of(job.job_class)
+        return self._jcl.submit(job)
+
+    @staticmethod
+    def priority_of(job_class: str) -> int:
+        """Project a job class onto a scalar priority (lower = scheduled first).
+
+        This is the one place the class→priority mapping lives. When a second axis
+        (owner/session-type, cost, deadline) is added, this becomes a projection
+        over several axes rather than a single lookup — callers do not change.
+        """
+        from lib.akasha.jcl.job import (CLASS_CONVERSATION, CLASS_BATCH_ATOM,
+                                        CLASS_LINK, CLASS_MAINTENANCE)
+        return {
+            CLASS_CONVERSATION: 0,   # HIGH  — perceived-immediate
+            CLASS_BATCH_ATOM:   1,   # NORMAL — consistent as a set
+            CLASS_LINK:         2,   # LOW   — eventual, resumable
+            CLASS_MAINTENANCE:  3,   # IDLE  — housekeeping
+        }.get(job_class, 2)
 
     def register_plugin(self, executor_name: str, func: Callable):
         """Registers a callable function or object as an executable plugin."""
@@ -192,33 +257,63 @@ class HarmoniaEngine:
     # Workspace & Transaction Management
     # =========================================================================
 
-    def begin_workspace(self, cortex: Any, label: str) -> str:
+    def begin_workspace(self, cortex: Any, label: str, tracked: bool = False,
+                        evidence: bool = True, priority: int = 1) -> str:
         """
-        Starts a new atomic Workspace transaction and records the origin of 
+        Starts a new atomic Workspace transaction and records the origin of
         evidence as an un-mutable Atom.
+
+        tracked=True makes the unit *reversible*: from here until commit/rollback,
+        every graph write this thread's engine commits is recorded into the tx's
+        tracking set (via jcl/workspace_context), so rollback drops exactly those
+        keys. The evidence atom below is written BEFORE the context is activated, so
+        it is never rolled back (audit trail survives a rollback).
+
+        evidence=False skips the origin atom — used for the lightweight per-turn
+        conversation workspace, where the atoms of the bundle (and JCL/audit logs)
+        are the record and an extra evidence write per keystroke-turn would only
+        add latency to the perceived-immediate critical path.
+
+        priority is the projection Harmonia computed at admission (0=HIGH
+        conversation .. 3=IDLE). It is carried on the workspace-presence stack and
+        read by the WriteQueue so this workspace's writes are ordered at the single
+        serialization point — interactive ahead of background — without any lock.
         """
         tx_id = f"ws:{label}:{int(time.time() * 1000)}"
-        
+
+        # Mark workspace presence on this thread for the single-route guard. Done
+        # BEFORE the evidence write so that write (and every write until commit/
+        # rollback) counts as orchestrated — tracked or not. Tracking (key recording
+        # for rollback) is a separate, tracked-only concern activated further down.
+        from lib.akasha.jcl import workspace_context as _wctx
+        _wctx.enter_workspace(priority)
+
         # Sprout a system-level evidence Atom to track the history of this transaction
-        meta = {
-            "type": "sys:workspace_info",
-            "label": label,
-            "status": "active",
-            "start_time": time.time()
-        }
-        
-        cortex.put_chunk(
-            content=f"Workspace Execution Origin: {label}", 
-            meta=meta, 
-            author="system.harmonia", 
-            scopes=["scope:sys:universal", "view:public"]
-        )
-        
+        if evidence:
+            meta = {
+                "type": "sys:workspace_info",
+                "label": label,
+                "status": "active",
+                "start_time": time.time()
+            }
+
+            cortex.put_chunk(
+                content=f"Workspace Execution Origin: {label}",
+                meta=meta,
+                author="system.harmonia",
+                scopes=["scope:sys:universal", "view:public"]
+            )
+
         self._active_workspaces[tx_id] = HarmoniaTransaction(
-            tx_id=tx_id, name=label, start_time=time.time()
+            tx_id=tx_id, name=label, start_time=time.time(), tracked=tracked
         )
-        
-        logger.debug(f"[Harmonia] Workspace [{tx_id}] opened.")
+
+        if tracked:
+            # Activate AFTER the evidence write so evidence is not itself tracked.
+            from lib.akasha.jcl import workspace_context as _wctx
+            _wctx.begin(tx_id, cortex)
+
+        logger.debug(f"[Harmonia] Workspace [{tx_id}] opened (tracked=%s)." % tracked)
         return tx_id
 
     def execute_with_evidence(self, cortex: Any, tx_id: str, executor: str, input_data: Any, **params) -> Dict[str, Any]:
@@ -280,59 +375,162 @@ class HarmoniaEngine:
         }
 
     def commit_workspace(self, cortex: Any, tx_id: str):
-        """
-        [CRITICAL FIX APPLIED]
-        Crystallizes all 'pending' Atoms in the workspace to 'active', 
-        formalizing them permanently into the memory mesh.
+        """Commit — the point of no return for a management unit.
+
+        Two paths coexist: the legacy execute_with_evidence path crystallises any
+        `pending` atoms in the tx set to verified; the tracked-workspace path (slice 1)
+        simply releases the tracking set (its writes are already durable). For a
+        cross-DB bundle it also clears the nucleus-side tracking set (slice 4).
         """
         if tx_id not in self._active_workspaces:
             logger.warning(f"[Harmonia] Attempted to commit unknown workspace: {tx_id}")
             return
 
+        tx = self._active_workspaces[tx_id]
+
+        # Legacy pending-atom path (execute_with_evidence): crystallize pending→active.
         members = cortex.get_set_members(tx_id)
         committed_count = 0
-        
         for m in members:
             k = m["key"]
             content = m.get("content", "")
-            
-            # Explicitly fetch complete metadata from the Cortex
             meta = cortex.get_meta(k)
-            
             if meta.get("status") == "pending":
                 meta["status"] = "active"
-                meta.pop("tx_id", None) # Release workspace binding
-                
-                # Overwrite/finalize chunk in DB with verified status
+                meta.pop("tx_id", None)  # Release workspace binding
                 cortex.put_chunk(content=content, meta=meta, author="system.harmonia", status="verified")
                 committed_count += 1
 
-        self._active_workspaces[tx_id].status = "committed"
+        # Release workspace presence (every workspace) and, for tracked units,
+        # deactivate the tracking context and clear the tracking set. Tracked path:
+        # writes are already durable; commit is the point of no return.
+        from lib.akasha.jcl import workspace_context as _wctx
+        _wctx.exit_workspace()
+        if tx.tracked:
+            _wctx.end()
+            try:
+                cortex.clear_set(tx_id)
+            except Exception:
+                pass
+            # Cross-DB bundle: the proto-word footprint lives in the nucleus's
+            # ws:{tx_id} set. Commit = release both stores' bookkeeping (proto-words
+            # stand — they are the shared growth this bundle contributed).
+            _nuc = getattr(cortex, "_nucleus", None)
+            if _nuc is not None:
+                try:
+                    _nuc.core.clear_collection(tx_id)
+                except Exception:
+                    pass
+
+        tx.status = "committed"
         logger.info(f"[Harmonia] Workspace [{tx_id}] committed. Crystallized {committed_count} nodes.")
 
     def rollback_workspace(self, cortex: Any, tx_id: str):
-        """
-        [CRITICAL FIX APPLIED]
-        Physically purges all pending changes in the workspace, 
-        effectively wiping the failed thought process without a trace.
+        """Reverse a management unit's writes — per-unit reversibility.
+
+        A tracked unit (slice 1) reverses ALL keys it recorded in the tx set (they were
+        written verified); the legacy execute_with_evidence path reverses only its
+        `pending` atoms. Cross-DB (slice 4): the cortex writes are dropped (private,
+        reversible) but the nucleus proto-words stand (shared/content-addressed,
+        commit-forward) — only the nucleus tracking set is cleared.
         """
         if tx_id not in self._active_workspaces:
             return
 
+        tx = self._active_workspaces[tx_id]
+
+        # Release workspace presence, and for tracked units deactivate the tracking
+        # context first so writes done *during* rollback (there should be none) are
+        # never re-tracked.
+        from lib.akasha.jcl import workspace_context as _wctx
+        _wctx.exit_workspace()
+        if tx.tracked:
+            _wctx.end()
+
         members = cortex.get_set_members(tx_id)
         rollback_count = 0
-        
         for m in members:
             k = m["key"]
             meta = cortex.get_meta(k)
-            
-            if meta.get("status") == "pending":
-                # Bypass IAM entirely using core physical drop for internal transaction aborts
+            # Tracked units record verified writes → reverse ALL tracked keys.
+            # Legacy (untracked) units only ever hold 'pending' atoms → reverse those.
+            if tx.tracked or meta.get("status") == "pending":
+                # Bypass IAM: core physical drop for internal transaction aborts.
                 cortex.core.drop_chunk(k)
                 rollback_count += 1
-        
+
         # Purge the transaction set tracking bag
         cortex.clear_set(tx_id)
-        
-        self._active_workspaces[tx_id].status = "rolled_back"
-        logger.warning(f"[Harmonia] Workspace [{tx_id}] ROLLED BACK. Purged {rollback_count} pending nodes.")
+
+        # Cross-DB bundle: reverse the CORTEX writes (private, safe to drop) but keep
+        # the nucleus proto-words — they are shared, content-addressed, and may already
+        # be referenced by committed bundles, so dropping them would corrupt others.
+        # Clear only the nucleus tracking set (commit-forward). This asymmetry is the
+        # crux of the no-2PC cross-DB model: private data rolls back, shared growth stands.
+        _nuc = getattr(cortex, "_nucleus", None)
+        if _nuc is not None:
+            try:
+                _nuc.core.clear_collection(tx_id)
+            except Exception:
+                pass
+
+        tx.status = "rolled_back"
+        if rollback_count:
+            logger.warning(f"[Harmonia] Workspace [{tx_id}] ROLLED BACK. "
+                           f"Reversed {rollback_count} nodes (tracked={tx.tracked}).")
+        else:
+            logger.debug(f"[Harmonia] Workspace [{tx_id}] closed (no pending nodes to purge).")
+
+    @staticmethod
+    def reconcile_orphan_workspaces(store: Any, drop_members: bool) -> dict:
+        """Boot-time crash healing (orchestration-architecture.md E.4 — slice 4).
+
+        A tracked workspace clears its `ws:{tx_id}` tracking set on commit AND on
+        rollback, so any `ws:*` set still present when a store is opened is the residue
+        of a bundle whose process died mid-transaction (crash-stop 'last write only').
+        Reconcile every such orphan:
+
+          - drop_members=True  (private cortex): roll it back — drop the uncommitted
+            member atoms and clear the set. The in-flight bundle is undone as if it
+            never happened; every previously-committed bundle is untouched.
+          - drop_members=False (shared nucleus): KEEP the members — proto-words are
+            content-addressed and shared with committed bundles, so dropping them is
+            unsafe; just clear the stray tracking set (commit-forward).
+
+        Runs once when a store is opened, before it serves any request, so no live
+        workspace can be mistaken for an orphan. Uses backend primitives directly
+        (no composite `commit`/`put_link`), so it neither trips nor needs the guard.
+        """
+        core = getattr(store, "core", None)
+        if core is None:
+            return {"sets": 0, "atoms": 0}
+        try:
+            names = core.get_distinct_collection_names("ws:%")
+        except Exception:
+            return {"sets": 0, "atoms": 0}
+        sets = 0
+        atoms = 0
+        for name in names:
+            if drop_members:
+                try:
+                    members = core.get_collection_members(name)
+                except Exception:
+                    members = []
+                for k in members:
+                    try:
+                        core.drop_chunk(k)
+                        atoms += 1
+                    except Exception:
+                        pass
+            try:
+                core.clear_collection(name)
+                sets += 1
+            except Exception:
+                pass
+        if sets:
+            logger.warning(
+                "[Harmonia] Orphan scan (%s): reconciled %d crashed workspace(s), "
+                "reversed %d atom(s) (drop_members=%s).",
+                getattr(store, "_db_path", getattr(core, "_db_path", "?")),
+                sets, atoms, drop_members)
+        return {"sets": sets, "atoms": atoms}

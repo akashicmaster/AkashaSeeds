@@ -292,10 +292,15 @@ class TableConcept(BaseConcept, ImportableMixin, ExportableMixin):
         return f"tbl:{tbl_name}:{suffix}"
 
     def _resolve_table(self, table: str) -> str:
-        """Resolve name / tbl:<name> alias / raw key → atom key.  Raises if not found."""
+        """Resolve name / tbl:<name> alias / raw key → atom key.  Raises if not found.
+
+        The canonical `tbl:<name>` alias is tried FIRST: a bare table name is also
+        weaved into a proto-word (same string, different atom), so resolving the bare
+        name first would return that proto-word instead of the table — dropping the
+        schema. Trying `tbl:<name>` first binds to the real table atom."""
         if not table:
             raise ValueError("'table' is required.")
-        for candidate in (table, f"tbl:{table}"):
+        for candidate in (f"tbl:{table}", table):
             key = self.cortex.resolve_alias(candidate)
             if key:
                 return key
