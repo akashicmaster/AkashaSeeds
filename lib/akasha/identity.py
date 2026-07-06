@@ -58,6 +58,7 @@ class Capability(Enum):
     DELETE            = "delete"
     COLLECTIVE_WRITE  = "collective_write"
     GROUP_MANAGE      = "group_manage"
+    IAM_MANAGE        = "iam_manage"   # create/modify/delete users (ADMIN only)
     SYNC_PULL         = "sync_pull"
     SYNC_PUSH         = "sync_push"
     FEDERATE          = "federate"
@@ -165,10 +166,20 @@ def build_admin_policy() -> AccessPolicy:
 
 class GuestBindingStore:
     """
-    Self-verifying guest binding tokens.  No server-side state required.
+    Self-verifying session tokens.  No server-side state required for signing.
 
-    Token format:
-      gbk:<base64url(session_id|expires_at|nonce)>.<base64url(HMAC-SHA256)>
+    Two token classes share one HMAC secret and one verification path:
+
+      gbk:<base64url(session_id|expires_at|nonce)>.<HMAC>
+          Guest binding — session_id is always a "guest:" identity, role is
+          implicitly GUEST.  Issued by session.guest.create/extend.
+
+      akt:<base64url(client_id|role|expires_at|epoch|nonce)>.<HMAC>
+          Authenticated session token — minted by auth.verify AFTER a passphrase
+          check.  Carries the verified identity, its role, and a per-user epoch
+          used for revocation.  This is what replaces the old "the username is
+          the token" model: over an untrusted transport an identity is proven by
+          possession of this signed token, never by asserting a bare client_id.
 
     Any process holding the HMAC secret can verify any token without shared
     memory — Lambda invocations are fully independent.  Cut the HTTP connection
@@ -182,6 +193,7 @@ class GuestBindingStore:
     """
 
     _PREFIX      = "gbk:"
+    _AUTH_PREFIX = "akt:"
     _DEFAULT_TTL = 1800
     _SEP         = "|"   # field separator — never appears in session_id, float, or hex
 
@@ -192,8 +204,34 @@ class GuestBindingStore:
     # ── Secret management ─────────────────────────────────────────────────────
 
     def _secret(self) -> bytes:
-        """Load or generate the HMAC secret (lazy, persisted to nucleus.db)."""
+        """Load or generate the HMAC secret (lazy, persisted to nucleus.db).
+
+        Precedence: AKASHA_SECRET env var (hex or raw) > nucleus vault > ephemeral.
+        The env override lets a networked/multi-host deployment supply the signing
+        key out-of-band instead of trusting whatever is persisted in nucleus.db.
+
+        ┌─ POST-LAUNCH PRIORITY #1 (networked / multi-host deploys) ───────────────┐
+        │ This key signs EVERY guest (gbk:) and authenticated (akt:) session token. │
+        │ Anyone who can read it can forge a token for ANY identity, incl. admin.   │
+        │ For any deployment reachable over the network, set AKASHA_SECRET to a      │
+        │ strong random value (e.g. `python -c "import secrets;print(secrets.       │
+        │ token_hex(32))"`) supplied out-of-band (env / secrets manager), and keep   │
+        │ it IDENTICAL across all hosts so tokens verify everywhere. Do NOT rely on  │
+        │ the nucleus-vault fallback in production: it persists the key inside       │
+        │ nucleus.db (0600, but still on disk) and each host would mint its own.     │
+        │ A single local single-user Cell may keep the vault fallback. See CLAUDE.md │
+        │ "Security Model → Post-launch priorities" and the tracking GitHub issue.  │
+        └──────────────────────────────────────────────────────────────────────────┘
+        """
         if self._secret_bytes is not None:
+            return self._secret_bytes
+        import os as _os
+        env_secret = _os.environ.get("AKASHA_SECRET")
+        if env_secret:
+            try:
+                self._secret_bytes = bytes.fromhex(env_secret)
+            except ValueError:
+                self._secret_bytes = hashlib.sha256(env_secret.encode()).digest()
             return self._secret_bytes
         n = self._nucleus_fn() if self._nucleus_fn else None
         if n:
@@ -281,6 +319,51 @@ class GuestBindingStore:
         """No-op: self-verifying tokens carry no server-side state to purge."""
         return 0
 
+    # ── Authenticated session tokens (akt:) ───────────────────────────────────
+
+    def is_auth_key(self, token: str) -> bool:
+        """True if the token carries the authenticated session-token prefix."""
+        return isinstance(token, str) and token.startswith(self._AUTH_PREFIX)
+
+    def mint_auth(self, client_id: str, role_value: str, epoch: int,
+                  ttl: int = _DEFAULT_TTL) -> dict:
+        """
+        Issue a signed authenticated session token.  Caller (IdentityManager)
+        must have already verified the passphrase.  No storage is written; the
+        token is self-verifying via HMAC.
+        """
+        if self._SEP in client_id:
+            raise ValueError("client_id must not contain the token separator.")
+        expires_at = time.time() + ttl
+        payload = self._SEP.join(
+            [client_id, role_value, f"{expires_at:.3f}", str(int(epoch)), secrets.token_hex(8)]
+        )
+        b64 = base64.urlsafe_b64encode(payload.encode()).rstrip(b"=").decode()
+        token = self._AUTH_PREFIX + b64 + "." + self._sign(payload)
+        return {"session_token": token, "expires_at": expires_at}
+
+    def decode_auth(self, token: str) -> tuple:
+        """
+        Decode + HMAC-verify an akt: token.
+        Returns (client_id, role_value, expires_at, epoch) or raises PermissionError.
+        Signature is checked with a constant-time compare before any field is trusted.
+        """
+        if not self.is_auth_key(token):
+            raise PermissionError("Not an authenticated session token.")
+        try:
+            inner    = token[len(self._AUTH_PREFIX):]
+            b64, sig = inner.rsplit(".", 1)
+            pad      = (-len(b64)) % 4
+            payload  = base64.urlsafe_b64decode(b64 + "=" * pad).decode()
+            if not hmac.compare_digest(sig, self._sign(payload)):
+                raise PermissionError("Session token: signature mismatch.")
+            client_id, role_value, exp_str, epoch_str, _nonce = payload.split(self._SEP, 4)
+            return client_id, role_value, float(exp_str), int(epoch_str)
+        except PermissionError:
+            raise
+        except Exception:
+            raise PermissionError("Session token: malformed.")
+
 
 # ---------------------------------------------------------------------------
 # IdentityManager
@@ -360,14 +443,19 @@ class IdentityManager:
         passphrase_hash = n.vault_retrieve("system", "passphrase_hash")
         if not admin_name:
             return
-        # Register the named admin (e.g. "henri")
+        # Register the named admin (e.g. "henri"). The legacy vault hash is a
+        # presented SHA-256; seal it into salted PBKDF2 at migration time.
         if admin_name not in self._cache:
-            record = _make_user_record(Role.ADMIN, passphrase_hash, admin_name, "genesis")
+            record = _make_user_record(Role.ADMIN, None, admin_name, "genesis")
+            if passphrase_hash:
+                record.update(self._seal_passphrase(passphrase_hash))
             self._cache[admin_name] = record
             n.vault_store("iam", f"user:{admin_name}", record)
         # Also register the canonical "admin" alias used by automation
         if "admin" not in self._cache:
-            record = _make_user_record(Role.ADMIN, passphrase_hash, "admin", "genesis")
+            record = _make_user_record(Role.ADMIN, None, "admin", "genesis")
+            if passphrase_hash:
+                record.update(self._seal_passphrase(passphrase_hash))
             self._cache["admin"] = record
             n.vault_store("iam", "user:admin", record)
 
@@ -409,24 +497,120 @@ class IdentityManager:
             return Role.GUEST
         raise PermissionError(f"Access Denied: Identity '{client_id}' is unknown.")
 
-    # ── Passphrase verification ───────────────────────────────────────────────
+    def is_system_identity(self, client_id: str) -> bool:
+        """True if client_id is a compile-time system process identity.
 
-    def verify_passphrase(self, client_id: str, passphrase_hash: str) -> bool:
+        These (system.jataka / system.librarian / system.weaver) are internal
+        services with no passphrase.  They must never be reachable as a login
+        over an untrusted transport — only kernel-internal (TRUST_INTERNAL)
+        callers may act as them.
         """
-        Verify a SHA-256 passphrase hash against the stored record.
-        Falls back to the legacy genesis system vault for backward compatibility.
+        return client_id in _SYSTEM_IDENTITIES
+
+    # ── Session tokens (akt:) — proof-of-identity for untrusted transports ─────
+
+    def issue_session_token(self, client_id: str, ttl: int = 1800) -> dict:
+        """
+        Mint a signed session token for an already-authenticated identity.
+        The caller (auth.verify) is responsible for the passphrase check first.
+        Returns {"session_token": "akt:...", "expires_at": float}.
         """
         record = self._cache.get(client_id)
-        if record:
-            stored = record.get("passphrase_hash")
-            if stored:
-                return stored == passphrase_hash
+        if not record or not record.get("active", True):
+            raise PermissionError(f"Cannot issue token for unknown identity '{client_id}'.")
+        epoch = int(record.get("token_epoch", 0))
+        return self._guest_bindings.mint_auth(client_id, record["role"], epoch, ttl)
+
+    def resolve_session_token(self, token: str) -> tuple:
+        """
+        Verify an akt: token → (client_id, Role).  Raises PermissionError on
+        bad signature, expiry, unknown/inactive identity, or a stale epoch
+        (token revoked).  The authoritative role is the identity's CURRENT role,
+        not the value embedded in the token, so a role change takes effect at once.
+        """
+        client_id, _role_value, expires_at, epoch = self._guest_bindings.decode_auth(token)
+        if time.time() > expires_at:
+            raise PermissionError("Session token has expired.")
+        record = self._cache.get(client_id)
+        if not record or not record.get("active", True):
+            raise PermissionError("Session token: unknown or inactive identity.")
+        if int(record.get("token_epoch", 0)) != epoch:
+            raise PermissionError("Session token has been revoked.")
+        return client_id, Role(record["role"])
+
+    def revoke_sessions(self, client_id: str) -> None:
+        """Invalidate all outstanding session tokens for a user (logout-all).
+
+        Bumps the user's token_epoch so every previously minted akt: token fails
+        the epoch check in resolve_session_token.  Also called automatically on
+        passphrase change and role change.
+        """
+        record = self._cache.get(client_id)
+        if not record:
+            return
+        record["token_epoch"] = int(record.get("token_epoch", 0)) + 1
+        self._save_user(client_id, record)
+
+    # ── Passphrase hashing & verification ─────────────────────────────────────
+    #
+    # Wire convention: clients transmit a client-side SHA-256 of the passphrase
+    # ("presented hash").  The server never sees the raw passphrase for user.*
+    # management calls.  At rest we do NOT store that presented hash directly —
+    # it would be an unsalted single-round SHA-256 (rainbow-table friendly, and
+    # identical passphrases collide across users).  Instead we stretch it with a
+    # per-user-salted PBKDF2-HMAC-SHA256 and compare in constant time.
+
+    _KDF_ITER = 200_000
+    _KDF_NAME = "pbkdf2_sha256_200k"
+
+    @staticmethod
+    def _kdf(presented_hash: str, salt_hex: str) -> str:
+        return hashlib.pbkdf2_hmac(
+            "sha256", presented_hash.encode("utf-8"),
+            bytes.fromhex(salt_hex), IdentityManager._KDF_ITER,
+        ).hex()
+
+    def _seal_passphrase(self, presented_hash: str) -> dict:
+        """Salt + stretch a presented hash into the fields stored on a record."""
+        salt = secrets.token_hex(16)
+        return {
+            "passphrase_hash": self._kdf(presented_hash, salt),
+            "salt":            salt,
+            "kdf":             self._KDF_NAME,
+        }
+
+    def verify_passphrase(self, client_id: str, presented_hash: str) -> bool:
+        """
+        Verify a presented (client-side SHA-256) passphrase hash.
+        Salted PBKDF2 records are compared in constant time.  Legacy unsalted
+        records (and the legacy genesis vault entry) are still accepted and are
+        transparently upgraded to salted PBKDF2 on the next successful login.
+        """
+        if not presented_hash:
+            return False
+        record = self._cache.get(client_id)
+        if record and record.get("passphrase_hash"):
+            stored = record["passphrase_hash"]
+            salt   = record.get("salt")
+            kdf    = record.get("kdf")
+            if kdf == self._KDF_NAME and salt:
+                return hmac.compare_digest(stored, self._kdf(presented_hash, salt))
+            # Legacy unsalted record — accept, then upgrade in place (no epoch bump:
+            # the credential is unchanged, so outstanding tokens stay valid).
+            if hmac.compare_digest(stored, presented_hash):
+                try:
+                    record.update(self._seal_passphrase(presented_hash))
+                    self._save_user(client_id, record)
+                except Exception:
+                    pass
+                return True
+            return False
         # Fallback: legacy single-hash vault entry (pre-persistence installs)
         n = self._nucleus()
         if n:
             stored = n.vault_retrieve("system", "passphrase_hash")
             if stored:
-                return stored == passphrase_hash
+                return hmac.compare_digest(stored, presented_hash)
         return False
 
     # ── User CRUD ─────────────────────────────────────────────────────────────
@@ -434,10 +618,16 @@ class IdentityManager:
     def register_client(self, client_id: str, role: Role,
                         passphrase_hash: str = None, created_by: str = "admin",
                         display_name: str = None) -> dict:
-        """Register a new human user. Raises ValueError for system identities."""
+        """Register a new human user. Raises ValueError for system identities.
+
+        passphrase_hash is a presented (client-side SHA-256) hash; it is salted
+        and stretched with PBKDF2 before storage.
+        """
         if client_id in _SYSTEM_IDENTITIES:
             raise ValueError(f"'{client_id}' is a reserved system identity.")
-        record = _make_user_record(role, passphrase_hash, display_name or client_id, created_by)
+        record = _make_user_record(role, None, display_name or client_id, created_by)
+        if passphrase_hash:
+            record.update(self._seal_passphrase(passphrase_hash))
         self._save_user(client_id, record)
         return record
 
@@ -461,7 +651,9 @@ class IdentityManager:
         record = self._cache.get(client_id)
         if not record:
             raise KeyError(f"Identity '{client_id}' not found.")
-        record["passphrase_hash"] = passphrase_hash
+        record.update(self._seal_passphrase(passphrase_hash))
+        # Credential change invalidates every outstanding session token.
+        record["token_epoch"] = int(record.get("token_epoch", 0)) + 1
         self._save_user(client_id, record)
 
     def set_role(self, client_id: str, role: Role):
@@ -472,6 +664,8 @@ class IdentityManager:
         if not record:
             raise KeyError(f"Identity '{client_id}' not found.")
         record["role"] = role.value
+        # Role change invalidates outstanding tokens so the old role can't linger.
+        record["token_epoch"] = int(record.get("token_epoch", 0)) + 1
         self._save_user(client_id, record)
 
     def list_clients(self) -> List[dict]:
@@ -693,6 +887,9 @@ class IdentityManager:
         if action in ("group.manage",):
             return policy.has(Capability.GROUP_MANAGE)
 
+        if action in ("iam.manage",):
+            return policy.has(Capability.IAM_MANAGE)
+
         if action in ("dream", "jataka.dream", "link.reinforce"):
             return policy.has(Capability.SIMULATE)
 
@@ -741,4 +938,7 @@ def _make_user_record(role: Role, passphrase_hash: Optional[str],
         "created_by":      created_by,
         "active":          True,
         "onboarded_apps":  [],
+        # Monotonic counter — bumping it invalidates every previously minted
+        # session token for this user (logout-all / revoke).  See revoke_sessions.
+        "token_epoch":     0,
     }

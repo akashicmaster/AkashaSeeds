@@ -350,9 +350,17 @@ class AkashaEngine:
             
         return content
 
-    def evict_chunk(self, key: str): 
+    def evict_chunk(self, key: str):
         """Marks a chunk to free up local edge memory."""
         self.core.update_chunk_status(key, "evicted", None)
+
+    def close(self) -> None:
+        """Checkpoint WAL and shut down this engine's write queue / connections.
+        Called when a per-slot guest cortex is wiped, or on graceful shutdown."""
+        try:
+            self.core.close()
+        except Exception:
+            pass
 
     # =========================================================================
     # 🛠️ DESTRUCTIVE SUPERUSER PRIVILEGES (Linux root-level operations)
@@ -755,21 +763,36 @@ class AkashaEngine:
         
     def list_set(self, name: str, allowed_scopes: List[str] = None, locale_codes: List[str] = None) -> List[Dict]:
         """Set members with scope + locale filtering via single SQL JOIN — no Python loops.
-        Capability bypasses (role:librarian) skip both permission and locale filtering."""
-        if allowed_scopes and "role:librarian" not in allowed_scopes:
+        Capability bypasses (role:librarian) skip both permission and locale filtering.
+        Always merges nucleus members so universal vocabulary sets (stored in nucleus.db
+        when atoms were written with scope=universal) are visible to every session.
+
+        `allowed_scopes is None` = internal bypass (all members).  An EMPTY list
+        takes the scoped SQL path (which matches nothing) so a scoped caller with
+        no scopes sees nothing — fail-closed, never fall through to unscoped."""
+        if allowed_scopes is not None and "role:librarian" not in allowed_scopes:
             if locale_codes:
                 keys = self.core.get_collection_members_locale_ordered(name, allowed_scopes, locale_codes)
             else:
                 keys = self.core.get_collection_members_scoped(name, allowed_scopes)
         else:
             keys = self.core.get_collection_members(name)
+        # Merge nucleus members (universal atoms tracked in nucleus collections table).
+        nucleus = getattr(self, '_nucleus', None)
+        if nucleus:
+            nuc_keys = nucleus.core.get_collection_members(name) or []
+            if nuc_keys:
+                seen = set(keys)
+                for k in nuc_keys:
+                    if k not in seen:
+                        keys = keys + [k]
         return [{"key": k, "content": self.get_chunk(k)} for k in keys]
 
     def list_leaf(self, leaf: str, allowed_scopes: List[str] = None, locale_codes: List[str] = None) -> List[str]:
         """All atom keys whose namespaced alias has `leaf` as the right-hand part.
         Locale-ordered when locale_codes provided; librarian bypass skips all filters."""
         coll = f"leaf:{leaf}"
-        if allowed_scopes and "role:librarian" not in allowed_scopes:
+        if allowed_scopes is not None and "role:librarian" not in allowed_scopes:
             if locale_codes:
                 keys = self.core.get_collection_members_locale_ordered(coll, allowed_scopes, locale_codes)
             else:
@@ -785,8 +808,8 @@ class AkashaEngine:
     def get_set_members(self, name: str) -> List[Dict]: return self.list_set(name)
 
     def set_operation(self, op: str, res_name: str, a_name: str, b_name: str) -> List[Dict]:
-        a_keys = set(self.core.get_collection_members(a_name))
-        b_keys = set(self.core.get_collection_members(b_name))
+        a_keys = set(self.get_collection_members(a_name))
+        b_keys = set(self.get_collection_members(b_name))
         if op == "union": res_keys = a_keys | b_keys
         elif op == "isect": res_keys = a_keys & b_keys
         elif op == "diff": res_keys = a_keys - b_keys
@@ -931,6 +954,14 @@ class AkashaEngine:
         total   = [0]
         nucleus = getattr(self, '_nucleus', None)
 
+        # Fail-closed visibility gate.  `allowed_scopes is None` means an explicit
+        # internal bypass (no session context); an EMPTY list means "a scoped
+        # caller with no scopes" and must deny everything, never allow-all.
+        _enforce = allowed_scopes is not None
+
+        def _visible(key: str) -> bool:
+            return (not _enforce) or self.check_access(key, allowed_scopes)
+
         def _best_label(key: str) -> str:
             aliases = self.get_aliases_by_key(key)
             if aliases:
@@ -979,7 +1010,7 @@ class AkashaEngine:
                 if dst in seen:
                     continue
                 seen.add(dst)
-                if allowed_scopes and not self.check_access(dst, allowed_scopes):
+                if not _visible(dst):
                     continue
                 child = _build(dst, remaining - 1, rel)
                 if child is None:
@@ -995,6 +1026,8 @@ class AkashaEngine:
             for k in members:
                 if total[0] >= self._TREE_MAX_NODES:
                     break
+                if not _visible(k):
+                    continue
                 node = _build(k, depth - 1)
                 if node:
                     children_list.append(node)
@@ -1019,6 +1052,8 @@ class AkashaEngine:
                 visited.add(k)
                 if total[0] >= self._TREE_MAX_NODES:
                     break
+                if not _visible(k):
+                    continue
                 node = _build(k, depth - 1)
                 if node:
                     children_list.append(node)
@@ -1027,7 +1062,11 @@ class AkashaEngine:
 
         else:
             resolved  = self.resolve_alias(target) or target
-            root_node = _build(resolved, depth)
+            if not _visible(resolved):
+                # Root atom is out of scope — reveal nothing.
+                root_node = None
+            else:
+                root_node = _build(resolved, depth)
             if root_node:
                 root_label    = root_node.get("label", target)
                 children_list = root_node.get("children") or []
@@ -1535,9 +1574,10 @@ class AkashaEngine:
         nucleus = getattr(self, '_nucleus', None)
         if nucleus:
             nc = nucleus.core.conn
-            stats["total_atoms"]   += nc.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
-            stats["total_links"]   += nc.execute("SELECT COUNT(*) FROM links").fetchone()[0]
-            stats["total_aliases"] += nc.execute("SELECT COUNT(*) FROM aliases").fetchone()[0]
+            stats["total_atoms"]       += nc.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
+            stats["total_links"]       += nc.execute("SELECT COUNT(*) FROM links").fetchone()[0]
+            stats["total_aliases"]     += nc.execute("SELECT COUNT(*) FROM aliases").fetchone()[0]
+            stats["total_collections"] += nc.execute("SELECT COUNT(DISTINCT name) FROM collections").fetchone()[0]
         return stats
 
 class NucleusEngine:

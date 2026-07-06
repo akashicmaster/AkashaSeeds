@@ -71,6 +71,7 @@ class CommandRouter:
         "onto.pack.list":    {"method": "onto.pack.list",    "args": [],       "desc": "List all ontology packages from REGISTRY.json with load status"},
         "onto.pack.enable":  {"method": "onto.pack.enable",  "args": ["name"], "desc": "Enable an optional ontology pack and trigger load (requires librarian)"},
         "onto.pack.disable": {"method": "onto.pack.disable", "args": ["name"], "desc": "Disable an optional ontology pack (atoms remain until onto.reset) (requires librarian)"},
+        "onto.report":       {"method": "onto.report",       "args": ["since", "limit"], "desc": "Alias overwrite collision report [since=<epoch>] [limit=N] [clear=true]"},
         # ── Log ───────────────────────────────────────────────────────
         "log.new":    {"method": "log.new",        "args": ["name"],   "desc": "Create a new exploration Log"},
         "log.ls":     {"method": "log.ls",         "args": [],         "desc": "List all exploration Logs"},
@@ -798,11 +799,33 @@ class CommandRouter:
         method = spec["method"]
         expected = spec.get("args", [])
 
-        params = {}
+        # Separate key=value tokens from positional tokens.
+        # key=value wins over positional when the key matches a declared arg name.
+        # Extra key=value pairs beyond the declared spec pass through as-is
+        # (e.g. rec.new content="Apple" color=red, table.row.add col1=v1 col2=v2).
+        kw_args: dict = {}
+        pos_args: list = []
+        for token in args:
+            if "=" in token and not token.startswith("="):
+                k, v = token.split("=", 1)
+                kw_args[k.strip()] = v.strip()
+            else:
+                pos_args.append(token)
+
+        params: dict = {}
         for i, arg_name in enumerate(expected):
-            if i < len(args):
-                # Last declared arg absorbs all remaining tokens
-                params[arg_name] = " ".join(args[i:]) if i == len(expected) - 1 else args[i]
+            if arg_name in kw_args:
+                params[arg_name] = kw_args.pop(arg_name)
+            elif pos_args:
+                # Last declared arg absorbs all remaining positional tokens
+                if i == len(expected) - 1:
+                    params[arg_name] = " ".join(pos_args)
+                    pos_args = []
+                else:
+                    params[arg_name] = pos_args.pop(0)
+
+        # Pass through extra key=value args not in the declared spec
+        params.update(kw_args)
 
         return cls._create_payload(method, params, session_token)
 

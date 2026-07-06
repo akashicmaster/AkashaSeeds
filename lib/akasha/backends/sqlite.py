@@ -60,9 +60,29 @@ class SQLiteBackend(AkashaBackend):
         # Boot the main-thread connection so table creation proceeds normally
         _ = self.conn
 
+        # Restrict on-disk permissions: these files hold ground-truth data and,
+        # for nucleus.db, the HMAC signing secret and passphrase hashes.  Owner
+        # read/write only (0600 files, 0700 dir).  Best-effort — a filesystem
+        # that doesn't support chmod (some mounts) must not break boot.
+        self._harden_permissions()
+
         self._create_tables()
         self._migrate_tables()
         self._unfold_dna()
+
+    def _harden_permissions(self) -> None:
+        """Best-effort 0600 on the DB file (and WAL/SHM sidecars) + 0700 on its dir."""
+        try:
+            os.chmod(os.path.dirname(self._db_path), 0o700)
+        except OSError:
+            pass
+        for suffix in ("", "-wal", "-shm"):
+            p = self._db_path + suffix
+            try:
+                if os.path.exists(p):
+                    os.chmod(p, 0o600)
+            except OSError:
+                pass
 
     # ── Connection management ──────────────────────────────────────────────────
 

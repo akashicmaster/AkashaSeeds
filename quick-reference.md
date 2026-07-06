@@ -122,9 +122,9 @@ A depth-1 tree shows only direct links. Depth-3 shows three levels of connected 
 `dive`, `explore`, `assoc`, and `dream` each activate a **named mode** displayed in the prompt:
 
 ```
-[assoc] akasha/henri $      ← in assoc mode
-[dream] akasha/henri $      ← in dream mode
-[dive]  akasha/henri $      ← in dive mode
+[assoc] akasha/user $      ← in assoc mode
+[dream] akasha/user $      ← in dream mode
+[dive]  akasha/user $      ← in dive mode
 ```
 
 | Behaviour | What happens |
@@ -140,7 +140,7 @@ A depth-1 tree shows only direct links. Depth-3 shows three levels of connected 
 Scans the focal atom's outgoing links and identifies which **semantic axes** are absent (voids). Candidates are drawn from peer atoms in shared collections.
 
 ```
-[assoc] akasha/henri $ assoc icarus
+[assoc] akasha/user $ assoc icarus
 ⊘ assoc [icarus]  axis=all
   Icarus, the one who flew too close to the sun
 
@@ -168,7 +168,7 @@ Proposes links that do not yet exist using three complementary strategies:
 | `[affin]` | Affinity | Cosine similarity on stored embeddings; Jaccard on keyword-extract sets |
 
 ```
-[dream] akasha/henri $ dream icarus
+[dream] akasha/user $ dream icarus
 ✦ dream [icarus]  axis=all  status=proposed
 
 Proposals:
@@ -206,9 +206,7 @@ Type a number to approve that proposal as a **permanent** link. Use `commit=yes`
 | `scope` | `[get \| reset \| key=val …]` | Show or set session scope state |
 | `locale` | `[set <primary> [<supported>]]` | Show or set priority locale |
 | `onto.dump` | `<mode> …` | Dump ontology (atoms / links / aliases / sets / namespaces) |
-| `onto.report` | `[since] [limit] …` | Alias collision report |
-| `ont.resolve` | `<alias>` | Mark a collision as resolved |
-| `ont.displaced` | `[limit]` | List atoms displaced by alias collisions |
+| `onto.report` | `[since=<epoch>] [limit=N] [clear=true]` | Alias overwrite collision report |
 
 ---
 
@@ -261,25 +259,26 @@ it does not affect the atom's content or its meaning in the ontology.
 
 ---
 
-## Table Model (`tbl.*`)
+## Table Model (`table.*`)
 
 Structured tables with explicit columns and typed rows. Supports import/export and CSV round-trip.
 
 | Command | Args | Description |
 |---|---|---|
-| `tbl.new` | `<name>` | Create a named table |
-| `tbl.col.add` | `<table> <col>` | Define a column |
-| `tbl.row.add` | `<table> [col=val …]` | Append a row |
-| `tbl.row.get` | `<table> <row_id>` | Retrieve a single row |
-| `tbl.row.rm` | `<table> <row_id>` | Remove a row |
-| `tbl.ls` | `<table> [limit=N]` | List rows (raw form) |
-| `tbl.view` | `<table> [limit=N]` | Display table as a formatted CLI table |
-| `tbl.export` | `<table>` | Export to CSV text |
-| `tbl.import` | `<table> file=<path>` | Import from CSV |
-| `tbl.get` | `<table>` | Show table schema |
-| `tbl.rm` | `<table>` | Delete a table |
+| `table.new` | `name=<n> cols="col:type,…"` | Create a named table |
+| `table.col.add` | `table=<t> name=<col>` | Define a column |
+| `table.col.ls` | `<table>` | List columns |
+| `table.row.add` | `table=<t> col1=val1 …` | Append a row |
+| `table.row.get` | `<table> <row_id>` | Retrieve a single row |
+| `table.row.rm` | `<table> <row_id>` | Remove a row |
+| `table.ls` | `<table> [limit=N]` | List rows (raw form) |
+| `table.view` | `<table> [limit=N]` | Display table as a formatted CLI table |
+| `table.export` | `<table>` | Export to CSV text |
+| `table.import` | `table=<t> csv="…"` | Import from CSV text |
+| `table.get` | `<table>` | Show table schema |
+| `table.rm` | `<table>` | Delete a table |
 
-`tbl.view` uses the TextViewConcept protocol and renders via rich — column widths auto-fit, numeric columns right-align.
+`table.view` uses the TextViewConcept protocol and renders via rich — column widths auto-fit, numeric columns right-align.
 
 ---
 
@@ -333,10 +332,10 @@ lens.flatten into=myth_subtree
 rec.table in_set=set:myth_subtree
 ```
 
-### CSV / tbl → rec pipeline
+### CSV / table → rec pipeline
 
 ```
-tbl.import expenses file=expenses.csv
+table.import table=expenses csv="..."
 lens src=tbl:expenses
 lens.flatten into=expenses_rec
 rec.table in_set=set:expenses_rec
@@ -379,7 +378,7 @@ quadrant.plot in_set=set:rec:fruit x=acidity y=sweetness \
     q1="sweet & tart" q2="sweet & mild" q3="bland" q4="sour"
 ```
 
-→ Full walkthrough: [`docs/cookbook/quadrant-scatter.md`](../cookbook/quadrant-scatter.md)
+→ Full walkthrough: [`docs/cookbook/quadrant-scatter.md`](docs/cookbook/quadrant-scatter.md)
 
 ---
 
@@ -482,17 +481,12 @@ Use `run <file>` in the REPL to submit a `.ak` file without constructing a steps
 
 | Command | Args | Description |
 |---|---|---|
-| `csl.run` | `<script>` | Execute a CSL script inline |
-| `csl.check` | `<script>` | Validate CSL without executing |
-| `csl.dry` | `<script>` | Compile to operations (dry run) |
-| `csl.explain` | `<script>` | Human-readable explanation |
-| `csl.save` | `<name> <script>` | Save a CSL script by name |
-| `csl.load` | `<name>` | Load a saved script |
-| `csl.ls` | — | List saved scripts |
-| `csl.rm` | `<name>` | Delete a saved script |
-| `onto.csl.transpile` | `<script>` | Transpile CSL to `.ak` format (no execution) |
+| `csl` | `<filename.csl>` | Run a local `.csl` file |
+| `csl.run` | `script="…"` | Execute a CSL script inline |
+| `csl.check` | `script="…"` | Validate CSL without executing |
+| `csl.build` | `script="…" [out=<path>]` | Transpile CSL to `.ak` (dry run / save to file) |
 
-→ Full CSL reference: [`docs/users/csl-manual.md`](csl-manual.md)
+→ Full CSL reference: [`docs/users/csl-manual.md`](docs/users/csl-manual.md)
 
 ---
 
@@ -503,8 +497,8 @@ Regular users can inspect; **librarian** role required to reload/reset; **admin*
 | Command | Args | Description | Role |
 |---|---|---|---|
 | `onto.pack.list` | — | List available ontology packs | any |
-| `onto.common.list` | — | List common sub-packages with load status | any |
 | `onto.dump` | `<mode> …` | Dump atoms / links / aliases / sets / namespaces | any |
+| `onto.report` | `[clear=true]` | Alias overwrite collision report | any |
 | `onto.pack.enable` | `<name>` | Enable an optional pack and trigger load | librarian |
 | `onto.pack.disable` | `<name>` | Disable a pack (atoms remain until reset) | librarian |
 | `onto.reload` | `confirm=RELOAD` | Clear sentinels and re-trigger boot load | librarian |
@@ -540,8 +534,8 @@ Each concept model exposes its own command family. Use `help -c <model>` for the
 | Model | Prefix | Brief description |
 |---|---|---|
 | **rec** | `rec.` | Schema-free record store — typed attributes, set-based indexing, CLI table view |
-| **tbl** | `tbl.` | Structured table — explicit columns, row CRUD, CSV import/export, formatted view |
-| **lens** | `lens.` | Source scanner — profiles tbl/rec sources, flattens to rec sets, casts to concept models |
+| **table** | `table.` | Structured table — explicit columns, row CRUD, CSV import/export, formatted view |
+| **lens** | `lens.` | Source scanner — profiles table/rec sources, flattens to rec sets, casts to concept models |
 | **quadrant** | `quadrant.` | 4-quadrant ASCII scatter plot from two numeric rec attributes |
 | **aggregation** | `ag.` | Grouping and statistical summary — measures, hierarchies |
 | **synthesis** | `sy.` | Qualitative analysis — codes, themes, interpretations, claims |
@@ -584,9 +578,9 @@ Each concept model exposes its own command family. Use `help -c <model>` for the
 | **correspondence** | `corr.` | Cross-system conceptual mapping with evidence provenance |
 | **cockpit** | `cp.` | Dimensional lens navigator with focal point and beacon trail |
 
-→ User manual: [`docs/users/user-manual.md`](user-manual.md)  
-→ Concept model spec: [`docs/concept-model/concept-model-spec.md`](../concept-model/concept-model-spec.md)  
-→ Cookbook — 4-quadrant scatter: [`docs/cookbook/quadrant-scatter.md`](../cookbook/quadrant-scatter.md)
+→ User manual: [`docs/users/user-manual.md`](docs/users/user-manual.md)  
+→ Concept model spec: [`docs/concept-model/concept-model-spec.md`](docs/concept-model/concept-model-spec.md)  
+→ Cookbook — 4-quadrant scatter: [`docs/cookbook/quadrant-scatter.md`](docs/cookbook/quadrant-scatter.md)
 
 ---
 
@@ -620,4 +614,4 @@ Hidden from `help`. Require ADMIN role (or `su root`).
 | `grp.lib <group_id> grant\|revoke <member>` | Grant/revoke group librarian rights |
 | `grp.del <group_id>` | Dissolve a group |
 
-→ Full admin reference: [`docs/users/admin-manual.md`](admin-manual.md)
+→ Full admin reference: [`docs/users/admin-manual.md`](docs/users/admin-manual.md)

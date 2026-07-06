@@ -256,7 +256,7 @@ All Concept Models are auto-discovered through a plugin registry. Adding a new m
 | Model | Prefix | Purpose |
 | :--- | :--- | :--- |
 | **Record** | `rec.*` | Schema-free structured records — atoms with typed attribute links, aggregation, histograms, heatmaps |
-| **Table** | `tbl.*` | Formal tabular data — named columns, typed rows, CSV import/export |
+| **Table** | `table.*` | Formal tabular data — named columns, typed rows, CSV import/export |
 | **Lens** | `lens.*` | Source scanner — profiles any atom set or table, casts to any concept model view |
 | **Quadrant** | `quadrant.*` | 4-quadrant scatter — visual positioning on a 2-axis plane, rendered as an ASCII grid |
 
@@ -302,7 +302,7 @@ The built-in ontology already contains sensory and flavor attributes for fruits 
 
 ```
 # Scan the built-in fruits set — attributes are already in the ontology
-akasha/henri $ lens src=set:fruits
+akasha/user $ lens src=set:fruits
 ```
 
 ```
@@ -321,13 +321,13 @@ No data entry required. `lens` discovers the attributes already present on each 
 Project the scan into a record set with one command:
 
 ```
-akasha/henri $ lens.flatten into=fruit_view
+akasha/user $ lens.flatten into=fruit_view
 ```
 
 Display as a formatted table:
 
 ```
-akasha/henri $ rec.table in_set=set:fruit_view
+akasha/user $ rec.table in_set=set:fruit_view
 ```
 
 ```
@@ -347,7 +347,7 @@ akasha/henri $ rec.table in_set=set:fruit_view
 Now project the same atoms onto a 4-quadrant map — no browser required:
 
 ```
-akasha/henri $ quadrant.plot in_set=set:fruit_view \
+akasha/user $ quadrant.plot in_set=set:fruit_view \
     x=acidity y=sweetness \
     q1="tangy sweet" q2="mellow sweet" \
     q3="bland"       q4="sharp"
@@ -400,7 +400,7 @@ For those who want a richer graphical interface, Akasha provides a web portal th
 In the seeds distribution, the web server starts automatically alongside the shell. Check its status with:
 
 ```
-akasha/henri $ svc ls
+akasha/user $ svc ls
 
   Services
   ─────────────────────────────────────────
@@ -612,7 +612,7 @@ Akasha currently includes:
 - associative memory and set-based indexing
 - BFS link-traversal with `tree` — renders any atom, set, or namespace as a navigable tree
 - schema-free record model (`rec.*`) — atomic data with aggregation, histogram, heatmap
-- formal table model (`tbl.*`) — columns, rows, CSV import/export
+- formal table model (`table.*`) — columns, rows, CSV import/export
 - lens scanner (`lens.*`) — profiles any source, projects to any concept model
 - 4-quadrant scatter plot (`quadrant.*`) — ASCII grid, no browser required
 - TextViewConcept display protocol — consistent rendering across all output types

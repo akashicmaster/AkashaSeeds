@@ -2,6 +2,11 @@
 
 **Estimated time: 20–30 minutes**
 
+> **Which quick-start guide is this?**
+> This is the **shell workflow guide** — it uses the `akasha/user $` prompt and shell commands (`w`, `ln`, `dive`, `tree`, `set.*`).
+> If you prefer the **CSL interpreter** (`csl> write text="…"` style), see `docs/quick-start.md` instead.
+> Both guides are self-contained; you do not need to read one before the other.
+
 > **This guide is self-contained.**
 > You do not need to have read any other documentation to follow it.
 > All necessary concepts are explained here, inline.
@@ -141,7 +146,7 @@ Once libraries are ready, Akasha asks you to create the administrator account.
   No consciousness has been established.
   You are the first. Speak your true name.
   Akasha Name (this installation): MyAkasha
-  Your name (admin client ID):     henri
+  Your name (admin client ID):     admin
   Passphrase:                      ••••••••
   Confirm passphrase:              ••••••••
 ```
@@ -155,8 +160,8 @@ Once libraries are ready, Akasha asks you to create the administrator account.
 After completion, the shell opens:
 
 ```
-[ MyAkasha online. Welcome, henri. ]
-akasha/henri $
+[ MyAkasha online. Welcome, admin. ]
+akasha/user $
 ```
 
 This only happens once. From the second launch onward, Akasha boots directly to the shell.
@@ -172,7 +177,7 @@ The ontology is Akasha's shared vocabulary — a pre-built knowledge structure c
 Loading feeds through a low-priority background queue, so your own writes and reads always take precedence. You will see an occasional progress note:
 
 ```
-akasha/henri $ [loading ontology... 34%]
+akasha/user $ [loading ontology... 34%]
 ```
 
 Associative richness grows as loading progresses. You do not need to wait — everything in this guide works at any stage. By the time you reach the concept model examples, loading will likely be complete.
@@ -186,7 +191,7 @@ Akasha is easiest to understand by using it.
 At the shell prompt, write your first Atom with the `w` command:
 
 ```
-akasha/henri $ w "My first kiss tasted sweet and sour."
+akasha/user $ w "My first kiss tasted sweet and sour."
 → 3a9fc2...
 ```
 
@@ -199,7 +204,7 @@ For now, you do not need to work with the key directly. Akasha provides a more c
 Give your Atom a human-readable name with the `al` command:
 
 ```
-akasha/henri $ al $it "first kiss"
+akasha/user $ al $it "first kiss"
 ```
 
 `$it` is a shortcut that always refers to the Atom you most recently touched. You will use it constantly.
@@ -207,7 +212,7 @@ akasha/henri $ al $it "first kiss"
 Now you can refer to your Atom by its name:
 
 ```
-akasha/henri $ r "first kiss"
+akasha/user $ r "first kiss"
 ```
 
 Akasha recalls the phrase. But alongside the content, you will see something else:
@@ -232,16 +237,19 @@ Your phrase is now part of Akasha's memory. But Akasha already had memory before
 Try reading something you have never written:
 
 ```
-akasha/henri $ r apple
+akasha/user $ r apple
 ```
 
 You will see a definition from the built-in ontology and its connections:
 
 ```
 Content: A round fruit with red or green skin. Used fresh, baked, or juiced.
-  ~calc:associated_with  →  @sweet    "Sweet taste; a pleasurable gustatory sensation."
-  ~calc:associated_with  →  dna:col…  "Red."
-  ~calc:associated_with  →  dna:tex…  "Crisp texture."
+  [calc:associated_with]  →  dna:taste:sweet   "Sweet taste; a pleasurable gustatory sensation."
+  [calc:associated_with]  →  dna:color:red     "Red."
+  [calc:associated_with]  →  dna:texture:crisp "Crisp texture; firm and brittle."
+  [rec:sweetness]         →  0.85
+  [rec:acidity]           →  0.25
+  [rec:color]             →  red
 ```
 
 Notice that *sweet* appears here too — the same vocabulary atom your phrase connected to moments ago. Your personal memory and the built-in ontology share the same semantic space.
@@ -255,7 +263,7 @@ This is how shared knowledge works in Akasha: the built-in ontology creates a co
 The `r` command recalls an Atom directly. The `dive` command does something more: it focuses on an Atom and shows you the full neighbourhood around it — nearby concepts, emotional associations, historical connections.
 
 ```
-akasha/henri $ dive Rome
+akasha/user $ dive Rome
 ```
 
 You might see:
@@ -268,9 +276,9 @@ Focus: Rome  (geo:capital:rome)
 From Rome you step to Italy. From Italy the graph opens wider — southern Europe, the G7, the European Union:
 
 ```
-akasha/henri $ dive Italy
-akasha/henri $ dive France
-akasha/henri $ dive Germany
+akasha/user $ dive Italy
+akasha/user $ dive France
+akasha/user $ dive Germany
 ```
 
 Each dive brings a new neighbourhood into focus. The graph becomes a landscape you can walk.
@@ -281,7 +289,7 @@ Each dive brings a new neighbourhood into focus. The graph becomes a landscape y
 
 ## Reading the Colon Notation
 
-You have already seen expressions like `sys:part_of`, `history:rival_of`, and `set:fruits`. The colon (`:`）is Akasha's universal **namespace separator** — it appears in three distinct roles, and knowing which role you are looking at will prevent a great deal of confusion.
+You have already seen expressions like `sys:part_of`, `history:rival_of`, and `set:ingred:fruit`. The colon (`:`）is Akasha's universal **namespace separator** — it appears in three distinct roles, and knowing which role you are looking at will prevent a great deal of confusion.
 
 ### Role 1 — Atom keys
 
@@ -303,8 +311,8 @@ Most of the time you do not need to type the full key: if an atom has an alias (
 Sets also use colon-separated paths, but they are a different kind of object — collections of atoms, not atoms themselves:
 
 ```
-set:fruits                 ← the "fruits" named collection
-set:fruits:mediterranean   ← a sub-collection
+set:ingred:fruit           ← the "fruit ingredients" named collection
+set:ingred:autumn          ← a seasonal sub-collection
 set:rec:fruit              ← auto-created by rec.new type=fruit
 leaf:en                    ← English vocabulary leaf set (built-in)
 ```
@@ -333,7 +341,7 @@ The prefix before the colon indicates the **vocabulary domain** the relation bel
 | Where you see it | Example | It is |
 |---|---|---|
 | `r`, `dive`, `tree`, target of `ln` | `fruit:fig` | An atom key |
-| `s.ls`, `s.add`, `in_set=`, `lens src=` | `set:fruits` | A set name |
+| `s.ls`, `s.add`, `in_set=`, `lens src=` | `set:ingred:fruit` | A set name |
 | Third arg of `ln`, `[square brackets]`, `follow=` | `sys:is_a` | A relation label |
 
 All three use the same colon syntax. The command context tells you which kind you are dealing with.
@@ -359,18 +367,18 @@ ln <source> <destination> <relation>
 Apple, for example, can be connected in many ways:
 
 ```
-akasha/henri $ ln apple "sweet and sour" sense:taste
-akasha/henri $ ln apple red              color:typical
-akasha/henri $ ln apple yellow           color:typical
-akasha/henri $ ln apple green            color:typical
+akasha/user $ ln apple "sweet and sour" sense:taste
+akasha/user $ ln apple red              color:typical
+akasha/user $ ln apple yellow           color:typical
+akasha/user $ ln apple green            color:typical
 ```
 
 You can also link to atoms you write on the spot:
 
 ```
-akasha/henri $ w "Apple Inc., founded in 1976 by Steve Jobs"
-akasha/henri $ al $it apple.inc
-akasha/henri $ ln apple apple.inc calc:associated_with
+akasha/user $ w "Apple Inc., founded in 1976 by Steve Jobs"
+akasha/user $ al $it apple.inc
+akasha/user $ ln apple apple.inc calc:associated_with
 ```
 
 Now `dive apple` shows all three dimensions of *apple* at once: the fruit, its sensory profile, and the technology company.
@@ -418,25 +426,29 @@ A set is a named collection of Atoms. Unlike a tag, a set is an operational obje
 Look at an existing set from the built-in ontology:
 
 ```
-akasha/henri $ s.ls fruits
+akasha/user $ s.ls set:ingred:fruit
 ```
 
 You might see:
 
 ```
-Members of set:fruits
-  apple, banana, orange, peach, melon, grape, fig, date, lemon, mango, ...
+Members of set:ingred:fruit  (5)
+  apple    ingred:fruit:apple
+  banana   ingred:fruit:banana
+  orange   ingred:fruit:orange
+  lemon    ingred:fruit:lemon
+  grape    ingred:fruit:grape
 ```
 
-`fruits` as a word carries no meaning by itself. But this collection — this *set of things that are fruits* — makes the concept visible.
+`ingred:fruit` as a path carries no meaning by itself. But this collection — this *set of things that are fruits* — makes the concept visible.
 
 Meaning does not live in a word. It lives in the network of relationships and groupings that surround it.
 
 Add a new member:
 
 ```
-akasha/henri $ s.add fruits "passion fruit"
-akasha/henri $ s.ls fruits
+akasha/user $ s.add set:ingred:fruit "passion fruit"
+akasha/user $ s.ls set:ingred:fruit
 ```
 
 *Passion fruit* is now part of the concept. No schema change. No migration. The concept simply became richer.
@@ -467,34 +479,28 @@ Human beings think this way. We understand *love* not from a dictionary entry, b
 The `tree` command renders the link graph as a navigable visual tree — useful for seeing at a glance how an Atom is connected to its neighbourhood.
 
 ```
-akasha/henri $ tree fruits
+akasha/user $ tree set:ingred:fruit
 ```
 
 ```
-fruits
-├─ apple
-│   ├─ red [color:typical]
-│   ├─ sweet [sense:taste]
-│   └─ Malus domestica [sys:is_a]
-├─ fig
-│   ├─ Mediterranean [sys:associated_with]
-│   └─ sweet [sense:taste]
-├─ date
-│   ├─ North Africa [sys:associated_with]
-│   └─ very sweet [sense:taste]
-└─ ...
+set:ingred:fruit
+├─ apple        [calc:associated_with]→ dna:taste:sweet, dna:color:red, dna:texture:crisp
+├─ banana       [calc:associated_with]→ dna:taste:sweet, dna:color:yellow
+├─ orange       [calc:associated_with]→ dna:color:orange
+├─ lemon        [calc:associated_with]→ dna:taste:sour, dna:color:yellow
+└─ grape
 ```
 
 Try it with a place:
 
 ```
-akasha/henri $ tree Spain
+akasha/user $ tree Spain
 ```
 
 Or with a concept:
 
 ```
-akasha/henri $ tree France depth=3
+akasha/user $ tree France depth=3
 ```
 
 The `depth` parameter controls how many hops outward the tree expands (1–5). The default is 2.
@@ -502,7 +508,7 @@ The `depth` parameter controls how many hops outward the tree expands (1–5). T
 You can also filter by relation type:
 
 ```
-akasha/henri $ tree fruits follow=sys:is_a
+akasha/user $ tree set:ingred:fruit follow=sys:is_a
 ```
 
 This shows only the classification hierarchy — stripping out sensory, emotional, and cultural links to reveal the taxonomic skeleton.
@@ -527,50 +533,49 @@ The simplest way to project any set into a structured view is `lens`.
 
 `lens` scans a source — a set, a table, an ontology subtree — profiles the attributes it finds, and proposes matching Concept Models. The attributes do not need to be declared in advance; `lens` discovers them from the links already present on each Atom.
 
-The built-in ontology includes sensory and flavor attributes for fruits. Let us scan the `fruits` set and see what `lens` finds:
+The built-in ontology includes sensory and flavor attributes for fruits. Let us scan the `ingred:fruit` set and see what `lens` finds:
 
 ```
-akasha/henri $ lens src=set:fruits
+akasha/user $ lens src=set:ingred:fruit
 ```
 
 ```
-Scanned 24 atoms from set:fruits
-Attributes found: sense:taste, sense:smell, color:typical, sys:is_a, ...
-  — sweetness (numeric, 21/24 atoms)
-  — acidity   (numeric, 19/24 atoms)
-  — color     (text, 24/24 atoms)
+◎ lens scan  set:ingred:fruit  5 node(s)  flat_set
 
-Candidate models:
-  [0] rec     — schema-free record table  (coverage: 88%)
-  [1] quadrant — 4-quadrant scatter plot  (sweetness × acidity, coverage: 79%)
+  Attributes:
+  ██████████  100%  rec:acidity              float   0.95
+  ██████████  100%  rec:color                text    red
+  ██████████  100%  rec:sweetness            float   0.85
+
+  Candidates:
+       1.  rec              ████████ 0.82
+       2.  quadrant         ██████░░ 0.75  x=rec:acidity y=rec:sweetness
 ```
 
-`lens` found sweetness and acidity scores already present in the ontology — loaded in the background during startup. No data entry required.
+`lens` found sweetness, acidity, and color attributes already present in the ontology — loaded in the background during startup. No data entry required.
 
 Now project the scan result into a record set with a single command:
 
 ```
-akasha/henri $ lens.flatten into=fruit_view
+akasha/user $ lens.flatten into=fruit_view
 ```
 
 This creates a clean set of record atoms — one per fruit — carrying the discovered attributes. View the result as a formatted table:
 
 ```
-akasha/henri $ rec.table in_set=set:fruit_view
+akasha/user $ rec.table in_set=set:fruit_view
 ```
 
 ```
-┌─────────────┬───────────┬──────────┬────────┐
-│ content     │ sweetness │ acidity  │ color  │
-├─────────────┼───────────┼──────────┼────────┤
-│ Fig         │ 0.88      │ 0.18     │ purple │
-│ Grape       │ 0.82      │ 0.35     │ green  │
-│ Date        │ 0.95      │ 0.05     │ brown  │
-│ Pomegranate │ 0.65      │ 0.55     │ red    │
-│ Olive       │ 0.10      │ 0.22     │ green  │
-│ Lemon       │ 0.08      │ 0.95     │ yellow │
-│ Orange      │ 0.72      │ 0.52     │ orange │
-└─────────────┴───────────┴──────────┴────────┘
+┌─────────┬───────────┬──────────┬────────┐
+│ content │ sweetness │ acidity  │ color  │
+├─────────┼───────────┼──────────┼────────┤
+│ Apple   │ 0.85      │ 0.25     │ red    │
+│ Banana  │ 0.90      │ 0.08     │ yellow │
+│ Orange  │ 0.68      │ 0.52     │ orange │
+│ Lemon   │ 0.05      │ 0.95     │ yellow │
+│ Grape   │ 0.78      │ 0.38     │ green  │
+└─────────┴───────────┴──────────┴────────┘
 ```
 
 The original ontology atoms are untouched. `lens.flatten` created a new independent record set from what was already there.
@@ -582,7 +587,7 @@ This is Concept Model projection: any set of Atoms — from your own notes, from
 Now project the same record set onto a visual map with the **Quadrant model**:
 
 ```
-akasha/henri $ quadrant.plot in_set=set:fruit_view \
+akasha/user $ quadrant.plot in_set=set:fruit_view \
     x=acidity y=sweetness \
     q1="tangy sweet" q2="mellow sweet" \
     q3="bland"       q4="sharp"
@@ -590,17 +595,17 @@ akasha/henri $ quadrant.plot in_set=set:fruit_view \
 
 ```
  sweetness
-    1 │ Date                      │ Fig  Grape
+    1 │ Banana                    │ Apple  Grape
       │                           │
-  0.5 │ Pomegranate               │ Orange
+  0.5 │                           │ Orange
       │                           │
-    0 │ Olive ────────────────────┼──────────── acidity
+    0 │ ──────────────────────────┼──────────── acidity
       │                           │ Lemon
       └───────────────────────────┘
-          bland          tangy sweet / sharp
+          mellow sweet       tangy sweet / sharp
 ```
 
-Dates and figs cluster in the *mellow sweet* quadrant; lemon sits alone in the *sharp* corner; olive is neither sweet nor sour — quiet, complex, neither here nor there.
+Banana sits high in the *mellow sweet* quadrant; lemon sits alone in the *sharp* corner; apple and grape share the tangy-sweet region.
 
 No schema was declared. No data was typed in. The same two-command pattern — `lens` then `lens.flatten` — works on any set in Akasha: your own notes, a search result, an imported CSV, an ontology subtree.
 
@@ -613,7 +618,7 @@ For those who want a richer graphical interface, Akasha also provides a web port
 **In the seeds distribution, the web server starts automatically** alongside the shell. You do not need to do anything to launch it. To confirm it is running, use `svc ls` at the Akasha prompt:
 
 ```
-akasha/henri $ svc ls
+akasha/user $ svc ls
 
   Services
   ─────────────────────────────────────────
@@ -623,7 +628,7 @@ akasha/henri $ svc ls
 If the portal shows as stopped for any reason, start it with:
 
 ```
-akasha/henri $ svc start http_portal
+akasha/user $ svc start http_portal
 ```
 
 Then open in any browser on the same machine:
@@ -644,7 +649,7 @@ The Record and Quadrant models are two of many. Akasha includes:
 
 | Domain | Models |
 |---|---|
-| Data / Analysis | `rec.*`, `tbl.*`, `lens.*`, `quadrant.*` |
+| Data / Analysis | `rec.*`, `table.*`, `lens.*`, `quadrant.*` |
 | Research / Field | `note.*`, `fieldnote.*`, `survey.*`, `agg.*` |
 | Narrative / World | `cast.*`, `world.*`, `map.*` |
 | Semantic / Ontology | `thesaurus.*`, `curation.*` |
@@ -658,7 +663,7 @@ A specialist's field notebook, a librarian's catalogue card, an accountant's led
 To see the overall state of your Akasha instance:
 
 ```
-akasha/henri $ cog
+akasha/user $ cog
 ```
 
 This shows loaded ontologies, atom counts, active scopes, and queue status.
@@ -666,13 +671,13 @@ This shows loaded ontologies, atom counts, active scopes, and queue status.
 To explore what namespaces are loaded:
 
 ```
-akasha/henri $ onto.dump namespaces
+akasha/user $ onto.dump namespaces
 ```
 
 To see atoms in a specific namespace:
 
 ```
-akasha/henri $ onto.dump atoms ns=fruit:
+akasha/user $ onto.dump atoms ns=ingred:fruit:
 ```
 
 As ontology loading progresses, these counts grow. Eventually the full shared vocabulary settles into place and the count stabilizes.
@@ -736,8 +741,8 @@ Ontology loading may still be in progress. Try again after a minute, or check `c
 The web server may not be running. Check with `svc ls` at the Akasha prompt and start it if needed:
 
 ```
-akasha/henri $ svc ls
-akasha/henri $ svc start http_portal
+akasha/user $ svc ls
+akasha/user $ svc start http_portal
 ```
 
 Then open `http://localhost:8000/`.

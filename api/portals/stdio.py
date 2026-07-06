@@ -31,6 +31,29 @@ from api.shell.input import InputBuffer, make_prompt
 
 # ─── Gateway helpers ──────────────────────────────────────────────────────────
 
+class _LocalGateway:
+    """
+    Wraps the shared gateway so every dispatch from THIS local stdio console is
+    stamped with TRUST_LOCAL.  Trust is set here — by the server-side portal that
+    physically owns the operator's terminal — never by anything the client sends.
+
+    The local operator is gated by the OS process boundary, so a bare client_id
+    (including the admin) is accepted locally without a signed token.  The same
+    gateway instance serves the background network portal with the default
+    TRUST_NETWORK, where a bare id would instead be rejected.
+    """
+    __slots__ = ("_gw",)
+
+    def __init__(self, gw):
+        self._gw = gw
+
+    def dispatch(self, payload: dict, transport_trust: str = "local") -> dict:
+        return self._gw.dispatch(payload, "local")
+
+    def __getattr__(self, name):
+        return getattr(self._gw, name)
+
+
 def _dispatch(gw, method: str, data: dict, session_token: str = "") -> dict:
     return gw.dispatch({
         "jsonrpc": "2.0",
@@ -505,6 +528,9 @@ def run_cli(gw):
     Primary interactive REPL.
     Receives a live AkashaGateway; makes no direct lib.* calls.
     """
+    # The interactive console is the trusted local operator: stamp every dispatch
+    # (including boot ontology autoload) with TRUST_LOCAL.
+    gw = _LocalGateway(gw)
     env.print_environment_info()
     print()
 
@@ -1060,6 +1086,8 @@ def run_cli(gw):
 
 def run_single_shot(command: str, gw) -> str:
     """Executes one command non-interactively and returns raw JSON."""
+    # Headless single-shot is the local operator (`python akasha.py <cmd>`).
+    gw = _LocalGateway(gw)
     status = _auth_status(gw)
     if not status.get("initialized"):
         return json.dumps({"error": "System not initialized. Run interactively first."})

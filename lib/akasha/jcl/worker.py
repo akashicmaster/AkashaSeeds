@@ -170,7 +170,10 @@ class JCLWorker:
                     },
                     "id": f"{job.job_id}:s{i}",
                 }
-                resp = self._kernel.dispatch(payload)
+                # Kernel-originated in-process dispatch: the job owner (which may
+                # be a bare id like "admin" or a system identity like
+                # "system.weaver") is trusted here — TRUST_INTERNAL.
+                resp = self._kernel.dispatch(payload, "internal")
 
                 # Update job-local last_key from the response so the next step
                 # can reference $it correctly without touching session state.

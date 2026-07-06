@@ -36,6 +36,26 @@ except ImportError:
 
 logger = logging.getLogger("Akasha.Kernel")
 
+# ── Transport trust levels ──────────────────────────────────────────────────
+# Trust is a property of the *server-side transport binding*, set by the portal
+# that received the request — never a value the client can supply.  It governs
+# whether a bare client_id may assert an identity:
+#
+#   TRUST_NETWORK  (default) — untrusted remote (HTTP/ASGI, web worker, CGI).
+#                              A privileged identity must prove itself with a
+#                              signed akt: session token; a bare client_id is
+#                              only ever accepted as an anonymous GUEST.
+#   TRUST_LOCAL              — the local operator's stdio console.  The OS
+#                              process boundary is the real gate, so a bare
+#                              client_id (incl. the admin) is accepted.
+#   TRUST_INTERNAL           — kernel-originated in-process dispatch (JCL worker,
+#                              boot loader, self-dispatch).  Bare client_id and
+#                              system.* process identities are accepted.
+TRUST_NETWORK  = "network"
+TRUST_LOCAL    = "local"
+TRUST_INTERNAL = "internal"
+_TRUSTED_TRANSPORTS = frozenset({TRUST_LOCAL, TRUST_INTERNAL})
+
 # Optional engines — degrade gracefully if missing
 try:
     from lib.harmonia.engine import HarmoniaEngine
@@ -341,12 +361,14 @@ def _job_to_dict(job, brief: bool = False) -> dict:
         progress += f" ({pct}%)"
 
     d: dict = {
-        "job_id":    job.job_id,
-        "owner":     job.owner,
-        "label":     job.label,
-        "status":    job.status,
-        "progress":  progress,
-        "submitted": _fmt_ts(job.submitted_at),
+        "job_id":     job.job_id,
+        "owner":      job.owner,
+        "label":      job.label,
+        "status":     job.status,
+        "progress":   progress,
+        "step_done":  job.step_done,
+        "step_count": job.step_count,
+        "submitted":  _fmt_ts(job.submitted_at),
     }
     if job.completed_at:
         d["completed"] = _fmt_ts(job.completed_at)
@@ -1002,10 +1024,13 @@ class KernelDispatcher:
     # Public entry point
     # ------------------------------------------------------------------
 
-    def dispatch(self, payload: dict) -> dict:
+    def dispatch(self, payload: dict, transport_trust: str = TRUST_NETWORK) -> dict:
         """
         Unified JSON-RPC 2.0 entry point.
         Every shell portal calls this and only this.
+
+        transport_trust is supplied by the calling portal (never by the client)
+        and defaults to the safe TRUST_NETWORK.  See the trust-level constants.
         """
         if not isinstance(payload, dict) or payload.get("jsonrpc") != "2.0" or "method" not in payload:
             return _err(payload.get("id") if isinstance(payload, dict) else None,
@@ -1016,7 +1041,7 @@ class KernelDispatcher:
         params: dict = payload.get("params", {})
 
         try:
-            return self._authenticated_dispatch(method, params, rid)
+            return self._authenticated_dispatch(method, params, rid, transport_trust)
         except PermissionError as e:
             return _err(rid, -32001, f"Permission Denied: {e}")
         except Exception as e:
@@ -1027,10 +1052,12 @@ class KernelDispatcher:
     # Auth + session resolution
     # ------------------------------------------------------------------
 
-    def _authenticated_dispatch(self, method: str, params: dict, rid: str) -> dict:
+    def _authenticated_dispatch(self, method: str, params: dict, rid: str,
+                                transport_trust: str = TRUST_NETWORK) -> dict:
         # Raw token as supplied by the transport layer (HTTP header or RPC param).
         # Akasha does not trust the transport; this value is opaque until resolved.
         raw_token: str = params.get("session_token") or params.get("client_id") or "anonymous"
+        trusted = transport_trust in _TRUSTED_TRANSPORTS
         data: dict = params.get("data", {})
         # Merge any top-level non-auth params into data so concept registry
         # handlers receive them regardless of nesting style used by the caller.
@@ -1046,6 +1073,12 @@ class KernelDispatcher:
         if method == "sys.status":
             return self._handle_status(rid)
         if method == "kernel.genesis_rite":
+            # Genesis seizes (or creates) the admin account.  Restrict it to the
+            # local console / internal boot so a network client cannot land-grab
+            # admin on a Cell that is exposed before its first-boot ceremony.
+            if not trusted:
+                return _err(rid, -32001,
+                            "genesis_rite must be performed from the local console.")
             return self._handle_genesis_rite(rid, data)
         if method in ("kernel.auth.status", "auth.status"):
             return self._handle_auth_status(rid)
@@ -1060,25 +1093,49 @@ class KernelDispatcher:
         if method == "session.guest.extend":
             return self._handle_guest_extend(rid, raw_token, data)
 
-        # Guest binding key resolution: HTTP transport supplies an opaque "gbk:"
-        # key; the core maps it to an Akasha-internal session ID.  The transport
-        # layer is never told what the session ID is — it only holds the key.
+        # ── Identity resolution ──────────────────────────────────────────────
+        # The identity is resolved from the token, never asserted by a bare
+        # client_id over an untrusted transport.  Four cases:
         if self.iam.guest_bindings.is_guest_key(raw_token):
+            # gbk: signed guest binding → an Akasha-internal "guest:" session id.
             try:
                 client_id = self.iam.guest_bindings.resolve(raw_token)
+                role      = self.iam.authenticate(client_id)
             except PermissionError as e:
                 return _err(rid, -32001, str(e))
-            # Renew the pool slot timer on every authenticated request so the
-            # sweeper doesn't reclaim an active visitor's session.
+            # Renew the pool slot timer so the sweeper doesn't reclaim an active
+            # visitor's session mid-use.
             self.manager.touch_guest_session(client_id)
-        else:
+        elif self.iam.guest_bindings.is_auth_key(raw_token):
+            # akt: signed session token — proof of identity on ANY transport.
+            try:
+                client_id, role = self.iam.resolve_session_token(raw_token)
+            except PermissionError as e:
+                return _err(rid, -32001, str(e))
+        elif trusted:
+            # Trusted transport (local console / internal): a bare client_id may
+            # assert an identity — the OS/process boundary is the real gate.
             client_id = raw_token
-
-        # All other methods require IAM authentication
-        try:
-            role = self.iam.authenticate(client_id)
-        except PermissionError as e:
-            return _err(rid, -32001, str(e))
+            if self.iam.is_system_identity(client_id) and transport_trust != TRUST_INTERNAL:
+                return _err(rid, -32001, "System identities are internal-only.")
+            try:
+                role = self.iam.authenticate(client_id)
+            except PermissionError as e:
+                return _err(rid, -32001, str(e))
+        else:
+            # Untrusted network transport with a bare (unsigned) identity claim.
+            # Resolve it, but accept ONLY an anonymous GUEST.  A known privileged
+            # identity MUST present a signed akt: token (obtained via auth.verify)
+            # — this closes the "the username is the credential" bypass.
+            try:
+                role = self.iam.authenticate(raw_token)
+            except PermissionError as e:
+                return _err(rid, -32001, str(e))
+            if role != Role.GUEST:
+                return _err(rid, -32001,
+                            "This identity requires a signed session token over the "
+                            "network. Call auth.verify to obtain one.")
+            client_id = raw_token
 
         # Map full RPC method names to the capability action tokens IAM understands
         action = _METHOD_TO_ACTION.get(method, method)
@@ -1102,13 +1159,18 @@ class KernelDispatcher:
             history = [item for item in _raw
                        if item.get("author") == client_id and not _is_sys_atom(item)][:20]
 
-        return self._route(method, data, session, ctx, history, rid)
+        # Per-token su slot: elevation (su root/librarian/impersonate) is bound to
+        # THIS token, not shared across every connection that presents the same
+        # client_id — prevents su state bleeding between concurrent sessions.
+        su_key = "su_target:" + hashlib.sha256(raw_token.encode()).hexdigest()[:16]
+        return self._route(method, data, session, ctx, history, rid, su_key)
 
     # ------------------------------------------------------------------
     # Routing table
     # ------------------------------------------------------------------
 
-    def _route(self, method: str, data: dict, session, ctx, history: list, rid: str) -> dict:
+    def _route(self, method: str, data: dict, session, ctx, history: list, rid: str,
+               su_key: str = "su_target") -> dict:
         client_id = session.client_id
         scopes = session.active_scopes
 
@@ -1120,10 +1182,11 @@ class KernelDispatcher:
 
         # ── su: must run under real identity, not the overridden one ──
         if method == "sys.su":
-            return self._handle_su(rid, data, session, client_id)
+            return self._handle_su(rid, data, session, client_id, su_key)
 
-        # Apply su state — override client_id / scopes for all other commands
-        su_target = session.get_context("su_target")
+        # Apply su state — override client_id / scopes for all other commands.
+        # su_key is per-token so elevation does not leak across connections.
+        su_target = session.get_context(su_key)
         if su_target == "root":
             scopes = list(scopes) + ["scope:sys:root"]
         elif su_target == "librarian":
@@ -1194,7 +1257,7 @@ class KernelDispatcher:
             return _ok(rid, {"aliases": ctx.get_all_aliases()})
 
         if method in ("kernel.identity.alias.find", "alias.find", "al.find"):
-            pattern = data.get("pattern", "%")
+            pattern = data.get("pattern") or data.get("name", "%")
             aliases = ctx.get_aliases_by_pattern(pattern)
             focus   = self._get_display_focus(session)
             nucleus = getattr(session, 'nucleus', None)
@@ -1227,6 +1290,8 @@ class KernelDispatcher:
             return self._handle_onto_pack_enable(rid, data, session, scopes)
         if method == "onto.pack.disable":
             return self._handle_onto_pack_disable(rid, data, session, scopes)
+        if method == "onto.report":
+            return self._handle_onto_report(rid, data, ctx)
         if method == "onto.status":
             return self._handle_onto_status(rid, data, session, scopes)
         if method == "onto.genesis.redo":
@@ -1514,7 +1579,8 @@ class KernelDispatcher:
     # su — privileged identity switch (admin only)
     # ------------------------------------------------------------------
 
-    def _handle_su(self, rid: str, data: dict, session, real_client_id: str) -> dict:
+    def _handle_su(self, rid: str, data: dict, session, real_client_id: str,
+                   su_key: str = "su_target") -> dict:
         # Verify the caller holds admin role
         try:
             role = self.iam.authenticate(real_client_id)
@@ -1528,21 +1594,21 @@ class KernelDispatcher:
 
         # Exit su (no passphrase required)
         if not target or target == "exit":
-            prev = session.get_context("su_target")
-            session.set_context("su_target", None)
+            prev = session.get_context(su_key)
+            session.set_context(su_key, None)
             return _ok(rid, {"status": "su_exited", "previous": prev})
 
         # All other su targets require passphrase re-verification
         if not passphrase:
             return _err(rid, -32602, "su requires 'passphrase'")
 
-        passphrase_hash = hashlib.sha256(passphrase.encode("utf-8")).hexdigest()
-        if not self.iam.verify_passphrase(real_client_id, passphrase_hash):
+        presented_hash = hashlib.sha256(passphrase.encode("utf-8")).hexdigest()
+        if not self.iam.verify_passphrase(real_client_id, presented_hash):
             return _err(rid, -32001, "Authentication failed: invalid passphrase")
 
         # Root mode
         if target == "root":
-            session.set_context("su_target", "root")
+            session.set_context(su_key, "root")
             return _ok(rid, {
                 "status": "su_active",
                 "target": "root",
@@ -1551,7 +1617,7 @@ class KernelDispatcher:
 
         # Librarian mode — adds role:librarian to current admin session
         if target == "librarian":
-            session.set_context("su_target", "librarian")
+            session.set_context(su_key, "librarian")
             return _ok(rid, {
                 "status": "su_active",
                 "target": "librarian",
@@ -1564,7 +1630,7 @@ class KernelDispatcher:
         except PermissionError:
             return _err(rid, -32002, f"su: unknown identity '{target}'")
 
-        session.set_context("su_target", target)
+        session.set_context(su_key, target)
         return _ok(rid, {"status": "su_active", "target": target})
 
     # ------------------------------------------------------------------
@@ -2137,6 +2203,10 @@ class KernelDispatcher:
         return self.manager.shared_nucleus
 
     def _handle_auth_status(self, rid: str) -> dict:
+        # Pre-auth endpoint: report only whether the Cell is initialized.  The
+        # admin username is NOT disclosed — under the token model the username is
+        # the login identifier, so leaking it pre-auth hands an attacker half the
+        # credential (and the whole of it under the old bare-id model).
         try:
             n = self._nucleus()
             admin_name = n.vault_retrieve("system", "admin_name")
@@ -2146,7 +2216,6 @@ class KernelDispatcher:
         return _ok(rid, {
             "initialized": admin_name is not None,
             "akasha_name": akasha_name,
-            "admin_name": admin_name
         })
 
     def _handle_auth_verify(self, rid: str, data: dict) -> dict:
@@ -2154,6 +2223,10 @@ class KernelDispatcher:
         passphrase = data.get("passphrase", "")
         if not user_id or not passphrase:
             return _err(rid, -32602, "auth.verify requires 'user_id' and 'passphrase'")
+
+        # System process identities have no passphrase and are never a login.
+        if self.iam.is_system_identity(user_id):
+            return _err(rid, -32001, "Authentication failed: invalid credentials")
 
         passphrase_hash = hashlib.sha256(passphrase.encode("utf-8")).hexdigest()
 
@@ -2166,10 +2239,22 @@ class KernelDispatcher:
         except PermissionError:
             return _err(rid, -32001, "Authentication failed: unknown user")
 
+        # Mint a signed, expiring session token bound to this identity.  This —
+        # not the bare username — is what the client presents on subsequent calls.
+        try:
+            ttl = max(60, min(int(data.get("ttl", 1800)), 86400))
+        except (TypeError, ValueError):
+            ttl = 1800
+        try:
+            minted = self.iam.issue_session_token(user_id, ttl)
+        except PermissionError as e:
+            return _err(rid, -32001, str(e))
+
         return _ok(rid, {
             "status": "authenticated",
             "user_id": user_id,
-            "session_token": user_id,
+            "session_token": minted["session_token"],
+            "expires_at": minted["expires_at"],
             "role": role.value,
         })
 
@@ -2277,8 +2362,30 @@ class KernelDispatcher:
                 logger.debug("[Weaver] '%s'→lemma:'%s': %s", surface, lemma, _we)
         return woven
 
+    def _weaver_denied(self, session, data, nucleus_write: bool):
+        """Authorization gate for sys.weaver.* handlers.
+
+        Weaving into the shared nucleus, or on behalf of another client, is a
+        privileged/system operation — not something a plain USER may drive
+        directly.  Legitimate weave jobs run under a librarian-tier owner
+        (system.weaver for guests, the librarian/admin writer for nucleus
+        writes, "admin" for boot pack loads), all of which carry role:librarian.
+        Returns an error string if denied, else None.
+        """
+        scopes = session.active_scopes
+        is_priv = "role:librarian" in scopes  # system.weaver / librarian / admin
+        for_client = data.get("_for_client")
+        if for_client and for_client != session.client_id and not is_priv:
+            return "weaver: '_for_client' override requires a librarian/system role"
+        if nucleus_write and not is_priv:
+            return "weaver: nucleus weaving requires a librarian/collective-write role"
+        return None
+
     def _handle_weave(self, rid, data, session) -> dict:
         """sys.weaver.weave — weave a single atom's text into protoword links."""
+        denied = self._weaver_denied(session, data, nucleus_write=True)
+        if denied:
+            return _err(rid, -32003, denied)
         nucleus = getattr(session, 'nucleus', None)
         if not nucleus:
             return _ok(rid, {"status": "skipped", "reason": "no nucleus"})
@@ -2307,6 +2414,9 @@ class KernelDispatcher:
 
     def _handle_weave_batch(self, rid, data, session) -> dict:
         """sys.weaver.weave_batch — weave a list of {alias, text} items in one step."""
+        denied = self._weaver_denied(session, data, nucleus_write=True)
+        if denied:
+            return _err(rid, -32003, denied)
         nucleus = getattr(session, 'nucleus', None)
         if not nucleus:
             return _ok(rid, {"status": "skipped", "reason": "no nucleus"})
@@ -2367,6 +2477,12 @@ class KernelDispatcher:
 
     def _handle_weave_client(self, rid, data, session) -> dict:
         """sys.weaver.weave_client — weave a client atom into existing nucleus protowords."""
+        # weave_client only READS nucleus protowords and writes into the target
+        # cortex, so it is safe on one's own cortex; the _for_client override
+        # (writing into another client's cortex) is the privileged part.
+        denied = self._weaver_denied(session, data, nucleus_write=False)
+        if denied:
+            return _err(rid, -32003, denied)
         # When running as system.weaver on behalf of a guest, _for_client names
         # the original session so we access the correct cortex.
         for_client = data.get("_for_client")
@@ -2598,6 +2714,10 @@ class KernelDispatcher:
         if not key or not text:
             return _err(rid, -32602, "decompose requires key and text")
 
+        denied = self._weaver_denied(session, data, nucleus_write=bool(is_nucleus))
+        if denied:
+            return _err(rid, -32003, denied)
+
         # When running as system.weaver on behalf of a guest, _for_client names
         # the original session so we write to the correct cortex.
         for_client = data.get("_for_client")
@@ -2740,10 +2860,11 @@ class KernelDispatcher:
             return _err(rid, -32602, "read requires 'id' or an active session context")
 
         resolved = self._resolve_target(target, session, history) or target
+        # Scoped read only.  get_scoped_chunk applies check_access and returns
+        # None on BOTH "denied" and "not found" — we must NOT fall back to an
+        # unscoped get_chunk(), which would leak atoms outside the caller's
+        # scope (including nucleus-resident collective/DNA/admin atoms).
         content = ctx.get_scoped_chunk(resolved, scopes)
-
-        if content is None:
-            content = ctx.get_chunk(resolved)
         if content is None:
             return _err(rid, -32002, f"Atom not found or out of scope: '{target}'")
 
@@ -2755,8 +2876,20 @@ class KernelDispatcher:
         meta    = ctx.get_meta(resolved)
         aliases = ctx.get_aliases_by_key(resolved)
 
-        # Build link list with previews for display
+        # Build link list with previews for display.  A neighbour's content and
+        # aliases are only revealed if the caller may actually see that neighbour;
+        # out-of-scope endpoints show the edge but redact the payload so links
+        # cannot be used to enumerate private/nucleus atoms.
         def _link_entry(key: str, rel: str, direction: str) -> dict:
+            if not ctx.check_access(key, scopes):
+                return {
+                    "key":       key,
+                    "rel":       rel,
+                    "direction": direction,
+                    "aliases":   [],
+                    "preview":   "",
+                    "restricted": True,
+                }
             preview = ctx.get_chunk(key) or ""
             return {
                 "key":       key,
@@ -3012,7 +3145,7 @@ class KernelDispatcher:
 
         if mode == "sets":
             name = coll or "ontology.narrative_typology"
-            keys = ctx.core.get_collection_members(name)
+            keys = ctx.get_collection_members(name)
             items = []
             for k in keys:
                 main = _best_alias(k)
@@ -3625,6 +3758,31 @@ class KernelDispatcher:
             "message": f"Pack '{pack_name}' disabled. Atoms remain in nucleus until onto.reset.",
         })
 
+    def _handle_onto_report(self, rid, data, ctx) -> dict:
+        """Alias collision report — reads alias_collision_log from nucleus."""
+        nucleus = getattr(ctx, '_nucleus', None)
+        src = nucleus if nucleus else ctx
+        since = float(data.get("since", 0.0) or 0.0)
+        limit = int(data.get("limit", 200) or 200)
+        entries_raw = src.get_alias_collision_log(since=since, limit=limit, unresolved_only=False)
+        should_clear = str(data.get("clear", "")).lower() in ("true", "1", "yes")
+        if should_clear and entries_raw:
+            nucleus_core = getattr(src, 'core', None)
+            if nucleus_core:
+                try:
+                    nucleus_core.conn.execute("DELETE FROM alias_collision_log")
+                    nucleus_core._commit()
+                except Exception:
+                    pass
+        overwrites = sum(1 for e in entries_raw if e.get("event") == "overwrite")
+        leaf_skips = sum(1 for e in entries_raw if e.get("event") == "leaf_skip")
+        entries = [
+            {"alias": e["alias"], "winner": e.get("new_key", ""), "loser": e.get("old_key", ""),
+             "event": e.get("event", ""), "ts": e.get("ts", 0)}
+            for e in entries_raw
+        ]
+        return _ok(rid, {"overwrites": overwrites, "leaf_skips": leaf_skips, "entries": entries})
+
     def _handle_onto_status(self, rid, data, session, scopes) -> dict:
         """Ontology status: nucleus counts, REGISTRY packages, and sentinel files."""
         import json as _json
@@ -3951,7 +4109,9 @@ class KernelDispatcher:
         # ── Build result list ────────────────────────────────────────────
         results = []
         for k, alias in list(candidate_keys.items())[:limit]:
-            if scopes and not ctx.check_access(k, scopes):
+            # Fail-closed: check_access denies when scopes is empty, so no
+            # `scopes and ...` short-circuit that would leak on an empty list.
+            if not ctx.check_access(k, scopes):
                 continue
             if alias is None:
                 als = ctx.get_aliases_by_key(k)
@@ -4157,6 +4317,11 @@ class KernelDispatcher:
             names = ctx.list_set_names()
             return _ok(rid, {"sets": names, "count": len(names)})
         members = ctx.list_set(name, allowed_scopes=scopes)
+        # Fallback: if no members found and name lacks "set:" prefix, retry with it.
+        if not members and not name.startswith("set:"):
+            members = ctx.list_set(f"set:{name}", allowed_scopes=scopes)
+            if members:
+                name = f"set:{name}"
         if session:
             nucleus = getattr(session, 'nucleus', None)
             focus   = self._get_display_focus(session)
@@ -4446,6 +4611,15 @@ class KernelDispatcher:
         ]
         if not steps:
             return _err(rid, -32602, "No valid steps in job submission")
+        # Defense-in-depth: reject privileged/recursive methods inside a batch
+        # (job control, sys.su, user/group admin, auth, destructive onto ops).
+        try:
+            from lib.akasha.jcl.validator import validate_steps as _validate_steps
+            _valid, _vmsg = _validate_steps(steps)
+            if not _valid:
+                return _err(rid, -32003, _vmsg)
+        except ImportError:
+            pass
         job = JCLJob(
             owner=session.client_id,
             label=data.get("label", ""),
@@ -5815,7 +5989,15 @@ class KernelDispatcher:
         No authentication required — any HTTP client may call this.  Returns an
         opaque binding_key (prefix "gbk:") signed with the Akasha HMAC secret.
         """
-        ttl     = max(60, min(int(data.get("ttl", 1800)), 86400))  # clamp 1min–24h
+        # Clamp the token TTL to the pool's inactivity TTL.  A token that outlives
+        # its slot could otherwise re-activate a slot that has since been reclaimed
+        # (and possibly handed to another visitor), so the two must not diverge.
+        _pool_ttl = getattr(getattr(self.manager, "guest_pool", None), "ttl", 600)
+        try:
+            _req_ttl = int(data.get("ttl", _pool_ttl))
+        except (TypeError, ValueError):
+            _req_ttl = _pool_ttl
+        ttl     = max(60, min(_req_ttl, _pool_ttl))
         slot_id = self.manager.checkout_guest_session()
         if slot_id is None:
             return _err(rid, -32000, "Guest pool exhausted — try again shortly.")
@@ -5835,7 +6017,12 @@ class KernelDispatcher:
         if not self.iam.guest_bindings.is_guest_key(raw_token):
             return _err(rid, -32001, "session.guest.extend requires a guest binding key.")
         try:
-            ttl    = max(60, min(int(data.get("ttl", 1800)), 86400))
+            _pool_ttl = getattr(getattr(self.manager, "guest_pool", None), "ttl", 600)
+            try:
+                _req_ttl = int(data.get("ttl", _pool_ttl))
+            except (TypeError, ValueError):
+                _req_ttl = _pool_ttl
+            ttl    = max(60, min(_req_ttl, _pool_ttl))
             result = self.iam.guest_bindings.extend(raw_token, ttl)
             self.manager.touch_guest_session(result["session_id"])
             return _ok(rid, {

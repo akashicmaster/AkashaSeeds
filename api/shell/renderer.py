@@ -894,7 +894,7 @@ def render_lens_flatten(result: dict):
     print(f"\n{c(Colors.CYAN, '─' * 56)}")
     print(f"{c(Colors.GREEN, '✓')} lens flatten → {c(Colors.GREEN, into)}")
     print(f"  {c(Colors.DIM, 'atoms:')}  {written}")
-    print(f"  {c(Colors.DIM, 'use:')}    rec.table in_set={into}  |  lens src={into}  |  tbl.ls ...")
+    print(f"  {c(Colors.DIM, 'use:')}    rec.table in_set={into}  |  lens src={into}  |  table.ls ...")
     print()
 
 

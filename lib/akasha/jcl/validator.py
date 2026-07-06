@@ -1,63 +1,55 @@
 """
-JCL Security Validator — enforces kernel method allowlist for submitted steps.
+JCL Security Validator — blocks privileged / recursive methods in submitted steps.
 
-Only kernel RPC methods that read/write the cognitive graph are permitted.
-OS-level commands, arbitrary imports, and recursion (job.submit inside JCL)
-are structurally impossible here — the worker only calls kernel.dispatch().
+Every JCL step is re-dispatched through the normal kernel auth path as the job
+owner, so a step can never do more than the owner could do interactively — the
+worker only calls kernel.dispatch(); OS commands and arbitrary imports are
+structurally impossible.  This validator is defense-in-depth on top of that: it
+rejects a small, explicit set of methods that must never run *inside* a batch
+job regardless of the owner's role, namely
+
+  - job control      — recursion / fork-bomb (a job that submits jobs)
+  - identity switch  — sys.su (elevation inside an unattended batch)
+  - user/group admin — user.* / grp.* (account mutation from a batch)
+  - session/auth      — session.* / auth.* / kernel.genesis_rite
+  - destructive onto  — onto.reset / onto.genesis.redo / onto.scope.drop
+
+A blocklist (not an allowlist) is used deliberately: ordinary graph and
+concept-model operations (rec.*, table.*, lens*, quadrant.*, note.*, set.*,
+weave, …) are the whole point of a batch job and must keep working, while new
+concept models must not silently become un-runnable in JCL.
 """
 from typing import List, Tuple
 from lib.akasha.jcl.job import JCLStep
 
-# Whitelist of methods that JCL steps may invoke.
-# job.* and sys.monitor are excluded to prevent recursion / privilege escalation.
-ALLOWED_METHODS: frozenset = frozenset({
-    # Memory
-    "kernel.memory.write", "kernel.memory.define",
-    "kernel.memory.read",  "kernel.memory.drop",
-    "kernel.memory.link",
-    # Links
-    "link.list", "link.reinforce",
-    # Meta & Aliases
-    "meta.set",
-    "kernel.identity.alias",
-    "kernel.identity.alias.list",
-    "kernel.identity.alias.find",
-    # Exploration
-    "explore", "sys.tree",
-    # Dive
-    "dive.look", "dive.out",
-    # Sets
-    "set.add", "set.rm", "set.ls", "set.clear", "set.op",
-    # Notes
-    "note.new", "note.add",
-    # Log
-    "log.new", "log.checkpoint", "log.annotate", "log.read",
-    # Whiteboard
-    "wb.new", "wb.pin", "wb.unpin", "wb.focus", "wb.ls", "wb.show",
-    # Cross
-    "sys.cross.query", "sys.cross.axes",
-    # Associate
-    "kernel.associate", "associate.unwritten",
-    # Scope
-    "sys.scope.set", "sys.scope.get", "sys.scope.reset",
-    # Contexa
-    "contexa.fetch",
-    # Sys (read-only sys ops)
-    "sys.history", "sys.ls",
-    # Jataka
-    "jataka.dream",
+# Exact method names that are forbidden inside a JCL step.
+_BLOCKED_METHODS: frozenset = frozenset({
+    "sys.su",
+    "kernel.genesis_rite",
+    "auth.verify", "auth.status", "kernel.auth.verify", "kernel.auth.status",
+    "onto.reset", "onto.genesis.redo", "onto.scope.drop",
 })
+
+# Any method beginning with one of these prefixes is forbidden.
+_BLOCKED_PREFIXES: tuple = (
+    "job.",       # recursion / fork-bomb
+    "user.",      # account mutation
+    "grp.",       # group mutation
+    "session.",   # guest binding / session context management
+    "sys.su",     # identity switch (defensive; also blocked exactly above)
+)
 
 
 def validate_steps(steps: List[JCLStep]) -> Tuple[bool, str]:
     """
-    Check every step against the allowlist.
+    Reject a job if any step invokes a privileged / recursive method.
     Returns (True, "") on success, (False, error_message) on first violation.
     """
     for i, step in enumerate(steps):
-        if step.method not in ALLOWED_METHODS:
+        m = step.method or ""
+        if m in _BLOCKED_METHODS or m.startswith(_BLOCKED_PREFIXES):
             return False, (
-                f"Step {i + 1}: method '{step.method}' is not permitted in JCL. "
-                f"Only kernel graph operations are allowed."
+                f"Step {i + 1}: method '{m}' is not permitted inside a JCL job "
+                f"(privileged or recursive)."
             )
     return True, ""

@@ -319,14 +319,24 @@ class AkashaManager:
 
     def _reset_guest_slot(self, slot_id: str) -> None:
         """
-        Clear transient state on a reclaimed slot so the next visitor gets a
-        clean context.  The AkashaSession itself stays warm (SQLite connection,
-        cortex, nucleus) — only the in-memory dialogue state is cleared.
+        Fully wipe a reclaimed guest slot so the next visitor cannot read the
+        previous visitor's data.  Clearing only in-memory state is not enough:
+        the slot's private cortex DB persists on disk and every visitor to a
+        pool slot shares the same client_id/author tag, so residual atoms would
+        be readable by the next visitor.  We therefore close and delete the
+        slot's private cell directory entirely; the next checkout recreates a
+        fresh, empty session.  The shared nucleus is never touched.
+
+        Runs serialized through _session_wq so it cannot race session creation.
         """
-        session = self.sessions.get(slot_id)
-        if session is None:
-            return
-        session.temp_staging = []
-        session.symbols      = {}
-        session.last_written_id     = None
-        session.last_written_vector = None
+        def _wipe() -> None:
+            session = self.sessions.pop(slot_id, None)
+            if session is not None:
+                try:
+                    session.local_cortex.close()
+                except Exception as e:
+                    logger.warning("[Guest] cortex close failed for %s: %s", slot_id, e)
+            import shutil as _shutil
+            cell_dir = os.path.join(self.base_dir, "cells", slot_id)
+            _shutil.rmtree(cell_dir, ignore_errors=True)
+        self._session_wq.submit(_wipe)

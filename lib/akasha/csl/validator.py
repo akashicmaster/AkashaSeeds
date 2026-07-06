@@ -94,8 +94,7 @@ _KNOWN_KERNEL_METHODS: Set[str] = {
     # Sync
     "sync.push", "sync.pull",
     # CSL itself (built-in)
-    "csl.run", "csl.check", "csl.dry", "csl.explain",
-    "csl.save", "csl.load", "csl.ls", "csl.rm", "csl.exec",
+    "csl", "csl.check", "csl.build", "csl.run",
 }
 
 # Parameters that should be numeric values in [0, 1]

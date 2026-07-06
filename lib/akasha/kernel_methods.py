@@ -481,13 +481,16 @@ METHOD_TO_ACTION: Dict[str, str] = {
     # Auth / session (handlers enforce own-user / role:admin internally)
     "sys.passwd": "status",
     "sys.su":     "status",
-    # User management (handler enforces role:admin for modifying others)
-    "user.add":    "write",
-    "user.id":     "read",
-    "user.ls":     "read",
-    "user.mod":    "write",
-    "user.passwd": "write",
-    "user.rm":     "drop",
+    # User management — ADMIN-only capability (handlers also assert admin).
+    # Mapping to the dedicated iam.manage capability (not the generic
+    # write/read/drop that every USER holds) means a missing in-handler
+    # _assert_admin can no longer become privilege escalation.
+    "user.add":    "iam.manage",
+    "user.id":     "iam.manage",
+    "user.ls":     "iam.manage",
+    "user.mod":    "iam.manage",
+    "user.passwd": "iam.manage",
+    "user.rm":     "iam.manage",
     # Group management
     "grp.new": "group.manage",
     "grp.add": "group.manage",

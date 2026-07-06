@@ -60,33 +60,33 @@ def "dna:sound:quiet" "Quiet."
 
 def "dna:sound:rhythmic" "Rhythmic."
 
-def "dna:taste:bitter" "Bitter."
+def "dna:taste:bitter" "Bitter taste; sharp and unpleasant, often signalling toxins."
 
-def "dna:taste:hot" "The sensation of heat or spiciness."
+def "dna:taste:hot" "Hot taste; the burning sensation of capsaicin and heat."
 
-def "dna:taste:salty" "Salty."
+def "dna:taste:salty" "Salty taste; the mineral sharpness of sodium."
 
-def "dna:taste:sour" "Sour."
+def "dna:taste:sour" "Sour taste; the sharp or acidic flavour."
 
-def "dna:taste:sweet" "Sweet."
+def "dna:taste:sweet" "Sweet taste; a pleasurable gustatory sensation."
 
-def "dna:taste:umami" "The savory fifth taste associated with glutamate."
+def "dna:taste:umami" "Umami taste; the savory fifth taste associated with glutamate."
 
-def "dna:texture:crisp" "Crisp."
+def "dna:texture:crisp" "Crisp texture; firm and brittle, breaking cleanly under pressure."
 
-def "dna:texture:fibrous" "Fibrous."
+def "dna:texture:fibrous" "Fibrous texture; stringy or thread-like under chewing."
 
-def "dna:texture:hard" "Hard."
+def "dna:texture:hard" "Hard texture; resistant to biting or cutting."
 
-def "dna:texture:rough" "Rough."
+def "dna:texture:rough" "Rough texture; uneven, coarse surface feel."
 
-def "dna:texture:slimy" "Slippery, mucilaginous, or lubricious."
+def "dna:texture:slimy" "Slimy texture; slippery, mucilaginous, or lubricious."
 
-def "dna:texture:smooth" "Smooth."
+def "dna:texture:smooth" "Smooth texture; even and soft surface, no roughness."
 
-def "dna:texture:soft" "Soft."
+def "dna:texture:soft" "Soft texture; yielding easily to pressure."
 
-def "dna:texture:viscous" "Viscous."
+def "dna:texture:viscous" "Viscous texture; thick, sticky flow."
 
 def "dna:touch:cold" "Cold."
 

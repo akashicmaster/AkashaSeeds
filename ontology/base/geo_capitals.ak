@@ -4,6 +4,56 @@
 #   geo:capital:X -[sys:capital_of]-> geo:country:ISO3
 #   geo:country:ISO3 -[sys:has_capital]-> geo:capital:X
 # atoms: 43
+#
+# Short aliases — let users write `dive Rome` instead of `dive geo:capital:rome`.
+
+al geo:capital:abu_dhabi   abu_dhabi
+al geo:capital:abuja       abuja
+al geo:capital:addis_ababa addis_ababa
+al geo:capital:amsterdam   amsterdam
+al geo:capital:ankara      ankara
+al geo:capital:baghdad     baghdad
+al geo:capital:bangkok     bangkok
+al geo:capital:beijing     beijing
+al geo:capital:berlin      berlin
+al geo:capital:bern        bern
+al geo:capital:bogota      bogota
+al geo:capital:brasilia    brasilia
+al geo:capital:brussels    brussels
+al geo:capital:buenos_aires buenos_aires
+al geo:capital:cairo       cairo
+al geo:capital:canberra    canberra
+al geo:capital:dhaka       dhaka
+al geo:capital:hanoi       hanoi
+al geo:capital:islamabad   islamabad
+al geo:capital:jakarta     jakarta
+al geo:capital:jerusalem   jerusalem
+al geo:capital:kuala_lumpur kuala_lumpur
+al geo:capital:kyiv        kyiv
+al geo:capital:lima        lima
+al geo:capital:london      london
+al geo:capital:madrid      madrid
+al geo:capital:manila      manila
+al geo:capital:mexico_city mexico_city
+al geo:capital:moscow      moscow
+al geo:capital:nairobi     nairobi
+al geo:capital:new_delhi   new_delhi
+al geo:capital:oslo        oslo
+al geo:capital:ottawa      ottawa
+al geo:capital:paris       paris
+al geo:capital:pretoria    pretoria
+al geo:capital:rabat       rabat
+al geo:capital:riyadh      riyadh
+al geo:capital:rome        rome
+al geo:capital:santiago    santiago
+al geo:capital:seoul       seoul
+al geo:capital:singapore   singapore
+al geo:capital:stockholm   stockholm
+al geo:capital:tehran      tehran
+al geo:capital:tokyo       tokyo
+al geo:capital:warsaw      warsaw
+al geo:capital:washington_dc washington
+al geo:capital:wellington  wellington
 
 def "geo:capital:abu_dhabi" "Abu Dhabi — capital of the United Arab Emirates."
 ln geo:capital:abu_dhabi geo:country:ARE sys:capital_of
