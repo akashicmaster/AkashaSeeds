@@ -73,12 +73,17 @@ operations at all.
 
 ## Current Implementation State
 
-Currently HarmoniaEngine handles only transaction management and plugin execution.
-Implementation order for scheduling features:
-1. (Current) Block writes in WriteQueue with the `ontology_loading` flag
-2. (Next) Convert WriteQueue to PriorityQueue; add `submit(priority=NORMAL)`
-3. (After that) Harmonia determines and assigns priority before `submit()` is called
-4. (Future) Harmonia manages timeout monitoring, retry decisions, and maintenance job registration
+Scheduling is live (slices 1-4, see docs/for-llm/orchestration-architecture.md):
+1. (done) WriteQueue is a `queue.PriorityQueue`; `submit(fn, priority=…)` defaults to
+   the active workspace's priority, so user writes are served ahead of background
+   ontology-load writes at the single serialization point (no `ontology_loading` flag
+   is used — priority handles it).
+2. (done) Harmonia owns admission (`submit_job` projects class→priority); the JCL
+   worker schedules at step granularity, yields interruptible jobs to higher-priority
+   ready jobs, gates PERT `depends_on`, and does bounded retry + soft timeout.
+3. (future) Maintenance-job registration/catalogue at IDLE priority (see the GitHub
+   issue for background maintenance jobs) and true parallel dispatch of
+   provably-independent write-spaces (E.6).
 """
 
 import time

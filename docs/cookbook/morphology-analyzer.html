@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simple Morphology Analyzer</title>
+  <style>
+    /* ── Typography & palette ── */
+    body {
+      font-family: Georgia, 'Times New Roman', serif;
+      background: #f8f5ef;
+      color: #2a1f0e;
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 4rem;
+    }
+
+    h1 {
+      font-size: 1.8rem;
+      font-weight: normal;
+      letter-spacing: 0.02em;
+      margin-bottom: 0.3rem;
+      color: #5c3d0f;
+    }
+
+    .subtitle {
+      font-size: 0.9rem;
+      color: #8a7258;
+      margin-bottom: 2rem;
+    }
+
+    /* ── Input area ── */
+    textarea {
+      width: 100%;
+      box-sizing: border-box;
+      height: 160px;
+      font-family: inherit;
+      font-size: 1rem;
+      line-height: 1.6;
+      background: #fffdf8;
+      border: 1px solid #c8b99a;
+      border-radius: 4px;
+      padding: 0.8rem 1rem;
+      resize: vertical;
+      color: #2a1f0e;
+      outline: none;
+    }
+
+    textarea:focus {
+      border-color: #9b7014;
+      box-shadow: 0 0 0 2px rgba(155, 112, 20, 0.15);
+    }
+
+    /* ── Buttons ── */
+    .controls {
+      display: flex;
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+    }
+
+    button {
+      font-family: inherit;
+      font-size: 0.9rem;
+      padding: 0.45rem 1.2rem;
+      border: 1px solid #9b7014;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    #analyzeBtn {
+      background: #9b7014;
+      color: #fff;
+    }
+
+    #analyzeBtn:hover {
+      background: #7a5810;
+    }
+
+    #clearBtn {
+      background: transparent;
+      color: #9b7014;
+    }
+
+    #clearBtn:hover {
+      background: #f0e8d5;
+    }
+
+    /* ── Summary bar ── */
+    #summary {
+      display: none;
+      background: #ede7d9;
+      border: 1px solid #c8b99a;
+      border-radius: 4px;
+      padding: 0.7rem 1.1rem;
+      margin-top: 1.5rem;
+      font-size: 0.9rem;
+      gap: 2rem;
+    }
+
+    #summary.visible {
+      display: flex;
+    }
+
+    .stat-label {
+      color: #8a7258;
+      margin-right: 0.3rem;
+    }
+
+    .stat-value {
+      font-weight: bold;
+      color: #3d2a06;
+    }
+
+    /* ── Results table ── */
+    #results {
+      display: none;
+      margin-top: 1.5rem;
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.93rem;
+    }
+
+    #results.visible {
+      display: table;
+    }
+
+    #results thead th {
+      background: #ede7d9;
+      border-bottom: 2px solid #c8b99a;
+      padding: 0.55rem 0.9rem;
+      text-align: left;
+      font-weight: normal;
+      color: #5c3d0f;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    #results thead th:hover {
+      background: #e3d9c5;
+    }
+
+    #results thead th .sort-arrow {
+      display: inline-block;
+      margin-left: 0.3rem;
+      color: #9b7014;
+      font-size: 0.75rem;
+    }
+
+    #results tbody tr:nth-child(even) {
+      background: #faf7f2;
+    }
+
+    #results tbody td {
+      padding: 0.45rem 0.9rem;
+      border-bottom: 1px solid #e5dece;
+      vertical-align: top;
+    }
+
+    .cat-verb     { color: #1a5276; }
+    .cat-adverb   { color: #1a6a1a; }
+    .cat-noun     { color: #7d2d00; }
+    .cat-adj      { color: #5a0080; }
+    .cat-unknown  { color: #888; }
+
+    /* ── No-result state ── */
+    #empty-msg {
+      display: none;
+      margin-top: 1.5rem;
+      color: #8a7258;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Simple Morphology Analyzer</h1>
+  <p class="subtitle">Paste text, click Analyze. All processing happens in the browser.</p>
+
+  <!-- Input -->
+  <textarea id="inputText" placeholder="Paste or type a paragraph here…"></textarea>
+
+  <!-- Buttons -->
+  <div class="controls">
+    <button id="analyzeBtn">Analyze</button>
+    <button id="clearBtn">Clear</button>
+  </div>
+
+  <!-- Summary counts -->
+  <div id="summary">
+    <span><span class="stat-label">Characters:</span><span class="stat-value" id="statChars">0</span></span>
+    <span><span class="stat-label">Tokens:</span><span class="stat-value" id="statTokens">0</span></span>
+    <span><span class="stat-label">Unique:</span><span class="stat-value" id="statUnique">0</span></span>
+  </div>
+
+  <!-- Empty message -->
+  <p id="empty-msg">No tokens found. Try pasting some text first.</p>
+
+  <!-- Results table -->
+  <table id="results">
+    <thead>
+      <tr>
+        <th data-col="token">Token<span class="sort-arrow"></span></th>
+        <th data-col="count">Count<span class="sort-arrow">▼</span></th>
+        <th data-col="category">Estimated Category<span class="sort-arrow"></span></th>
+      </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+
+  <script>
+    // ── HTML escaper ──────────────────────────────────────────────────
+    // Prevents special characters from being interpreted as HTML.
+    // Good habit any time user-supplied text is inserted into the DOM.
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    // ── Tokenizer ──────────────────────────────────────────────────────
+    // Lowercase, split on spaces and punctuation, preserve internal apostrophes.
+    function tokenize(text) {
+      return text
+        .toLowerCase()
+        .replace(/[^a-z0-9'\s]/g, ' ')   // replace punctuation with space
+        .split(/\s+/)
+        .map(t => t.replace(/^'+|'+$/g, ''))  // strip leading/trailing apostrophes
+        .filter(t => t.length > 0);
+    }
+
+    // ── Category classifier ───────────────────────────────────────────
+    // Simple suffix heuristic — no dictionary lookup.
+    function classify(token) {
+      if (/ing$/.test(token))                          return { label: 'possible verb / gerund', cls: 'cat-verb' };
+      if (/ed$/.test(token))                           return { label: 'possible past verb',     cls: 'cat-verb' };
+      if (/ly$/.test(token))                           return { label: 'possible adverb',        cls: 'cat-adverb' };
+      if (/(tion|ment|ness)$/.test(token))             return { label: 'possible noun',          cls: 'cat-noun' };
+      if (/(ous|ive|al|ful)$/.test(token))             return { label: 'possible adjective',     cls: 'cat-adj' };
+      return { label: 'unknown', cls: 'cat-unknown' };
+    }
+
+    // ── Sort state ────────────────────────────────────────────────────
+    let sortCol = 'count';
+    let sortDir = 'desc';   // 'asc' or 'desc'
+    let currentRows = [];
+
+    // ── Main analysis ─────────────────────────────────────────────────
+    function analyze() {
+      const text = document.getElementById('inputText').value;
+      const tokens = tokenize(text);
+
+      // Update summary
+      const freq = {};
+      for (const t of tokens) freq[t] = (freq[t] || 0) + 1;
+
+      document.getElementById('statChars').textContent  = text.length;
+      document.getElementById('statTokens').textContent = tokens.length;
+      document.getElementById('statUnique').textContent = Object.keys(freq).length;
+
+      currentRows = Object.entries(freq).map(([token, count]) => ({
+        token, count, ...classify(token)
+      }));
+
+      if (currentRows.length === 0) {
+        document.getElementById('summary').classList.remove('visible');
+        document.getElementById('results').classList.remove('visible');
+        document.getElementById('empty-msg').style.display = 'block';
+        return;
+      }
+
+      document.getElementById('summary').classList.add('visible');
+      document.getElementById('results').classList.add('visible');
+      document.getElementById('empty-msg').style.display = 'none';
+
+      renderTable();
+    }
+
+    // ── Table renderer ────────────────────────────────────────────────
+    function renderTable() {
+      const sorted = [...currentRows].sort((a, b) => {
+        const va = a[sortCol], vb = b[sortCol];
+        if (typeof va === 'number') {
+          return sortDir === 'asc' ? va - vb : vb - va;
+        }
+        return sortDir === 'asc'
+          ? String(va).localeCompare(String(vb))
+          : String(vb).localeCompare(String(va));
+      });
+
+      const tbody = document.getElementById('tableBody');
+      tbody.innerHTML = sorted.map(row => `
+        <tr>
+          <td>${escapeHtml(row.token)}</td>
+          <td>${row.count}</td>
+          <td class="${row.cls}">${row.label}</td>
+        </tr>
+      `).join('');
+
+      // Update sort arrow indicators
+      document.querySelectorAll('#results thead th').forEach(th => {
+        const arrow = th.querySelector('.sort-arrow');
+        if (th.dataset.col === sortCol) {
+          arrow.textContent = sortDir === 'asc' ? '▲' : '▼';
+        } else {
+          arrow.textContent = '';
+        }
+      });
+    }
+
+    // ── Column sort ───────────────────────────────────────────────────
+    document.querySelectorAll('#results thead th').forEach(th => {
+      th.addEventListener('click', () => {
+        const col = th.dataset.col;
+        if (sortCol === col) {
+          sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          sortCol = col;
+          sortDir = col === 'count' ? 'desc' : 'asc';
+        }
+        if (currentRows.length > 0) renderTable();
+      });
+    });
+
+    // ── Buttons ───────────────────────────────────────────────────────
+    document.getElementById('analyzeBtn').addEventListener('click', analyze);
+
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      document.getElementById('inputText').value = '';
+      document.getElementById('summary').classList.remove('visible');
+      document.getElementById('results').classList.remove('visible');
+      document.getElementById('empty-msg').style.display = 'none';
+      currentRows = [];
+    });
+
+    // Ctrl+Enter also triggers analysis
+    document.getElementById('inputText').addEventListener('keydown', e => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) analyze();
+    });
+  </script>
+
+</body>
+</html>

@@ -1464,6 +1464,7 @@ class KernelDispatcher:
         if method == "workflow.run": return self._handle_workflow_run(rid, data, session, ctx)
         if method == "workflow.ls":  return self._handle_workflow_ls(rid, data, session, ctx)
         if method == "workflow.get": return self._handle_workflow_get(rid, data, session, ctx)
+        if method == "workflow.rm":  return self._handle_workflow_rm(rid, data, session, ctx)
 
         # ── Locale ────────────────────────────────────────────────────
         if method == "locale.get": return self._handle_locale_get(rid, session)
@@ -4923,6 +4924,22 @@ class KernelDispatcher:
         return _ok(rid, {"name": name, "key": key,
                          "description": meta.get("description", ""),
                          "script": ctx.get_chunk(key) or ""})
+
+    def _handle_workflow_rm(self, rid, data, session, ctx) -> dict:
+        name = (data.get("name") or "").strip()
+        if not name:
+            return _err(rid, -32602, "workflow.rm requires 'name'")
+        alias = f"{_wf.WF_ALIAS_PREFIX}{name}"
+        key = ctx.resolve_alias(alias)
+        if not key:
+            return _err(rid, -32001, f"Workflow '{name}' not found.")
+        meta = ctx.get_meta(key) or {}
+        if meta.get("type") != _wf.META_WORKFLOW:
+            return _err(rid, -32001, f"'{name}' is not a workflow definition.")
+        # Unbind the wf:<name> alias — the workflow disappears from ls/run/get. The
+        # (content-addressed, now-unreferenced) definition atom is harmless residue.
+        ctx.delete_alias(alias)
+        return _ok(rid, {"status": "removed", "name": name})
 
     # ------------------------------------------------------------------
     # Locale (locale.*)

@@ -4,8 +4,7 @@
 
 > **Which quick-start guide is this?**
 > This is the **shell workflow guide** — it uses the `akasha/user $` prompt and shell commands (`w`, `ln`, `dive`, `tree`, `set.*`).
-> If you prefer the **CSL interpreter** (`csl> write text="…"` style), see `docs/quick-start.md` instead.
-> Both guides are self-contained; you do not need to read one before the other.
+> For the **CSL interpreter** workflow (`csl> write text="…"` style), see `docs/users/csl-manual.md`.
 
 > **This guide is self-contained.**
 > You do not need to have read any other documentation to follow it.

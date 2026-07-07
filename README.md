@@ -782,7 +782,7 @@ Start with Red 0 regardless of track. Blue and Green chapters reference their Re
 | [**Quick Start**](quick-start.md) | New users | Installation, first session, core commands |
 | [**Quick Reference**](quick-reference.md) | All CLI users | Complete command quick reference |
 | [**Turning Concepts Into Code**](TURNING_CONCEPTS_INTO_CODE.md) | Everyone | Designing semantic systems with Akasha and an LLM |
-| [**Roadmap**](docs/roadmap.md) | Contributors | Vision, near-term goals, multi-agent future, long-term possibilities |
+| [**Roadmap**](roadmap.md) | Contributors | Vision, near-term goals, multi-agent future, long-term possibilities |
 | [`docs/users/user-manual.md`](docs/users/user-manual.md) | General users | CLI workflows and Session Instance Layer |
 | [`docs/users/csl-manual.md`](docs/users/csl-manual.md) | CSL users | Full CSL command reference |
 | [`docs/users/admin-manual.md`](docs/users/admin-manual.md) | Administrators | User management, scopes, server setup |
