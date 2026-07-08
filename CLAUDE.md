@@ -21,7 +21,6 @@ separate environment and hands it to you. Your job:
 
 ## Language rules (strict)
 
-- **Conversation with the maintainer: Japanese.**
 - **Every repository-facing write is English only** — commit messages, PR
   titles/bodies, Issues/comments, code comments, docs, in-repo files (incl. this
   one). No exceptions while the project is in its English-first phase.
