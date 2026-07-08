@@ -106,6 +106,23 @@ class AkashaSession:
         and must not bleed into SQL permission queries (Dim-3 ≠ Dim-1)."""
         return self.base_scopes
 
+    def refresh_group_engines(self, engines: Dict[str, "GroupEngine"]) -> None:
+        """Rewire this live session's group spaces after a membership change.
+
+        A session created before the client joined a group starts with an empty
+        group_engines dict; ConsciousnessEngine then captured its *own* separate
+        empty dict (`group_engines or {}`), and the resolver reads
+        `session.group_engines` live. So a later grp.add must (a) reference-swap the
+        session's dict and (b) re-point consciousness at the same new dict — else the
+        member holds the group scope but has no engine to reach the shared space, and
+        both donation (`dont.send to=group:`) and shared reads fail with "Group space
+        not loaded". Reference-swap (not in-place mutation) keeps a concurrent reader
+        iterating the old dict safe."""
+        new = dict(engines)
+        self.group_engines = new
+        if getattr(self, "consciousness", None) is not None:
+            self.consciousness.group_engines = new
+
     @property
     def locale_scopes(self) -> List[str]:
         """Dimension-3: user's priority locale list.
@@ -260,11 +277,15 @@ class AkashaManager:
 
         # The check-then-create on self.sessions is serialized through the queue.
         def _create_or_update():
+            # Recompute group membership every call so a live session picks up a
+            # grp.add/grp.rm that happened after it was created (mirrors the
+            # base_scopes refresh below). Engines are pooled, so this is a cheap
+            # dict rebuild, not new DB connections.
+            group_ids = self.iam.get_client_groups(client_id)
+            grp_engines = {gid: self._get_group_engine(gid) for gid in group_ids}
             if client_id not in self.sessions:
                 if len(self.sessions) >= self.max_sessions:
                     raise PermissionError(f"Akasha Limit Reached: Max {self.max_sessions} sessions allowed.")
-                group_ids = self.iam.get_client_groups(client_id)
-                grp_engines = {gid: self._get_group_engine(gid) for gid in group_ids}
                 self.sessions[client_id] = AkashaSession(
                     client_id=client_id,
                     role=actual_role,
@@ -275,6 +296,7 @@ class AkashaManager:
                 )
             else:
                 self.sessions[client_id].base_scopes = allowed_scopes
+                self.sessions[client_id].refresh_group_engines(grp_engines)
             return self.sessions[client_id]
 
         return self._session_wq.submit(_create_or_update)

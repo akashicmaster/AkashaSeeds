@@ -674,9 +674,8 @@ Akasha can exist as a dormant single-file seed.
 When executed, the seed reconstructs a complete semantic environment — kernel, browser applications, built-in ontology, and startup loader — all from a single Python script.
 
 ```bash
-# Download akasha_seeds_seeds.zip from the latest release Assets:
+# Download the latest Seeds file from:
 # https://github.com/akashicmaster/AkashaSeeds/releases
-# Unzip it, place akasha_seeds_seeds.py in an empty folder, then:
 python3 akasha_seeds_seeds.py   # unpacks and launches immediately
 ```
 

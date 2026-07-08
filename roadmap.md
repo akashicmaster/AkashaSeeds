@@ -27,6 +27,19 @@ orchestration layer were rebuilt from the ground up for the open-source release:
 - **Minimal workflow reception** — a workflow is stored *as an executable atom* (CSL body,
   `wf:` alias) and run as one bounded JCL job. The static content-addressed graph is
   beginning to be re-read as a dynamic execution model. (`docs/for-llm/workflow-reception.md`)
+- **Meaning layer — self-owned, degradation-first** — semantic embeddings in three tiers
+  (feature-hashing floor → learned PPMI+SVD mid tier → optional sentence-transformer), a
+  boot auto-learn that bakes vectors onto atoms, the self-expanding-ontology loop
+  (`gap.scan` → `gap.fetch` → weave → `semantic.learn`), structural node embeddings, image
+  classification via the **LiteRT** backend ladder (`image.profile`), and the link-based
+  emotion axis (`emotion.profile`). Zero heavy dependencies; degrades cleanly.
+  (`docs/for-llm/semantic-layer.md`)
+- **One data I/O route** — a single disk-I/O layer (`fileio.py`) and one **pipe interface**
+  (`pipeline.py`: `Source` | `Sink` | `run_pipeline`) replace the former scattered import/
+  export paths. Files (CSV/JSON/MD/TXT), in-memory uploads, the `table` model (both ways),
+  sets, client-receive, and lens projection into a concept model are all the *same*
+  interface — the Unix pipe of the data plane, ready for Contexa/Jataka, client file
+  transfer, and a mail model to plug in. (`docs/for-llm/io-pipeline.md`)
 
 The base is now durable enough to build the outward-facing vision on. What follows is the
 plan for the next quarter, then the longer arc.
@@ -97,6 +110,14 @@ first, then scoped write — collapsing the human-relay loop below.
 [#22](https://github.com/henrigrohmann/akashictree/issues/22) safe parallel dispatch ·
 [#23](https://github.com/henrigrohmann/akashictree/issues/23) public-key auth ·
 [#24](https://github.com/henrigrohmann/akashictree/issues/24) full declarative workflow DAG.
+
+**Post-launch follow-ups filed this cycle** (the meaning layer + unified I/O shipped; these
+extend them):
+[#39](https://github.com/henrigrohmann/akashictree/issues/39) self-learned embeddings (shipped) ·
+[#40](https://github.com/henrigrohmann/akashictree/issues/40) vision expansion — detection, caption/OCR, gap-driven image fetch, cosmos embeddings ·
+[#41](https://github.com/henrigrohmann/akashictree/issues/41) import/export residuals — PDF/binary formats, JCL-orchestrated I/O steps, Contexa batch delegation ·
+[#42](https://github.com/henrigrohmann/akashictree/issues/42) emotion 2nd track (external-NLP sentiment), `cosmos_nd` affect axis ·
+[#43](https://github.com/henrigrohmann/akashictree/issues/43) pipeline endpoints — Importable/Exportable on more models, Contexa Source / Jataka Sink, mail model + attachments, comms endpoints.
 
 ---
 

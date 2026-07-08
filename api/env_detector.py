@@ -152,6 +152,8 @@ class EnvironmentDetector:
             "installable": Missing libraries, but hardware supports it.
             "impossible": Hardware/OS limits prohibit ML (forced degradation).
         """
+        if self.is_library_available('ai_edge_litert'):
+            return "ready_litert"
         if self.is_library_available('tflite_runtime'):
             return "ready_tflite"
         if self.is_library_available('tensorflow'):
@@ -199,7 +201,7 @@ class EnvironmentDetector:
         primary = self.get_primary_locale(user_locales)
         
         ml_stat = self.get_ml_engine_status()
-        if ml_stat in ["ready_tflite", "ready_tf"]: 
+        if ml_stat in ["ready_litert", "ready_tflite", "ready_tf"]:
             ml_disp = "Active (" + ml_stat.split('_')[1].upper() + ")"
         elif ml_stat == "installable": 
             ml_disp = "Missing (Installable)"
@@ -316,9 +318,14 @@ class Symbiosis:
         ok = False
         _err_detail = ""
         try:
+            # --only-binary=:all: — never build from source. In a compiler-less env
+            # (Codespaces, iPadOS/Pyto, locked-down containers) a source build for a
+            # C-extension package hangs or fails slowly; this makes it "wheel or
+            # nothing" so we degrade fast to the self-owned floor. Pure-Python and
+            # manylinux-wheel packages still install normally.
             res = subprocess.run(
                 [sys.executable, "-m", "pip", "install", "--quiet",
-                 "--disable-pip-version-check", package_name],
+                 "--disable-pip-version-check", "--only-binary=:all:", package_name],
                 timeout=timeout,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -371,6 +378,14 @@ class Symbiosis:
 
         pkg = package_name or module_name
         if pkg in _install_failed:
+            return None
+
+        # Honour the operator's opt-out: never attempt a network/pip install when
+        # AKASHA_SKIP_AUTOINSTALL is set (restricted / non-interactive / offline).
+        # Degrade silently — the caller always has a self-owned floor. This keeps the
+        # install-attempt latency and spinner noise out of environments that can't or
+        # won't install, without changing that degradation was already correct.
+        if os.environ.get("AKASHA_SKIP_AUTOINSTALL"):
             return None
 
         result = cls._pip_install(pkg, module_name, scope, timeout)

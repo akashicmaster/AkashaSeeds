@@ -12,6 +12,7 @@ Degradation tiers:
   T0  CJK script detected, no model          → character bigram extraction
 """
 import re
+import os
 import sys
 import importlib
 import logging
@@ -173,6 +174,12 @@ class MultiLocaleNLP:
             return self.models[lang_code]
         except OSError:
             pass
+
+        # Model not downloaded. Honour the operator's opt-out: no network fetch when
+        # AKASHA_SKIP_AUTOINSTALL is set — degrade to the regex / CJK-bigram tokenizer
+        # silently (T1/T0) instead of blocking on a spacy download.
+        if os.environ.get("AKASHA_SKIP_AUTOINSTALL"):
+            return None
 
         # Model not downloaded — try auto-download
         logger.info("[NLP] Model '%s' missing — attempting download…", model_name)

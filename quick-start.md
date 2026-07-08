@@ -71,16 +71,13 @@ This is why the distribution format is named *seeds*. A seed holds the complete 
 https://github.com/akashicmaster/AkashaSeeds/releases
 ```
 
-Download `akasha_seeds_seeds.zip` from the **Assets** section of the latest
-release and unzip it. Inside is a single file:
+You will see filenames like:
 
 | File | Contents | For |
 |---|---|---|
 | `akasha_seeds_seeds.py` | Kernel + browser apps | General use, independent researchers |
-
-(macOS Safari unzips the download automatically, so you may receive the
-`.py` file directly. Other editions — `thesaurus`, `server` — ship as
-separate series.)
+| `akasha_seeds_thesaurus.py` | + extended vocabulary library | Libraries, research organizations |
+| `akasha_seeds_server.py` | + multi-client configuration | Programmers, institutional deployments |
 
 Python 3.10 or later is required.
 
@@ -90,10 +87,8 @@ python3 --version
 
 ### Launch
 
-Place `akasha_seeds_seeds.py` in an empty folder, then:
-
 ```bash
-python3 akasha_seeds_seeds.py
+python3 akasha_seeds_seeds10.py
 ```
 
 The script unpacks Akasha into the current directory and starts immediately.

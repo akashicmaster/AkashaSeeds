@@ -22,6 +22,7 @@ Fixes:
              to 'obj' to avoid shadowing
 """
 
+import json
 import time
 import logging
 from typing import Any, Dict, List, Optional
@@ -117,6 +118,9 @@ class CastConcept(BaseConcept):
         # Analysis
         "react":        {"op": "op_react"},
         "diagnose":     {"op": "op_diagnose"},
+        # Society — publish an avatar into a group, speak as the avatar
+        "publish":      {"op": "op_publish"},
+        "say":          {"op": "op_say"},
     }
 
     SUBSETS = list(SUBSET_TO_RELATION.keys())
@@ -184,26 +188,65 @@ class CastConcept(BaseConcept):
             self.register_concept_node(cw_key)
             self.cortex.put_link(key, cw_key, "sys:derived_from", author=author_id)
 
+    def _scoped_group_engines(self) -> List[Any]:
+        """Group engines the caller is a scoped member of.
+
+        A cast published into a group (op_publish) lives in that group's engine, so
+        the read helpers below fall back to these — letting another member open,
+        observe, and react to a shared avatar, and letting the owner's avatar read
+        group events (op_react on a group event_id). WRITES stay on the local cortex
+        (owner-only): a published persona is read-only to non-owners."""
+        out = []
+        scopes = self.allowed_scopes or []
+        for gid, ge in getattr(self.session, "group_engines", {}).items():
+            if f"scope:group_{gid}" in scopes:
+                out.append(ge)
+        return out
+
     def _require_access(self, atom_id: str, label: str = "Atom") -> None:
         if not atom_id:
             raise ValueError(f"{label} id is required.")
-        if not self.cortex.check_access(atom_id, self.allowed_scopes):
+        if not self._visible(atom_id):
             raise RuntimeError(f"{label} not accessible: {atom_id[:12]}")
 
     def _visible(self, atom_id: str) -> bool:
-        return bool(atom_id and self.cortex.check_access(atom_id, self.allowed_scopes))
+        if not atom_id:
+            return False
+        if self.cortex.check_access(atom_id, self.allowed_scopes):
+            return True
+        return any(ge.check_access(atom_id) for ge in self._scoped_group_engines())
 
     def _members(self, suffix: str) -> List[str]:
-        return [
-            key for key in self.cortex.get_collection_members(self._cast_set(suffix))
-            if self._visible(key)
-        ]
+        keys = list(self.cortex.get_collection_members(self._cast_set(suffix)))
+        seen = set(keys)
+        for ge in self._scoped_group_engines():
+            for key in ge.core.get_collection_members(self._cast_set(suffix)):
+                if key not in seen:
+                    seen.add(key)
+                    keys.append(key)
+        return [key for key in keys if self._visible(key)]
 
     def _meta(self, key: str) -> Dict[str, Any]:
-        return self.cortex.get_meta(key) or {}
+        meta = self.cortex.get_meta(key)
+        if meta:
+            return meta
+        for ge in self._scoped_group_engines():
+            row = ge.core.get_chunk_raw(key)
+            if row:
+                try:
+                    return json.loads(row.get("meta") or "{}")
+                except Exception:
+                    return {}
+        return {}
 
     def _content(self, key: str) -> str:
         value = self.cortex.get_chunk(key)
+        if not value:
+            for ge in self._scoped_group_engines():
+                gv = ge.get_chunk(key)
+                if gv:
+                    value = gv
+                    break
         if isinstance(value, dict):
             return value.get("content", "")
         return value or ""
@@ -447,6 +490,121 @@ class CastConcept(BaseConcept):
             "atoms_cloned": cloned_count,
             "message": f"Cast '{src_name}' cloned as '{name}' ({cloned_count} atoms).",
         }
+
+    # ------------------------------------------------------------------
+    # Society — publish an avatar into a group, and speak as the avatar
+    # ------------------------------------------------------------------
+    # Projecting a real-world organisation/session into Akasha: a group is the
+    # organisation, the group space is its shared session, and a cast is a member's
+    # avatar. Two properties are deliberate:
+    #   ANONYMITY — atoms an avatar puts into the society are authored by the CAST
+    #     (cast_id), never the human client_id. Other members see "Butler said X",
+    #     not "alice said X". The cast→owner link lives only in the owner's private
+    #     cortex (owner:user_* scope), so only the owner/admin can de-anonymise.
+    #   ABSENCE   — the society is the persistent group space, so an avatar's words
+    #     and published persona remain for absent members to read later (async /
+    #     near-real-time). An owner-submitted JCL job can drive the avatar's
+    #     react-loop while the owner is offline (composition over the JCL layer).
+
+    def _group_engine_for(self, gid: str):
+        ge = getattr(self.session, "group_engines", {}).get(gid)
+        if ge is None or f"scope:group_{gid}" not in (self.allowed_scopes or []):
+            raise RuntimeError(f"Not a member of group '{gid}'.")
+        return ge
+
+    def _require_owned(self) -> None:
+        """The active cast must live in the CALLER's own cortex. You speak/publish only
+        as an avatar you own — never one merely visible via a group. get_meta here is
+        the local (non-group-aware) lookup, so a member who opened another's published
+        avatar (present only in the group engine) cannot impersonate it."""
+        if not self.cortex.get_meta(self.concept_id):
+            raise RuntimeError("Not the owner of this avatar (cannot act as another member's cast).")
+
+    @staticmethod
+    def _truthy(value: Any) -> bool:
+        return str(value).strip().lower() in ("1", "true", "yes", "on") if value is not None else False
+
+    def op_publish(self, group_id: str = "", group: str = "",
+                   disclose: Any = False) -> Dict[str, Any]:
+        """Publish this cast's full structure into a group space (society) so other
+        members can open and observe/react to it. Copies the root + every attribute
+        atom AND re-creates the cast's collections in the group engine (so subset
+        traversal works for readers). Read-only for non-owners — writes stay on the
+        owner's local cortex.
+
+        Anonymity is a policy choice (the avatar is an alter-ego by design):
+          disclose=False (default) — pseudonymous. Atoms are authored by the avatar
+            (cast_id); the cast→owner link stays private in the owner's cortex, so
+            the society sees the avatar, not the human (SNS-style).
+          disclose=True — the avatar is matched to the real member (company/org): the
+            owner's client_id is stamped into the published meta, transparently."""
+        self._require_concept()
+        self._require_owned()
+        gid = (group_id or group).strip()
+        ge = self._group_engine_for(gid)
+        owner = getattr(self.session, "client_id", "system")
+        show = self._truthy(disclose)
+        # All collections that make up this cast: content set, concept set, subsets.
+        set_names = [self._cast_set(), self.set_name] + [self._cast_set(s) for s in self.SUBSETS]
+        copied = 0
+        for sname in set_names:
+            for key in self.cortex.get_collection_members(sname):
+                row = self.cortex.core.get_chunk_raw(key)
+                if not row:
+                    continue
+                try:
+                    meta = json.loads(row.get("meta") or "{}")
+                except Exception:
+                    meta = {}
+                if show:
+                    meta["owner_client"] = owner      # company/org: matched identity
+                # author = the avatar (cast_id); disclosure lives in meta, not author.
+                ge.put_atom(row.get("content") or "", meta, author=self.concept_id)
+                for alias in self.cortex.get_aliases_by_key(key):
+                    ge.core.put_alias(key, alias)
+                ge.add_to_set(sname, key)
+                copied += 1
+        # Society index of published avatars, so members can discover them.
+        ge.add_to_set(f"soc:{gid}:casts", self.concept_id)
+        logger.info("[CastConcept] Published '%s' to group '%s' (%d atoms, disclose=%s)",
+                    self.concept_id[:8], gid, copied, show)
+        return {"status": "published", "cast_id": self.concept_id, "group": gid,
+                "atoms": copied, "disclosed": show}
+
+    def op_say(self, text: str = "", group_id: str = "", group: str = "",
+               disclose: Any = False) -> Dict[str, Any]:
+        """Speak as the avatar into a group (society): post an utterance atom into the
+        group space, appended to the group's avatar timeline (soc:<gid>) so members can
+        follow the conversation. Persistent, so an absent member reads it on their next
+        visit (near-real-time / async).
+
+        disclose=False (default) — pseudonymous: authored by the avatar, the human is
+          hidden (SNS). disclose=True — the utterance carries the real client_id, so
+          the avatar is matched to the member (company/org)."""
+        self._require_concept()
+        self._require_owned()
+        gid = (group_id or group).strip()
+        msg = (text or "").strip()
+        if not msg:
+            raise ValueError("cast.say requires text.")
+        ge = self._group_engine_for(gid)
+        owner = getattr(self.session, "client_id", "system")
+        show = self._truthy(disclose)
+        cast_meta = self._meta(self.concept_id)
+        meta = {
+            "type": "cast_utterance",
+            "concept": "cast",
+            "from_cast": self.concept_id,
+            "cast_name": cast_meta.get("name", ""),
+            "created_at": time.time(),
+        }
+        if show:
+            meta["client_id"] = owner            # company/org: avatar matched to member
+        # author = the avatar; when pseudonymous the human is never recorded here.
+        key = ge.put_atom(msg, meta, author=self.concept_id)
+        ge.add_to_set(f"soc:{gid}", key)
+        return {"status": "said", "key": key, "group": gid, "cast_id": self.concept_id,
+                "cast_name": cast_meta.get("name", ""), "disclosed": show}
 
     # ------------------------------------------------------------------
     # Identity / Physique / Social

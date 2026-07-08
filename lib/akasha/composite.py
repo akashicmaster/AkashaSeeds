@@ -147,6 +147,15 @@ _AXIS_PREFIXES: Dict[str, List[str]] = {
     "structure": ["sys:is_a", "sys:antonym", "sys:causes", "sys:associated_with", "sys:requires"],
 }
 
+# Axes whose association is defined by the TARGET atom's namespace, not the relation.
+# An emotion/colour/sense link is a calc:/has_emotion edge pointing to an atom whose
+# ALIAS is emo:* / word:color:* / word:sense:* (atoms are content-addressed, so the stored
+# dst is a hash — the namespace lives in the alias). For these axes the filter resolves the
+# destination's alias, the same signal CosmosMapper.get_aura_color uses. Other axes match
+# by relation prefix. (Without this, axis="emotion" matched relation "emo:" — of which the
+# ontology has zero — instead of the 500+ links that TARGET an emo:* atom.)
+_TARGET_NS_AXES: frozenset = frozenset({"emotion", "color", "sense"})
+
 class AkashaEngine:
     def __init__(self, db_path: str, is_volatile: bool = False):
         self.core = AkashaCore(db_path, is_volatile)
@@ -214,6 +223,20 @@ class AkashaEngine:
         # unguarded writes for a coverage map; it now rejects them.)
         _workspace_guard(author)
         key = hashlib.sha256(content.encode('utf-8')).hexdigest() if content else uuid.uuid4().hex
+
+        # Semantic vector (self-owned, dependency-free) → meta["semantic_vector"], so
+        # cosine-similarity paths (Jataka T2 dream, semantic search) light up. Gated to
+        # real text; proto-words/tokens/annotations are skipped to avoid meta bloat.
+        # Cheap (feature-hashing, microseconds) so it stays on the commit path; the
+        # optional heavy model tier (AKASHA_EMBED_MODEL) is the only slow case.
+        if (content and self.tensor is not None and len(content) >= 8
+                and (not meta or ("semantic_vector" not in meta
+                                  and meta.get("role") not in ("token", "annotation")))):
+            _vec = self.tensor.embed(key, content, meta or {})
+            if _vec:
+                meta = dict(meta or {})
+                meta["semantic_vector"] = _vec
+
         meta_str = json.dumps(meta, ensure_ascii=False) if meta else "{}"
         
         # 1. Physical Write
@@ -1173,9 +1196,23 @@ class AkashaEngine:
                     if not any(rel.startswith(ns) for ns in _ASSOC_NAMESPACES):
                         continue
 
-                    # Apply axis filter when specified
-                    if axis_prefixes and not any(rel.startswith(p) for p in axis_prefixes):
-                        continue
+                    # Apply axis filter when specified. Emotion/colour/sense are TARGET-
+                    # namespace axes: the association is a calc:/has_emotion relation pointing
+                    # to an atom whose ALIAS is emo:* / word:color:* / word:sense:* (atoms are
+                    # content-addressed, so the stored dst is a hash — the namespace lives in
+                    # the alias). For these axes resolve the destination's alias, the same
+                    # signal CosmosMapper.get_aura_color uses. Other axes match by relation
+                    # prefix. (Relation-only matching made axis="emotion" match zero links —
+                    # the ontology has 0 emo:* relations but 500+ links TARGETING an emo:* atom.)
+                    dst_aliases = None
+                    if axis_prefixes:
+                        if axis in _TARGET_NS_AXES:
+                            dst_aliases = self.get_aliases_by_key(dst) or []
+                            if not any(al.startswith(p) for al in dst_aliases
+                                       for p in axis_prefixes):
+                                continue
+                        elif not any(rel.startswith(p) for p in axis_prefixes):
+                            continue
 
                     if dst in visited:
                         continue
@@ -1191,8 +1228,12 @@ class AkashaEngine:
                     raw     = self.core.get_chunk_raw(dst)
                     meta    = json.loads(raw["meta"]) if raw and raw.get("meta") else {}
 
-                    if rel.startswith("emo:"):
-                        atype = "emotion"
+                    # Classify by the destination's namespace when we already resolved it for
+                    # a target-namespace axis (emotion/sense live in the target alias); on the
+                    # general path (axis=None) keep the cheap relation-based classification.
+                    dst_emotion = bool(dst_aliases) and any(a.startswith("emo:") for a in dst_aliases)
+                    if rel.startswith("emo:") or dst_emotion:
+                        atype = "emotion"        # emotion lives in the DESTINATION namespace
                     elif rel.startswith("calc:"):
                         atype = "concept"
                     elif rel.startswith("word:"):
@@ -1208,6 +1249,7 @@ class AkashaEngine:
                         "key":     dst,
                         "rel":     rel,
                         "depth":   depth,
+                        "weight":  float(link.get("w", 1.0) or 1.0),
                         "preview": content[:60],
                         "type":    atype,
                     })
@@ -1294,6 +1336,58 @@ class AkashaEngine:
             "resonance":    self._find_resonance(focal_key, allowed_scopes),
         }
 
+    def emotion_profile(
+        self,
+        focal_key: str,
+        scope: int = 2,
+        allowed_scopes: Optional[List[str]] = None,
+        normalize: bool = True,
+    ) -> Dict[str, Any]:
+        """Akasha-native emotion vector of a chunk — the link-based half of the two-track
+        emotion design (the other track being external-NLP sentiment).
+
+        Aggregates the `emo:*` atoms this atom is associated with (via calc:associated_with /
+        has_emotion / … links whose TARGET alias is in the emo: namespace — the same signal
+        get_aura_color uses), each weighted by edge strength and decayed by traversal depth
+        (1/depth). Returns a ranked, optionally L1-normalised distribution over emotions plus
+        the dominant one — a concrete, evaluable emotion vector rather than a bare list.
+        Empty (no emotions) is a valid result, not an error."""
+        nucleus = getattr(self, "_nucleus", None)
+        agg: Dict[str, float] = {}
+        visited = {focal_key}
+        current = {focal_key}
+        for depth in range(1, max(1, scope) + 1):
+            nxt: set = set()
+            for nid in current:
+                links = list(self.core.get_adjacent_links(nid) or [])
+                if nucleus:
+                    seen = {(l["dst"], l["rel"]) for l in links}
+                    for l in (nucleus.core.get_adjacent_links(nid) or []):
+                        if (l["dst"], l["rel"]) not in seen:
+                            links.append(l)
+                for l in links:
+                    dst = l["dst"]
+                    if dst in visited:
+                        continue
+                    if allowed_scopes and not self.check_access(dst, allowed_scopes):
+                        continue
+                    visited.add(dst)
+                    nxt.add(dst)
+                    emo = next((a for a in (self.get_aliases_by_key(dst) or [])
+                                if a.startswith("emo:")), None)
+                    if emo:
+                        w = float(l.get("w", 1.0) or 1.0) / depth
+                        agg[emo] = agg.get(emo, 0.0) + w
+            current = nxt
+            if not current:
+                break
+        total = sum(agg.values())
+        emotions = [{"emotion": e,
+                     "score": round((v / total) if (normalize and total) else v, 4)}
+                    for e, v in sorted(agg.items(), key=lambda kv: kv[1], reverse=True)]
+        return {"focal": focal_key, "emotions": emotions,
+                "dominant": emotions[0]["emotion"] if emotions else None}
+
     # =========================================================================
     # 🕳️ ASSOC — gap detection (one level, no inference)
     # =========================================================================
@@ -1312,19 +1406,28 @@ class AkashaEngine:
         """
         nucleus = getattr(self, '_nucleus', None)
 
-        # Collect axes present in one-hop outgoing links
+        # Collect axes present in one-hop outgoing links. An axis is present when a link's
+        # relation OR its destination namespace matches — emotion/colour/sense live in the
+        # destination (emo:* / word:color:*), reached via calc:/has_emotion relations, so
+        # relation-only detection would wrongly report them as always-missing voids.
         present_axes: set = set()
-        for link in (self.core.get_adjacent_links(focal_key) or []):
-            rel = link["rel"]
-            for ax_name, ax_prefixes in _AXIS_PREFIXES.items():
-                if any(rel.startswith(p) for p in ax_prefixes):
-                    present_axes.add(ax_name)
-        if nucleus:
-            for link in (nucleus.core.get_adjacent_links(focal_key) or []):
-                rel = link["rel"]
+
+        def _mark(links):
+            for link in (links or []):
+                rel, dst = link["rel"], link.get("dst", "")
+                dst_aliases = None
                 for ax_name, ax_prefixes in _AXIS_PREFIXES.items():
-                    if any(rel.startswith(p) for p in ax_prefixes):
+                    if ax_name in _TARGET_NS_AXES:
+                        if dst_aliases is None:
+                            dst_aliases = self.get_aliases_by_key(dst) or []
+                        if any(al.startswith(p) for al in dst_aliases for p in ax_prefixes):
+                            present_axes.add(ax_name)
+                    elif any(rel.startswith(p) for p in ax_prefixes):
                         present_axes.add(ax_name)
+
+        _mark(self.core.get_adjacent_links(focal_key))
+        if nucleus:
+            _mark(nucleus.core.get_adjacent_links(focal_key))
 
         check_axes = [axis] if (axis and axis in _AXIS_PREFIXES) else list(_AXIS_PREFIXES.keys())
 

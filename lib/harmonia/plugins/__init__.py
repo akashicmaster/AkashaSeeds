@@ -23,34 +23,16 @@ def load_plugins(harmonia_engine, env_context: Dict[str, Any] = None):
     logger.info("[Harmonia] Initializing cognitive and motor plugins...")
 
     # =========================================================================
-    # 1. Tensor / Embedding Engine Selection (Spatial Projection)
+    # Tensor / Embedding — NOTE: the former tensor_engine / tflite_engine plugins
+    # (`sys.embed` / `sys.tflite.embed`) were removed. They were never registered
+    # (this loader had no caller) and their "embeddings" were hash-random noise, not
+    # inference. The real, self-owned embedding stack lives in lib/akasha/tensor.py +
+    # semantic_learn.py, and image inference in lib/akasha/vision.py (LiteRT). Nothing
+    # here should re-add a stub embedding path.
     # =========================================================================
-    embed_loaded = False
-    
-    # Priority 1: Heavy TensorFlow Engine
-    if env_context.get("has_tf", False):
-        try:
-            from . import tensor_engine
-            if hasattr(tensor_engine, "register"):
-                tensor_engine.register(harmonia_engine)
-                embed_loaded = True
-                logger.info("[Plugin] Registered: sys.embed (TensorFlow Engine)")
-        except ImportError as e:
-            logger.warning(f"TF engine load failed despite env claim: {e}")
-
-    # Priority 2: Lightweight TFLite Engine (Edge/Tablet fallback)
-    if not embed_loaded and env_context.get("has_tflite", False):
-        try:
-            from . import tflite_engine
-            if hasattr(tflite_engine, "register"):
-                tflite_engine.register(harmonia_engine)
-                embed_loaded = True
-                logger.info("[Plugin] Registered: sys.embed (TFLite Engine)")
-        except ImportError as e:
-            logger.warning(f"TFLite engine load failed: {e}")
 
     # =========================================================================
-    # 2. NLP / Cognitive Extraction Selection
+    # NLP / Cognitive Extraction Selection
     # =========================================================================
     # Always attempt to load the local NLP plugin. MultiLocaleNLP uses
     # Symbiosis.ensure() to auto-install SpaCy when absent, so this works on

@@ -161,15 +161,19 @@ def main() -> None:
     if not _is_cgi:
         from api.env_detector import env as _boot_env, Symbiosis as _BootSymbiosis
 
-        # ML / Neural engine: try lightweight tflite first, fall back to full TF
+        # ML / Neural engine: LiteRT (ai-edge-litert) is the primary runtime — the standalone
+        # tflite-runtime is frozen at 2.14 and crashes under numpy 2.x, so it is only a
+        # legacy 32-bit-ARM fallback; full TF is a heavier last resort. (Nothing consumes
+        # this at boot today — VisionEngine installs LiteRT on demand — but keeping the ladder
+        # correct means the eager path installs the right, working runtime.)
         if _boot_env.get_ml_engine_status() == "installable":
             _BootSymbiosis.ensure_one_of(
                 [
+                    ("ai_edge_litert", "ai-edge-litert"),
                     ("tflite_runtime", "tflite-runtime"),
                     ("tensorflow",     "tensorflow-cpu"),
-                    ("tensorflow",     "tensorflow"),
                 ],
-                scope="[ML]", feature="Neural Engine (TFLite)",
+                scope="[ML]", feature="Neural Engine (LiteRT)",
             )
 
         # NLP engine: SpaCy for semantic trait extraction and word decomposition

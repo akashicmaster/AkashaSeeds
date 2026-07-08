@@ -34,6 +34,15 @@ METHOD_TO_ACTION: Dict[str, str] = {
     "explore": "explore",
     "network.tree": "network.tree",
     "graph.tree": "read",
+    "semantic.search": "read",
+    "search": "read",
+    "semantic.learn": "write",
+    "gap.scan": "read",
+    "gaps": "read",
+    # gap.fetch closes the loop — auto-fetches external context for thin concepts, so it
+    # WRITES (external provenance-tagged atoms). Handler gates to admin/librarian.
+    "gap.fetch": "write",
+    "gap.enrich": "write",
     # Dive
     "dive.look": "dive.look", "look": "dive.look",
     "dive.out": "dive.out",  "out": "dive.out",
@@ -92,12 +101,31 @@ METHOD_TO_ACTION: Dict[str, str] = {
     # Associate (assoc — gap detection; fill=yes writes links)
     "kernel.associate":    "write",
     "associate.unwritten": "read",
+    # emotion.profile — read the Akasha-native (link-based) emotion vector of an atom.
+    "emotion.profile": "read", "emo.vector": "read", "emo.profile": "read",
     # Jataka (dream — hypothetical linking; commit=yes writes tent: links)
     "jataka.dream": "write", "dream": "write",
-    # Contexa
-    "contexa.fetch": "read",
+    # Contexa. fetch WRITES external content into the cortex (atoms + weave), so it is a
+    # write capability — this also puts it under the single-route write workspace (its
+    # put_chunk would otherwise trip the guard once a live fetch returns text) and keeps
+    # a READ-only guest from injecting untrusted external text (ASI06). web.search only
+    # stores lightweight refs and triggers no weave, so it stays read.
+    "contexa.fetch": "write",
     "web.search": "read",
-    "fetch": "read",
+    "fetch": "write",
+    # image.profile classifies an image (LiteRT) and writes the labels as atoms/links, so
+    # it is a write capability (same guardrail class as fetch: provenance=external labels).
+    "image.profile": "write",
+    "img.profile": "write",
+    "vision.classify": "write",
+    # General file import/export (single disk-I/O route). import/index/allow write the graph
+    # or the allow-list; export reads the graph and writes a file. All admin/librarian-gated
+    # in-handler; reads/writes confined to permitted roots.
+    "io.import": "write", "file.import": "write",
+    "io.index":  "write", "dir.index":  "write",
+    "io.allow":  "write", "io.permit":  "write",
+    "io.project": "write", "io.cast": "write",   # in-graph source -> concept model (via lens)
+    "io.export": "read",  "file.export": "read",
     # Sys
     "sys.onboarding.seed": "write",
     "onto.dump":           "read",
@@ -261,6 +289,8 @@ METHOD_TO_ACTION: Dict[str, str] = {
     "cast.arc.add":       "write",
     "cast.react":         "read",
     "cast.diagnose":      "read",
+    "cast.publish":       "write",
+    "cast.say":           "write",
     # World
     "world.new":          "write",
     "world.open":         "read",

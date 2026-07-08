@@ -21,7 +21,7 @@ import json
 import uuid
 import logging
 import hashlib
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Callable
 
 from lib.akasha.manager import AkashaManager
 from lib.akasha.identity import Role, Capability
@@ -83,6 +83,23 @@ try:
     from lib.jataka.engine import JatakaEngine
 except ImportError:
     JatakaEngine = None  # type: ignore
+
+try:
+    from lib.akasha.vision import VisionEngine
+except ImportError:
+    VisionEngine = None  # type: ignore
+
+try:
+    from lib.harmonia.fileio import FileIO
+    from lib.harmonia.infra import HarmoniaInfra
+    from lib.harmonia.pipeline import (
+        run_pipeline, FileSource, FileSink, InlineSource,
+        TableSource, TableSink, DocSink, SetSource,
+        LensScanSource, ConceptCastSink, ResponseSink,
+    )
+except ImportError:
+    FileIO = None  # type: ignore
+    HarmoniaInfra = None  # type: ignore
 
 try:
     from lib.akasha.concepts.note import NoteConcept
@@ -361,6 +378,19 @@ def _is_sys_atom(item: dict) -> bool:
         return False
 
 
+def _is_external(raw_meta) -> bool:
+    """True if an atom's meta marks it as external (fetched) content — provenance=external.
+    Such atoms are excluded from semantic learning and from gap.scan so unvetted web text
+    neither poisons the learned model nor is mistaken for a curation gap (ASI06)."""
+    if not raw_meta:
+        return False
+    try:
+        meta = json.loads(raw_meta) if isinstance(raw_meta, str) else raw_meta
+        return str(meta.get("provenance", "")) == "external"
+    except (json.JSONDecodeError, AttributeError):
+        return False
+
+
 def _fmt_ts(ts) -> Optional[str]:
     """Unix timestamp → 'HH:MM:SS' (today) or 'YYYY-MM-DD HH:MM:SS' (older)."""
     if ts is None:
@@ -480,6 +510,13 @@ class KernelDispatcher:
         self.manager = AkashaManager(series_name=series, base_dir=base_dir)
         self.iam = self.manager.iam
         self.contexa = ContexaEngine(self.manager, self.harmonia) if ContexaEngine else None
+        # Vision inference (image → labels). Lazy: no model/runtime touched until the
+        # first image.profile call, so boot never installs or loads anything for it.
+        self.vision = VisionEngine() if VisionEngine else None
+        # General file import/export — the single Harmonia-owned disk I/O route (CSV/JSON/
+        # MD/TXT). Confined to an allow-list of roots (data/import, data/export, data);
+        # admins permit more via io.allow. Graph writes still go through the guarded path.
+        self.fileio = FileIO(HarmoniaInfra()) if (FileIO and HarmoniaInfra) else None
 
         if self.harmonia:
             self._register_harmonia_plugins()
@@ -1052,9 +1089,87 @@ class KernelDispatcher:
                     logger.info("[Kernel] Curation load queued (%d files)", len(cur_files))
 
             logger.info("[Kernel] Ontology boot load complete")
+            self._schedule_semantic_learn()
 
         except Exception as exc:
             logger.warning("[Kernel] Ontology boot load failed (non-fatal): %s", exc, exc_info=True)
+
+    def _schedule_semantic_learn(self) -> None:
+        """After the ontology is loaded, learn the distributional embedding model in the
+        background so semantic.search / dream are smart from (shortly after) startup —
+        with no external model. Non-blocking (a daemon thread), numpy-gated, and skipped
+        if a model already exists. Set AKASHA_NO_AUTOLEARN=1 to disable. This is the
+        'startup makes Akasha an order smarter' hook: the graph learns from itself."""
+        if os.environ.get("AKASHA_NO_AUTOLEARN"):
+            return
+        try:
+            from lib.akasha.semantic_learn import OntologyLearner, tokens, get_shared_model, store_model
+        except Exception:
+            return
+        if not OntologyLearner.available():          # numpy absent → floor tier, no learn
+            return
+        nucleus = getattr(self.manager, "shared_nucleus", None)
+        if nucleus is None:
+            return
+
+        def _run():
+            try:
+                if get_shared_model(nucleus) is not None:     # already learned/persisted
+                    return
+                import json as _json
+                chunks = nucleus.core.get_all_chunks() or []
+                # Learn only from CURATED content — external (fetched) atoms carry
+                # provenance=external and are excluded so unvetted web text cannot
+                # poison the learned model (ASI06).
+                docs = []
+                for row in chunks:
+                    content = row.get("content") or ""
+                    if len(content) < 8:
+                        continue
+                    if _is_external(row.get("meta")):
+                        continue
+                    docs.append(tokens(content))
+                    if len(docs) >= 40000:
+                        break
+                learner = OntologyLearner(dim=64, max_vocab=2000)
+                if not learner.learn(docs):
+                    return
+                store_model(nucleus, learner)
+                logger.info("[Kernel] Auto semantic.learn complete (docs=%d, vocab=%d)",
+                            len(docs), len(learner.vocab))
+
+                # Per-atom bake-in: write the learned vector onto each atom's meta so the
+                # cosine paths (dream, stored-vector reads) use the learned tier without
+                # re-embedding. Bounded; nucleus writes are commit-forward (no guard).
+                baked = 0
+                for row in chunks:
+                    content = row.get("content") or ""
+                    if len(content) < 8 or _is_external(row.get("meta")):
+                        continue
+                    vec = learner.embed_text(content)
+                    if not vec:
+                        continue
+                    try:
+                        m = _json.loads(row.get("meta") or "{}")
+                    except Exception:
+                        m = {}
+                    m["semantic_vector"] = vec
+                    # Preserve created_at (the chunks column is 'created_at', not 'ts')
+                    # so re-writing meta does not reset the atom's timestamp.
+                    nucleus.core.put_chunk_raw(
+                        row["key"], content, _json.dumps(m, ensure_ascii=False),
+                        row.get("author", "system"), row.get("status", "verified"),
+                        row.get("created_at") or time.time())
+                    baked += 1
+                    if baked >= 40000:
+                        break
+                if baked:
+                    logger.info("[Kernel] Learned vectors baked into %d atoms", baked)
+            except Exception as exc:                          # never break boot
+                logger.warning("[Kernel] Auto semantic.learn failed (non-fatal): %s", exc)
+
+        import threading
+        threading.Thread(target=_run, name="semantic-autolearn", daemon=True).start()
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -1332,6 +1447,16 @@ class KernelDispatcher:
         if method in ("kernel.identity.alias.find", "alias.find", "al.find"):
             pattern = data.get("pattern") or data.get("name", "%")
             aliases = ctx.get_aliases_by_pattern(pattern)
+            # Group-space aliases: a member also sees aliases of atoms shared into
+            # their groups (scope-gated); other members' private aliases are not in
+            # the group space, so they never surface here.
+            _seen_a = {(a.get("key"), a.get("alias")) for a in aliases}
+            for _gid, _ge in self._member_group_engines(session, scopes):
+                for a in (_ge.core.get_aliases_by_pattern(pattern) or []):
+                    _ka = (a.get("key"), a.get("alias"))
+                    if _ka not in _seen_a:
+                        _seen_a.add(_ka)
+                        aliases.append(a)
             focus   = self._get_display_focus(session)
             nucleus = getattr(session, 'nucleus', None)
             if focus:
@@ -1390,6 +1515,18 @@ class KernelDispatcher:
 
         if method == "graph.tree":
             return self._handle_graph_tree(rid, data, session, ctx, scopes)
+
+        if method in ("semantic.search", "search"):
+            return self._handle_semantic_search(rid, data, session, ctx, scopes)
+
+        if method == "semantic.learn":
+            return self._handle_semantic_learn(rid, data, session, ctx, scopes)
+
+        if method in ("gap.scan", "gaps"):
+            return self._handle_gap_scan(rid, data, session, ctx, scopes)
+
+        if method in ("gap.fetch", "gap.enrich"):
+            return self._handle_gap_fetch(rid, data, session, ctx, scopes, client_id)
 
         # ── Dive / View ────────────────────────────────────────────────
         if method in ("dive.look", "look"):
@@ -1514,6 +1651,9 @@ class KernelDispatcher:
         if method == "associate.unwritten":
             return self._handle_associate_unwritten(rid, data, session, ctx, scopes)
 
+        if method in ("emotion.profile", "emo.vector", "emo.profile"):
+            return self._handle_emotion_profile(rid, data, session, ctx, scopes)
+
         # ── Log ───────────────────────────────────────────────────────
         if LogConcept:
             if method == "log.new":        return self._handle_log_new(rid, data, session)
@@ -1578,6 +1718,21 @@ class KernelDispatcher:
         # ── Contexa ───────────────────────────────────────────────────
         if method in ("contexa.fetch", "fetch"):
             return self._handle_contexa_fetch(rid, data, session, ctx, scopes, client_id)
+
+        if method in ("image.profile", "img.profile", "vision.classify"):
+            return self._handle_image_profile(rid, data, session, ctx, scopes, client_id)
+
+        # ── File import/export (general disk I/O — single route) ───────
+        if method in ("io.import", "file.import"):
+            return self._handle_io_import(rid, data, session, ctx, scopes, client_id)
+        if method in ("io.export", "file.export"):
+            return self._handle_io_export(rid, data, session, ctx, scopes, client_id)
+        if method in ("io.index", "dir.index"):
+            return self._handle_io_index(rid, data, session, ctx, scopes, client_id)
+        if method in ("io.project", "io.cast"):
+            return self._handle_io_project(rid, data, session, ctx, scopes, client_id)
+        if method in ("io.allow", "io.permit"):
+            return self._handle_io_allow(rid, data, session)
 
         if method == "web.search":
             return self._handle_web_search(rid, data, session, ctx, scopes, client_id)
@@ -1775,13 +1930,19 @@ class KernelDispatcher:
         human_id = None
         if _HumanConcept is not None:
             try:
+                from lib.akasha.jcl.workspace_context import system_context as _sys_ctx
                 new_session = self.manager.get_session(client_id)
                 human = _HumanConcept(new_session)
-                result = human.op_new(
-                    name=display,
-                    description=f"Identity record for registered client '{client_id}'",
-                    client_id=client_id,
-                )
+                # System-initiated identity write: it does not run under a user
+                # conversation workspace, so exempt it from the single-route guard
+                # (same pattern as genesis/anchor writes). Without this the
+                # HumanConcept atom is rejected and the member has no identity record.
+                with _sys_ctx():
+                    result = human.op_new(
+                        name=display,
+                        description=f"Identity record for registered client '{client_id}'",
+                        client_id=client_id,
+                    )
                 human_id = result.get("human_id")
                 # Store the mapping so the user can retrieve their identity later
                 new_session.set_context("identity_human_id", human_id)
@@ -2941,6 +3102,21 @@ class KernelDispatcher:
         return _ok(rid, {"locale": locale,
                          "processed": processed, "remaining": remaining})
 
+    def _member_group_engines(self, session, scopes):
+        """(gid, engine) for each group the caller is a scoped member of.
+
+        Read / navigation handlers use this to surface atoms shared into the
+        caller's groups — the same associative reach a member has via `look`.
+        Other members' PRIVATE atoms never live in the group space (they carry
+        owner:/view: scopes, not scope:group_<gid>), so scope does the
+        black-holing automatically: a member sees the shared graph but not each
+        other's private cortex."""
+        out = []
+        for gid, ge in getattr(session, 'group_engines', {}).items():
+            if f"scope:group_{gid}" in scopes:
+                out.append((gid, ge))
+        return out
+
     def _handle_read(self, rid, data, session, ctx, scopes, history) -> dict:
         target = data.get("id") or data.get("target", "")
         if not target:
@@ -2955,6 +3131,35 @@ class KernelDispatcher:
         # scope (including nucleus-resident collective/DNA/admin atoms).
         content = ctx.get_scoped_chunk(resolved, scopes)
         if content is None:
+            # Group-space fallback: an atom shared into one of the caller's groups
+            # lives in that group's engine, not the local cortex. Membership is
+            # proven two ways before revealing it: scope:group_<gid> is in the
+            # caller's scopes AND the atom carries that group's scope
+            # (ge.check_access) — mirrors the consciousness/view fallback so `r` is
+            # consistent with `look`. Link-graph traversal is not attempted for a
+            # group atom here; `look` gives the full associative view.
+            for gid, ge in self._member_group_engines(session, scopes):
+                if not ge.check_access(resolved):
+                    continue
+                gc = ge.get_chunk(resolved)
+                if gc is None:
+                    continue
+                grow = ge.get_chunk_raw(resolved) or {}
+                try:
+                    import json as _json
+                    gmeta = _json.loads(grow.get("meta") or "{}")
+                except Exception:
+                    gmeta = {}
+                return _ok(rid, {
+                    "key":       resolved,
+                    "content":   gc,
+                    "meta":      gmeta,
+                    "aliases":   ge.get_aliases_by_key(resolved),
+                    "out_links": [],
+                    "in_links":  [],
+                    "sets":      ge.core.get_collections_for_key(resolved),
+                    "shared_from": f"group:{gid}",
+                })
             return _err(rid, -32002, f"Atom not found or out of scope: '{target}'")
 
         nucleus = getattr(session, 'nucleus', None)
@@ -4119,6 +4324,213 @@ class KernelDispatcher:
     # Exploration
     # ------------------------------------------------------------------
 
+    def _handle_gap_scan(self, rid, data, session, ctx, scopes) -> dict:
+        """gap.scan [limit=] [scan=] — surface the self-expanding-ontology-loop entry
+        points: concepts that are USED a lot (distributional importance) but UNDER-CURATED
+        (few semantic links). The mismatch between how much a node is referenced and how
+        richly it is linked is the signal for what to enrich next (via fetch / weaver /
+        an LLM). Structural maturity is the ShelfScore idea, generalised to any atom;
+        importance is inbound weave references (sys:refers_to). Scope-filtered."""
+        limit = max(1, min(int(data.get("limit", 20)), 200))
+        scan = max(1, min(int(data.get("scan", 3000)), 30000))
+        gaps = self._scan_gaps(ctx, scopes, scan, limit)
+        out = [{"key": g["key"], "gap_score": g["gap_score"], "importance": g["importance"],
+                "curated_links": g["curated_links"], "preview": g["content"][:80]}
+               for g in gaps]
+        return _ok(rid, {"gaps": out, "count": len(out)})
+
+    def _scan_gaps(self, ctx, scopes, scan, limit) -> list:
+        """Rank atoms by the self-expanding-loop gap signal: importance (inbound
+        references) × (1 − structural maturity of curated outbound links). Scope-filtered,
+        external atoms excluded. Shared by gap.scan (report) and gap.fetch (act)."""
+        results = []
+        for row in (ctx.stream(limit=scan) or []):
+            key = row.get("key")
+            if not key or (scopes and not ctx.check_access(key, scopes)):
+                continue
+            # Externally-fetched atoms are not enrichment targets — they ARE the
+            # enrichment material. Curating them would loop fetch→gap→fetch. Skip.
+            if _is_external(row.get("meta")):
+                continue
+            # Importance: how referenced this concept is — weave mentions (sys:refers_to)
+            # plus any other inbound links. A concept many atoms point to is important.
+            importance = len(ctx.get_incoming_links(key) or [])
+            if importance < 1:
+                continue
+            # Structural maturity: curated semantic links out (exclude sys:/weave scaffolding).
+            adj = ctx.get_adjacent_links(key) or []
+            curated = sum(1 for pair in adj
+                          if len(pair) > 1 and not str(pair[1]).startswith("sys:"))
+            struct = min(1.0, curated / 6.0)
+            imp = min(1.0, importance / 8.0)
+            gap = imp * (1.0 - struct)          # important but thin → high
+            if gap > 0.0:
+                results.append({"gap_score": round(gap, 4), "key": key,
+                                "importance": importance, "curated_links": curated,
+                                "content": row.get("content") or ""})
+        results.sort(key=lambda r: r["gap_score"], reverse=True)
+        return results[:limit]
+
+    def _handle_gap_fetch(self, rid, data, session, ctx, scopes, client_id) -> dict:
+        """gap.fetch [limit=] [scan=] — close the self-expanding-ontology loop: find the
+        important-but-thin concepts (gap.scan), then AUTO-FETCH external context to enrich
+        each, weaving it into the graph so the next semantic.learn sees a richer corpus.
+        This is the avatar-delegate step (#31): whichever agent/avatar session invokes it
+        performs the fetch under its own identity, and every fetched atom carries the
+        provenance=external guardrail (trust score + provenance scopes) so unvetted web
+        text can neither poison the learned model nor masquerade as curation. Bounded and
+        degrades gracefully offline (no network → fetched=false, no error). Admin/librarian
+        only (external network writes). Runs inside the caller's write workspace."""
+        err = self._assert_admin(session)
+        if err:
+            return _err(rid, -32003, err)
+        if not self.contexa:
+            return _err(rid, -32001, "ContexaEngine not available in this environment.")
+        limit = max(1, min(int(data.get("limit", 3)), 10))
+        scan = max(1, min(int(data.get("scan", 3000)), 30000))
+        gaps = self._scan_gaps(ctx, scopes, scan, limit)
+
+        enriched = []
+        for g in gaps:
+            key = g["key"]
+            query = self._gap_query(ctx, key, g["content"])
+            if not query:
+                enriched.append({"gap_key": key, "query": None, "fetched": False,
+                                 "reason": "no query term"})
+                continue
+            try:
+                res = self._do_fetch(session, ctx, scopes, client_id, query,
+                                     link_to=key, link_rel="calc:enriches")
+            except Exception as exc:                       # network / provider failure
+                enriched.append({"gap_key": key, "query": query, "fetched": False,
+                                 "reason": str(exc)[:120]})
+                continue
+            if res.get("written"):
+                enriched.append({"gap_key": key, "query": query, "fetched": True,
+                                 "atom_key": res.get("atom_key"),
+                                 "trust": res.get("evidence", {}).get("authority")})
+            else:
+                enriched.append({"gap_key": key, "query": query, "fetched": False,
+                                 "reason": res.get("error", "no content")})
+        n_ok = sum(1 for e in enriched if e["fetched"])
+        return _ok(rid, {"enriched": enriched, "gaps_scanned": len(gaps),
+                         "fetched": n_ok})
+
+    def _gap_query(self, ctx, key, content) -> str:
+        """Derive a fetch query for a gap atom: prefer a human-readable alias (the concept
+        name), else the leading words of its content. Namespace prefixes are stripped so
+        'concept:icarus' queries 'icarus'."""
+        try:
+            aliases = ctx.get_aliases_by_key(key) if hasattr(ctx, "get_aliases_by_key") else None
+        except Exception:
+            aliases = None
+        if aliases:
+            term = str(aliases[0]).split(":")[-1].replace("_", " ").strip()
+            if len(term) >= 2:
+                return term[:80]
+        text = (content or "").strip()
+        if len(text) >= 2:
+            return " ".join(text.split()[:6])[:80]
+        return ""
+
+    def _handle_semantic_learn(self, rid, data, session, ctx, scopes) -> dict:
+        """semantic.learn [limit=] [dim=] [max_vocab=] — learn a distributional embedding
+        model (PPMI + SVD, numpy) from the FULL corpus (nucleus ontology + this cortex)
+        and persist it to the nucleus vault so every session's semantic.search uses it.
+        Admin/librarian only (a heavy, shared, one-shot compute)."""
+        err = self._assert_admin(session)
+        if err:
+            return _err(rid, -32003, err)
+        from lib.akasha.semantic_learn import OntologyLearner, tokens, store_model
+        nucleus = getattr(session, "nucleus", None)
+        if nucleus is None:
+            return _err(rid, -32002, "Nucleus unavailable")
+        if not OntologyLearner.available():
+            return _err(rid, -32002,
+                        "numpy unavailable — learner needs numpy (search degrades to the "
+                        "feature-hashing floor)")
+        limit = max(10, min(int(data.get("limit", 40000)), 200000))
+        min_len = int(data.get("min_len", 8))
+        dim = max(8, min(int(data.get("dim", 64)), 256))
+        max_vocab = max(50, min(int(data.get("max_vocab", 2000)), 8000))
+
+        docs, n = [], 0
+        for src in (nucleus.core, ctx.core):
+            try:
+                chunks = src.get_all_chunks()
+            except Exception:
+                chunks = []
+            for row in chunks:
+                content = row.get("content") or ""
+                if len(content) >= min_len and not _is_external(row.get("meta")):
+                    docs.append(tokens(content))
+                    n += 1
+                    if n >= limit:
+                        break
+            if n >= limit:
+                break
+
+        learner = OntologyLearner(dim=dim, max_vocab=max_vocab)
+        if not learner.learn(docs):
+            return _err(rid, -32002,
+                        f"learn failed (docs={len(docs)} — need >=3 with a shared vocab)")
+        store_model(nucleus, learner)
+        return _ok(rid, {"status": "learned", "docs": len(docs),
+                         "vocab": len(learner.vocab), "dim": dim})
+
+    def _handle_semantic_search(self, rid, data, session, ctx, scopes) -> dict:
+        """semantic.search query= [limit=] [scan=] — rank atoms by cosine similarity to
+        the query. Scope-filtered (fail-closed). Uses the learned model when one has been
+        built (semantic.learn) — re-embedding candidates via the model so query and corpus
+        share one space — otherwise the stored feature-hashing vectors. `tier` says which."""
+        query = (data.get("query") or data.get("q") or data.get("id") or "").strip()
+        if not query:
+            return _err(rid, -32602, "semantic.search requires 'query'")
+        limit = max(1, min(int(data.get("limit", 10)), 100))
+        scan = max(1, min(int(data.get("scan", 2000)), 20000))
+
+        from lib.akasha.semantic_learn import get_shared_model, cosine as _lcos
+        nucleus = getattr(session, "nucleus", None)
+        model = get_shared_model(nucleus) if nucleus is not None else None
+        tensor = getattr(ctx, "tensor", None)
+
+        if model is not None and model.embed_text(query):
+            tier = "learned"
+            qvec = model.embed_text(query)
+        elif tensor is not None and tensor.embed("", query, {}):
+            tier = "floor"
+            qvec = tensor.embed("", query, {})
+        else:
+            return _ok(rid, {"query": query, "results": [], "count": 0, "tier": "none"})
+
+        import json as _json
+        scored = []
+        for row in (ctx.stream(limit=scan) or []):
+            key = row.get("key")
+            if not key or (scopes and not ctx.check_access(key, scopes)):
+                continue
+            content = row.get("content") or ""
+            if tier == "learned":
+                vec = model.embed_text(content)             # re-embed → same space as qvec
+            else:
+                meta = row.get("meta")
+                if isinstance(meta, str):
+                    try:
+                        meta = _json.loads(meta)
+                    except Exception:
+                        meta = {}
+                vec = meta.get("semantic_vector") if isinstance(meta, dict) else None
+            if not vec:
+                continue
+            s = _lcos(qvec, vec)
+            if s > 0.0:
+                scored.append((s, key, content))
+        scored.sort(key=lambda t: t[0], reverse=True)
+        results = [{"key": k, "score": round(s, 4), "preview": c[:80]}
+                   for s, k, c in scored[:limit]]
+        return _ok(rid, {"query": query, "results": results,
+                         "count": len(results), "tier": tier})
+
     def _handle_explore(self, rid, data, session, ctx, scopes, history) -> dict:
         """
         explore — query/filter tool for discovering atoms in the ontology.
@@ -4155,9 +4567,15 @@ class KernelDispatcher:
                 pattern = f"{pattern}%"
 
             rows = ctx.get_aliases_by_pattern(pattern)
+            seen_k = {r["key"] for r in rows}
             if nucleus:
-                seen_k = {r["key"] for r in rows}
                 for r in nucleus.core.get_aliases_by_pattern(pattern) or []:
+                    if r["key"] not in seen_k:
+                        rows.append(r)
+                        seen_k.add(r["key"])
+            # Group-space atoms shared into the caller's groups (scope-gated).
+            for _gid, _ge in (self._member_group_engines(session, scopes) if session else []):
+                for r in (_ge.core.get_aliases_by_pattern(pattern) or []):
                     if r["key"] not in seen_k:
                         rows.append(r)
                         seen_k.add(r["key"])
@@ -4175,6 +4593,9 @@ class KernelDispatcher:
         if set_filt:
             normalized = set_filt if set_filt.startswith("set:") else f"set:{set_filt}"
             set_members = set(ctx.get_collection_members(normalized))
+            # A shared set's membership lives in the group engine.
+            for _gid, _ge in (self._member_group_engines(session, scopes) if session else []):
+                set_members |= set(_ge.core.get_collection_members(normalized))
 
             if candidate_keys is None:
                 candidate_keys = {k: None for k in set_members}
@@ -4198,6 +4619,14 @@ class KernelDispatcher:
                         raw = nucleus.core.get_chunk_raw(k)
                     except Exception:
                         pass
+                if not raw:
+                    for _gid, _ge in (self._member_group_engines(session, scopes) if session else []):
+                        try:
+                            raw = _ge.core.get_chunk_raw(k)
+                        except Exception:
+                            raw = None
+                        if raw:
+                            break
                 if raw:
                     try:
                         meta = json.loads(raw.get("meta", "{}") or "{}")
@@ -4208,16 +4637,23 @@ class KernelDispatcher:
             candidate_keys = filtered
 
         # ── Build result list ────────────────────────────────────────────
+        group_engines = self._member_group_engines(session, scopes) if session else []
         results = []
         for k, alias in list(candidate_keys.items())[:limit]:
             # Fail-closed: check_access denies when scopes is empty, so no
             # `scopes and ...` short-circuit that would leak on an empty list.
+            src = ctx
             if not ctx.check_access(k, scopes):
-                continue
+                # Not in the local cortex/scope — is it shared into one of the
+                # caller's groups? If so, read it from that group engine; if not,
+                # it stays black-holed (another member's private atom).
+                src = next((ge for _gid, ge in group_engines if ge.check_access(k)), None)
+                if src is None:
+                    continue
             if alias is None:
-                als = ctx.get_aliases_by_key(k)
+                als = src.get_aliases_by_key(k)
                 alias = als[0] if als else None
-            content = ctx.get_chunk(k) or ""
+            content = src.get_chunk(k) or ""
             results.append({
                 "key":     k,
                 "alias":   alias,
@@ -4428,6 +4864,17 @@ class KernelDispatcher:
             members = ctx.list_set(f"set:{name}", allowed_scopes=scopes)
             if members:
                 name = f"set:{name}"
+        # Group-space fallback: a set shared into the caller's group lives in the
+        # group engine, not the local cortex. Merge its members (scope-gated),
+        # deduped by key, so a member can list a shared set.
+        group_engines = self._member_group_engines(session, scopes) if session else []
+        if group_engines:
+            _seen = {m["key"] for m in members}
+            for _gid, _ge in group_engines:
+                for gm in _ge.list_set(name):
+                    if gm["key"] not in _seen:
+                        _seen.add(gm["key"])
+                        members.append(gm)
         if session:
             nucleus = getattr(session, 'nucleus', None)
             focus   = self._get_display_focus(session)
@@ -4436,6 +4883,11 @@ class KernelDispatcher:
                            if self._passes_display_focus(m["key"], focus, ctx, nucleus)]
         for m in members:
             aliases = ctx.get_aliases_by_key(m["key"])
+            if not aliases and group_engines:
+                for _gid, _ge in group_engines:
+                    aliases = _ge.get_aliases_by_key(m["key"])
+                    if aliases:
+                        break
             m["alias"] = aliases[0] if aliases else None
         return _ok(rid, {"set": name, "members": members, "count": len(members)})
 
@@ -5860,6 +6312,22 @@ class KernelDispatcher:
             logger.debug("[Fetch] create URL atom '%s': %s", url, exc)
             return None
 
+    @staticmethod
+    def _external_trust(evidence: dict, source_type: str) -> float:
+        """Ground a fetched atom's curation trust in its evidence rather than asserting a
+        flat value: trust = 0.5·authority + 0.3·reach + 0.2·nature. Wikipedia (authority
+        0.9, reach 1.0, factual) → ~0.95; a scraped URL (authority 0.5) → lower. The score
+        is stored on the atom so any downstream curation decision is inspectable."""
+        try:
+            authority = float(evidence.get("authority", 0.3))
+            reach = float(evidence.get("reach", 0.3))
+        except (TypeError, ValueError):
+            authority, reach = 0.3, 0.3
+        nature = str(evidence.get("nature", "unknown")).lower()
+        nature_f = {"factual": 1.0, "reference": 0.9, "opinion": 0.5,
+                    "unknown": 0.3}.get(nature, 0.3)
+        return round(max(0.0, min(1.0, 0.5 * authority + 0.3 * reach + 0.2 * nature_f)), 3)
+
     def _handle_contexa_fetch(self, rid, data, session, ctx, scopes, client_id) -> dict:
         """
         contexa.fetch — fetch external content and write to Akasha.
@@ -5884,14 +6352,24 @@ class KernelDispatcher:
         query = data.get("query") or data.get("url", "")
         if not query:
             return _err(rid, -32602, "contexa.fetch requires 'query' or 'url'")
+        return _ok(rid, self._do_fetch(session, ctx, scopes, client_id, query))
 
+    def _do_fetch(self, session, ctx, scopes, client_id, query,
+                  link_to=None, link_rel="calc:enriches") -> dict:
+        """Fetch external content for `query` and integrate it as atoms (the write half
+        of contexa.fetch, shared with gap.fetch). Returns the provider result dict with
+        atom_key/written on success, or the raw provider result (error/no-text) otherwise.
+        Every written atom carries the provenance=external guardrail (trust score +
+        provenance scopes) so unvetted web text stays distinguishable from curation.
+        `link_to`, when given, is linked FROM the fetched atom via `link_rel` so the graph
+        records which concept the fetch enriched. Callers run under a write workspace."""
         result = self.contexa.fetch(query)
         if "error" in result:
-            return _ok(rid, result)
+            return result
 
         text = result.get("text", "")
         if not text:
-            return _ok(rid, result)
+            return result
 
         source_type = result.get("source_type", "web")
         evidence    = result.get("evidence", {})
@@ -5899,13 +6377,23 @@ class KernelDispatcher:
         title       = result.get("title", "")
         alias       = result.get("alias")
 
-        write_scopes = [f"owner:user_{client_id}", f"view:user_{client_id}"]
+        # ── Provenance guardrail (curation trust has an explicit, inspectable basis) ──
+        # External content is an attack surface (ASI06 memory poisoning) and must never
+        # be indistinguishable from curated ontology. Every fetched atom is:
+        #   - tagged provenance=external + source, with a computed `trust` score, and
+        #   - placed in the computational scopes provenance:external / provenance:<source>
+        #     so curated-only reads/learning can exclude it and curators can review it.
+        # trust is grounded in the fetch evidence, not asserted flat.
+        trust = self._external_trust(evidence, source_type)
+        write_scopes = [f"owner:user_{client_id}", f"view:user_{client_id}",
+                        "provenance:external", f"provenance:{source_type}"]
 
         # Write the content Atom
         atom_key = ctx.put_chunk(
             content=text,
             meta={"type": f"fetch:{source_type}", "evidence": evidence,
-                  "url": url, "title": title},
+                  "url": url, "title": title,
+                  "provenance": "external", "source": source_type, "trust": trust},
             author=client_id,
             scopes=write_scopes,
         )
@@ -5958,12 +6446,314 @@ class KernelDispatcher:
                 author=client_id,
             )
 
+        # Enrichment link: fetched atom → the concept it was fetched to enrich, so the
+        # self-expanding loop is recorded in the graph (gap.fetch sets link_to).
+        if link_to and link_to != atom_key:
+            try:
+                ctx.put_link(atom_key, link_to, link_rel, author=client_id)
+            except Exception:
+                pass
+
         # Trigger Weaver + NLP — same pipeline as w command
         self._post_write(session, isinstance(ctx, _NucleusWriteCtx), atom_key, text)
 
         result["atom_key"] = atom_key
         result["written"]  = True
-        return _ok(rid, result)
+        return result
+
+    def _handle_image_profile(self, rid, data, session, ctx, scopes, client_id) -> dict:
+        """image.profile path=|url= [top_k=] — classify an image (local file or URL) into
+        labels via the LiteRT vision engine and integrate them into the graph. This is the
+        image counterpart of contexa.fetch: the image becomes an atom, each predicted label
+        becomes/links a concept (`calc:depicts`, weighted by confidence), and everything
+        carries the provenance=external guardrail (trust = model confidence) so model-
+        inferred labels can neither poison the learned model nor be mistaken for curation.
+        Degrades gracefully (no runtime/model/PIL, or offline → written=false, no error).
+        Runs inside the write workspace."""
+        src = (data.get("path") or data.get("url") or data.get("src")
+               or data.get("image") or "").strip()
+        if not src:
+            return _err(rid, -32602, "image.profile requires 'path' or 'url'")
+        if not self.vision or not self.vision.available():
+            return _err(rid, -32001,
+                        "Vision engine unavailable (no TFLite/LiteRT runtime or PIL).")
+
+        top_k = max(1, min(int(data.get("top_k", 5)), 10))
+        res = self.vision.classify(src, top_k=top_k)
+        labels = res.get("labels") or []
+        if not labels:
+            return _ok(rid, res)                          # error / no labels → graceful
+
+        import re
+        is_url = src.startswith("http")
+        top = labels[0]
+        summary = "image: " + ", ".join(l["label"] for l in labels)
+        write_scopes = [f"owner:user_{client_id}", f"view:user_{client_id}",
+                        "provenance:external", "provenance:vision"]
+        image_key = ctx.put_chunk(
+            content=summary,
+            meta={"type": "image", "provenance": "external", "source": "vision",
+                  "model": res.get("model"), "backend": res.get("backend"),
+                  "trust": round(float(top.get("score", 0.0)), 3),
+                  "labels": labels, "src": src},
+            author=client_id, scopes=write_scopes)
+        session.last_written_id = image_key
+        session.set_context("last_written_id", image_key)
+
+        # Each label → a concept atom (find-or-create by alias), linked from the image via
+        # calc:depicts weighted by confidence. Concepts are ordinary (curated) atoms, so the
+        # graph gains real, referenceable nodes; the *inference* provenance lives on the edge
+        # weight + the image atom, not on the concept.
+        for lab in labels:
+            name = lab["label"]
+            c_alias = f"concept:{re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')}"
+            c_key = None
+            try:
+                c_key = ctx.resolve_alias(c_alias)
+            except Exception:
+                c_key = None
+            if not c_key:
+                try:
+                    c_key = ctx.put_chunk(content=name, meta={"type": "concept"},
+                                          author=client_id, scopes=write_scopes)
+                    ctx.set_alias(c_key, c_alias)
+                except Exception:
+                    c_key = None
+            if c_key:
+                try:
+                    ctx.put_link(image_key, c_key, "calc:depicts",
+                                 w=float(lab.get("score", 1.0)), author=client_id)
+                except Exception:
+                    pass
+
+        # URL exit-point atom (so the source image is navigable) + fetch/vision ref set.
+        if is_url:
+            url_key = self._find_or_create_url_atom(ctx, src, top["label"],
+                                                    client_id, write_scopes)
+            if url_key:
+                try:
+                    ctx.put_link(image_key, url_key, "ref:source", author=client_id)
+                except Exception:
+                    pass
+        session_id = getattr(session, "session_id", client_id)
+        try:
+            ctx.add_to_set(f"vision:{session_id}:refs", image_key)
+        except Exception:
+            pass
+
+        # Weave the label summary into the semantic layer (same pipeline as w / fetch).
+        self._post_write(session, isinstance(ctx, _NucleusWriteCtx), image_key, summary)
+
+        res["atom_key"] = image_key
+        res["written"] = True
+        return _ok(rid, res)
+
+    # ------------------------------------------------------------------
+    # General file import/export — the single disk-I/O route (io.*)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _io_slug(path: str) -> str:
+        import re
+        base = os.path.splitext(os.path.basename(path.rstrip("/")))[0] or os.path.basename(path.rstrip("/"))
+        return re.sub(r"[^a-z0-9]+", "_", base.lower()).strip("_") or "import"
+
+    # The kernel builds pipeline endpoints from injected closures so lib/harmonia/pipeline.py
+    # stays graph-agnostic (it never imports akasha). io.* is just "wire a Source to a Sink".
+
+    def _io_dispatch(self, session, rid) -> Callable:
+        """A (method, data) -> result closure over the concept registry — used by pipeline
+        graph endpoints to reach table/lens operators through the one dispatch route."""
+        def _dispatch(method, data):
+            if _concept_registry is None:
+                raise RuntimeError("concept models unavailable")
+            return _concept_registry.dispatch_if_handled(method, session, data, rid)
+        return _dispatch
+
+    def _io_doc_sink(self, ctx, session, client_id, set_name) -> "DocSink":
+        """A DocSink that writes through the guarded composite path and weaves the text."""
+        def _write_atom(text, meta, scopes_):
+            return ctx.put_chunk(content=text, meta=meta, author=client_id, scopes=scopes_)
+
+        def _weave(key, text):
+            self._post_write(session, isinstance(ctx, _NucleusWriteCtx), key, text)
+        return DocSink(_write_atom, ctx.add_to_set, _weave, client_id, set_name)
+
+    def _io_ingest(self, source, ctx, session, client_id, rid, table_name=None,
+                   set_name=None, origin_slug=None) -> dict:
+        """Connect a Source to the right graph Sink (table vs document, decided by the stream
+        kind) and run the pipeline. Shared by io.import (one file) and io.index (many)."""
+        stream = source.read()                                   # may raise (path/parse)
+        # The graph Sink is chosen by the stream kind, so we peek the stream here and write it
+        # (rather than run_pipeline reading it a second time). Transform hooks, when added, go
+        # between this read and the write.
+        if stream.kind == "table":
+            import re as _re
+            name = _re.sub(r"[^a-z0-9_]+", "_", str(table_name or "").lower()).strip("_") \
+                or origin_slug or self._io_slug(stream.origin or "import")
+            sink = TableSink(self._io_dispatch(session, rid), name)
+        else:
+            sink = self._io_doc_sink(ctx, session, client_id,
+                                     set_name or f"docs:{origin_slug or self._io_slug(stream.origin or 'doc')}")
+        result = sink.write(stream)
+        if stream.origin and "source" not in result:
+            result["source"] = stream.origin
+        return result
+
+    def _handle_io_import(self, rid, data, session, ctx, scopes, client_id) -> dict:
+        """io.import path=|text= [format=] [table=] — connect a file (or an inline upload
+        payload) Source to a graph Sink: tabular → the `table` model; a document → an indexed
+        atom. The single disk-read route into the graph; confined to permitted roots
+        (io.allow). Admin/librarian only. Runs in the write workspace."""
+        err = self._assert_admin(session)
+        if err:
+            return _err(rid, -32003, err)
+        if not self.fileio:
+            return _err(rid, -32001, "FileIO unavailable in this environment.")
+        fmt = (data.get("format") or "").strip() or None
+        # Source: a local file, OR an inline payload (text=) — the latter is how a future Web
+        # GUI upload plugs into the SAME pipeline without touching disk.
+        if data.get("text") is not None:
+            if not fmt:
+                return _err(rid, -32602, "io.import text= requires 'format'")
+            source = InlineSource(str(data["text"]), fmt, name=data.get("name") or "upload")
+        else:
+            path = (data.get("path") or data.get("file") or "").strip()
+            if not path:
+                return _err(rid, -32602, "io.import requires 'path' or 'text'")
+            source = FileSource(self.fileio, path, fmt)
+        try:
+            return _ok(rid, self._io_ingest(source, ctx, session, client_id, rid,
+                                            table_name=data.get("table")))
+        except PermissionError as exc:
+            return _err(rid, -32001, str(exc))
+        except FileNotFoundError:
+            return _err(rid, -32002, "file not found")
+        except (ValueError, RuntimeError) as exc:
+            return _err(rid, -32602, str(exc))
+        except Exception as exc:
+            return _err(rid, -32002, f"import failed: {str(exc)[:140]}")
+
+    def _handle_io_index(self, rid, data, session, ctx, scopes, client_id) -> dict:
+        """io.index dir= [exts=] [limit=] — index every supported file under a permitted
+        directory (the local-directory-indexing feature: the maintainer permits a dir, and its
+        files' content/keywords become index atoms — raw files are never stored). Each file is
+        a FileSource run through the ingest pipeline. Bounded; admin/librarian only."""
+        err = self._assert_admin(session)
+        if err:
+            return _err(rid, -32003, err)
+        if not self.fileio:
+            return _err(rid, -32001, "FileIO unavailable in this environment.")
+        dirp = (data.get("dir") or data.get("path") or "").strip()
+        if not dirp:
+            return _err(rid, -32602, "io.index requires 'dir'")
+        exts = None
+        if data.get("exts"):
+            exts = {e if e.startswith(".") else "." + e
+                    for e in str(data["exts"]).lower().replace(",", " ").split()}
+        limit = max(1, min(int(data.get("limit", 1000)), 5000))
+        slug = self._io_slug(dirp)
+        set_name = f"index:{slug}"
+        indexed = tables = errors = files = 0
+        try:
+            paths = list(self.fileio.iter_dir(dirp, exts))
+        except PermissionError as exc:
+            return _err(rid, -32001, str(exc))
+        except FileNotFoundError:
+            return _err(rid, -32002, f"directory not found: {dirp}")
+        for fpath in paths[:limit]:
+            files += 1
+            try:
+                r = self._io_ingest(FileSource(self.fileio, fpath), ctx, session, client_id, rid,
+                                    set_name=set_name)
+                if r.get("kind") == "table":
+                    tables += 1
+                else:
+                    indexed += 1
+            except Exception as exc:
+                logger.warning("[io.index] %s: %s", fpath, exc)
+                errors += 1
+        return _ok(rid, {"dir": dirp, "files": files, "indexed_docs": indexed,
+                         "tables": tables, "errors": errors, "set": set_name,
+                         "truncated": len(paths) > limit})
+
+    def _handle_io_export(self, rid, data, session, ctx, scopes, client_id) -> dict:
+        """io.export (table=|set=) (path=|inline=true) [format=] — connect a graph Source (a
+        `table`, or a set of atoms) to a Sink: FileSink writes CSV/JSON/MD to a permitted path;
+        with inline=true a ResponseSink returns the serialised content in the result instead
+        (the client 'receive' path — a session downloads a table/set as a file). The reverse
+        of io.import through the SAME pipeline. Admin/librarian only."""
+        err = self._assert_admin(session)
+        if err:
+            return _err(rid, -32003, err)
+        if not self.fileio:
+            return _err(rid, -32001, "FileIO unavailable in this environment.")
+        inline = str(data.get("inline", "")).lower() in ("true", "1", "yes")
+        path = (data.get("path") or data.get("file") or "").strip()
+        if not inline and not path:
+            return _err(rid, -32602, "io.export requires 'path' (or inline=true)")
+        fmt = (data.get("format") or "").strip() \
+            or (self.fileio.detect_format(path) if path else None) or "csv"
+        if data.get("table"):
+            source = TableSource(self._io_dispatch(session, rid), data["table"])
+        elif data.get("set"):
+            set_name = data["set"]
+            source = SetSource(
+                list_members=lambda: ctx.list_set(set_name, allowed_scopes=scopes),
+                get_content=lambda k: (ctx.get_scoped_chunk(k, scopes) if scopes
+                                       else ctx.get_chunk(k)),
+                set_name=set_name)
+        else:
+            return _err(rid, -32602, "io.export requires 'table' or 'set'")
+        sink = ResponseSink(fmt) if inline else FileSink(self.fileio, path, fmt)
+        try:
+            return _ok(rid, run_pipeline(source, sink))
+        except PermissionError as exc:
+            return _err(rid, -32001, str(exc))
+        except (ValueError, RuntimeError) as exc:
+            return _err(rid, -32002, str(exc))
+        except Exception as exc:
+            return _err(rid, -32002, f"export failed: {str(exc)[:140]}")
+
+    def _handle_io_project(self, rid, data, session, ctx, scopes, client_id) -> dict:
+        """io.project src= [model=table] [into=] [depth=] — project an in-graph source (a set,
+        or an atom/alias tree root) into a concept model through the lens pipeline
+        (LensScanSource -> ConceptCastSink). This is the base of the general "project into any
+        concept model" path and of model->model chaining; today `table` is the working target
+        (other models are a per-model follow-up — issue #43). Admin/librarian only; write."""
+        err = self._assert_admin(session)
+        if err:
+            return _err(rid, -32003, err)
+        if _concept_registry is None:
+            return _err(rid, -32001, "concept models unavailable")
+        src = (data.get("src") or data.get("source") or "").strip()
+        if not src:
+            return _err(rid, -32602, "io.project requires 'src' (a set name or atom/alias)")
+        model = (data.get("model") or "table").strip()
+        dispatch = self._io_dispatch(session, rid)
+        try:
+            return _ok(rid, run_pipeline(
+                LensScanSource(dispatch, src, depth=int(data.get("depth", 2))),
+                ConceptCastSink(dispatch, model, into=data.get("into"))))
+        except (ValueError, RuntimeError) as exc:
+            return _err(rid, -32602, str(exc))
+        except Exception as exc:
+            return _err(rid, -32002, f"project failed: {str(exc)[:140]}")
+
+    def _handle_io_allow(self, rid, data, session) -> dict:
+        """io.allow dir= — permit a local directory for io.import/io.index/io.export (the
+        maintainer explicitly grants a directory; reads/writes are otherwise confined to
+        data/import, data/export, data). Admin/librarian only."""
+        err = self._assert_admin(session)
+        if err:
+            return _err(rid, -32003, err)
+        if not self.fileio:
+            return _err(rid, -32001, "FileIO unavailable in this environment.")
+        dirp = (data.get("dir") or data.get("path") or "").strip()
+        if not dirp:
+            return _err(rid, -32602, "io.allow requires 'dir'")
+        root = self.fileio.add_root(dirp)
+        return _ok(rid, {"allowed": root, "roots": list(self.fileio.roots)})
 
     def _handle_web_search(self, rid, data, session, ctx, scopes, client_id) -> dict:
         """
@@ -6031,6 +6821,25 @@ class KernelDispatcher:
     # ------------------------------------------------------------------
     # Associate (kernel.associate + associate.unwritten)
     # ------------------------------------------------------------------
+
+    def _handle_emotion_profile(self, rid, data, session, ctx, scopes) -> dict:
+        """emotion.profile id= [scope=] [normalize=] — the Akasha-native emotion vector of an
+        atom: the emo:* atoms it is linked to (via calc:associated_with / has_emotion / …),
+        weighted by edge strength and depth, ranked and (by default) L1-normalised. This is
+        the link-based track of the two-track emotion design; the external-NLP sentiment track
+        is separate. Scope-filtered; an atom with no emotion links returns an empty vector."""
+        target = data.get("id") or data.get("key") or session.last_written_id or ""
+        if not target:
+            return _err(rid, -32602, "emotion.profile requires 'id' or a last-written atom")
+        focal_key = ctx.resolve_alias(target) or target
+        content = ctx.get_scoped_chunk(focal_key, scopes) if scopes else ctx.get_chunk(focal_key)
+        if content is None:
+            return _err(rid, -32002, f"Atom '{focal_key}' not found or access denied")
+        scope = max(1, min(int(data.get("scope", 2)), 4))
+        normalize = str(data.get("normalize", "true")).lower() not in ("0", "false", "no")
+        profile = ctx.emotion_profile(focal_key, scope=scope,
+                                      allowed_scopes=scopes, normalize=normalize)
+        return _ok(rid, profile)
 
     def _handle_associate(self, rid, data, session, ctx, scopes, history) -> dict:
         """
