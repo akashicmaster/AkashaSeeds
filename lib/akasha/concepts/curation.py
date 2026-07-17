@@ -1,769 +1,332 @@
 """
-Curation Concept Model.
-Premise-bound reconciliation engine.
-Curation is NOT a truth engine.
-It creates conditional, auditable views from conflicting facts, correspondences,
-country events, claims, sovereignty records, and other evidence-bearing atoms.
-Core idea:
-    Inputs remain intact.
-    Curation creates a View under a stated Premise.
-    Conflicts are folded only inside that View.
-    Unresolved conflicts are first-class outputs.
-Version: 1.0.0
+Curation Concept Model — interpretation as a narrative path over relationships.
+
+Curation is NOT about a single Atom (that is what `fact` / `thesaurus` do — deep-dive
+one atom). Curation interprets a SET of Atoms through the RELATIONSHIPS among them,
+and its output is a NARRATIVE PATH: an ordered walk Atom→Atom, produced as the
+result of an operation over chosen relations, or authored by a human/LLM.
+
+Two invariants:
+  • Relationship-centred. The operand is the relation structure, not the atom.
+  • No burden of proof. A curation is an interpretation from a standpoint; it shows
+    its GROUNDS (which relations / operation produced the path) but does not prove
+    them. Its output is provenance:interpretation — cross-check with `fact` atoms if
+    verification is actually needed.
+
+Construction (two modes):
+  • derived  — intersect (default) the adjacency of the chosen relation axes within
+               the target set; the surviving edges chain into the narrative path
+               (e.g. time-axis ∩ bloodline → a lineage-through-time). Other
+               operators (union / compose / prefer) are reserved and fall back to
+               intersect for now (op_applied reports which ran).
+  • authored — a human/LLM supplies the ordered path (`ids=`); the model writes the
+               curation:next edges, intentionally strengthening the narrative
+               network — narrative-order-first.
+
+Operators (3, the default — extensible):
+  curation.new      create a curation (derive from relations, or author a path)
+  curation.narrate  read the narrative path back (ordered atoms + grounds)
+  curation.ls       list curations
 """
+
 import time
 import logging
 from typing import Any, Dict, List, Optional
+
 from lib.akasha.concepts.base import BaseConcept
 
 logger = logging.getLogger("Harmonia.Concept.Curation")
 
-CONTEXT_KEY_ACTIVE = "active_curation_root"
 INDEX_SET = "set:curation:index"
-_CONCEPT_WORD_ALIAS_PREFIX = "concept:word:"
+_REL_NEXT = "curation:next"                 # the derived interpretation edge (path step)
+_REL_OVER = "curation:over"                 # curation root → each atom it interprets
+_ORDERS_IMPLEMENTED = ("intersect",)        # relation operators with a real comparator
 
-SUBSET_TO_RELATION: Dict[str, str] = {
-    "premises":    "curation:has_premise",
-    "inputs":      "curation:has_input",
-    "views":       "curation:has_view",
-    "folds":       "curation:has_fold",
-    "conclusions": "curation:has_conclusion",
-    "disputes":    "curation:has_dispute",
-}
 
-CONFLICT_POLICIES = (
-    "highest_credibility",
-    "most_recent",
-    "perspective_preferred",
-    "source_policy",
-    "leave_unresolved",
-    "manual",
-    "composite",
-)
-
-INPUT_ROLES = (
-    "fact",
-    "correspondence",
-    "country_event",
-    "country_claim",
-    "sovereignty",
-    "administration",
-    "law",
-    "source",
-    "assessment",
-    "other",
-)
-
-CONCLUSION_TYPES = (
-    "state",
-    "event",
-    "relation",
-    "assessment",
-    "estimate",
-    "recommendation_basis",
-    "unresolved",
-    "other",
-)
-
-VIEW_STATUS = (
-    "draft",
-    "active",
-    "superseded",
-    "disputed",
-    "archived",
-)
+def _as_list(v) -> List[str]:
+    """Accept a Python list, or a comma/space/newline-separated string (CSL-friendly)."""
+    if v is None:
+        return []
+    if isinstance(v, (list, tuple)):
+        return [str(x).strip() for x in v if str(x).strip()]
+    parts = str(v).replace("\n", ",").replace(" ", ",").split(",")
+    return [p.strip() for p in parts if p.strip()]
 
 
 class CurationConcept(BaseConcept):
-    """Premise-bound conflict reconciliation and view construction."""
+    """Interpretation as a narrative path: new (create) · narrate (read) · ls (list)."""
 
     CONCEPT_PREFIX = "curation"
-    CONTEXT_KEY_ACTIVE = CONTEXT_KEY_ACTIVE
+    CONCEPT_LABEL  = "interpretation as a narrative path over relationships"
 
     CONCEPT_METHODS = {
-        "new": {"op": "op_new"},
-        "open": {
-            "op": "op_open",
-            "coerce": lambda d: {
-                "curation_id": d.get("curation_id") or d.get("id") or d.get("concept_id", "")
-            },
+        "new": {
+            "op":     "op_new",
+            "action": "write",
+            "cli":    "cur.new",
+            "args":   ["title"],
+            "desc":   ("Create a curation (narrative path). Derive from relations: "
+                       "curation new <title> set=<set> rels=a,b [op=intersect] — or author an "
+                       "order: curation new <title> ids=x,y,z"),
         },
-        "ls":       {"op": "op_list_all"},
-        "map":      {"op": "op_map"},
-        "rm":       {"op": "op_delete"},
-        "premise.add":    {"op": "op_add_premise"},
-        "input.add":      {"op": "op_add_input"},
-        "view.run":       {"op": "op_run_view"},
-        "fold.add":       {"op": "op_add_fold"},
-        "conclusion.add": {"op": "op_add_conclusion"},
-        "dispute.add":    {"op": "op_add_dispute"},
-        "trace":    {"op": "op_trace"},
-        "diagnose": {"op": "op_diagnose"},
+        "narrate": {
+            "op":     "op_narrate",
+            "action": "read",
+            "cli":    "cur.narrate",
+            "args":   ["curation_id"],
+            "desc":   "Read a curation's narrative path back: curation narrate <curation_id|alias>",
+        },
+        "ls": {
+            "op":     "op_ls",
+            "action": "read",
+            "cli":    "cur.ls",
+            "args":   [],
+            "desc":   "List curations: cur.ls",
+        },
     }
 
-    SUBSETS = list(SUBSET_TO_RELATION.keys())
+    # ── helpers ────────────────────────────────────────────────────────────────
 
-    def __init__(self, session: Any, concept_id: Optional[str] = None):
-        super().__init__(session, concept_id)
-        if not self.concept_id:
-            stored = getattr(self.session, "get_context", lambda k: None)(CONTEXT_KEY_ACTIVE)
-            if stored:
-                self.concept_id = stored
-                self.set_name = f"set:concept:{self.concept_id}"
+    def _author_scopes(self):
+        uid = getattr(self.session, "client_id", "system")
+        return uid, [f"owner:user_{uid}", f"view:user_{uid}"]
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
+    def _scopes(self) -> List[str]:
+        return getattr(self.session, "active_scopes", []) or []
 
-    def _cur_set(self, suffix: Optional[str] = None) -> str:
-        base = f"set:curation:{self.concept_id}"
-        return f"{base}:{suffix}" if suffix else base
+    def _visible(self, key: str) -> bool:
+        scopes = self._scopes()
+        return (not scopes) or self.cortex.check_access(key, scopes)
 
-    def _author_and_scopes(self):
-        author_id = getattr(self.session, "client_id", "system")
-        scopes = [f"owner:user_{author_id}", f"view:user_{author_id}"]
-        return author_id, scopes
+    def _resolve(self, ref: str) -> Optional[str]:
+        """Resolve an atom ref: direct key, alias, or bare word (leaf fallback)."""
+        if not ref:
+            return None
+        if self.cortex.get_chunk(ref) is not None:
+            return ref                                # already a real key
+        key = self.cortex.resolve_alias(ref)
+        if not key and ":" not in ref:
+            keys = self.cortex.list_leaf(ref)
+            if keys:
+                key = keys[0]
+        return key
 
-    def _create_sets(self) -> None:
-        self.cortex.create_set(self.set_name)
-        self.cortex.create_set(self._cur_set())
-        for suffix in self.SUBSETS:
-            self.cortex.create_set(self._cur_set(suffix))
+    def _name(self, key: str) -> Optional[str]:
+        aliases = self.cortex.get_aliases_by_key(key) or []
+        return next((a for a in aliases if ":" in a), aliases[0] if aliases else None)
+
+    def _step(self, key: str) -> Dict[str, Any]:
+        content = (self.cortex.get_chunk(key) or "").strip()
+        if content.startswith("[") and "\n" in content:
+            content = content.split("\n", 1)[1].strip()   # drop the "[alias]" hub header
+        return {"key": key, "name": self._name(key),
+                "preview": content.split("\n", 1)[0][:80]}
+
+    # ── the relation-algebra core (auto path discovery) ─────────────────────────
+
+    def _derive_path(self, pool: List[str], rels: List[str], op: str) -> List[str]:
+        """Order `pool` into a narrative chain via a relation operation.
+
+        One axis → follow that relation's chain. Two+ axes with `intersect` → an edge
+        a→b survives only if b is adjacent to a under EVERY axis (e.g. later-in-time
+        AND descends-from); the surviving edges chain into the path. `op` values other
+        than 'intersect' are reserved and treated as intersect for now.
+        """
+        pool_set = set(pool)
+        if not rels:
+            return list(pool)
+
+        def adjacency(rel: str) -> Dict[str, set]:
+            edges: Dict[str, set] = {}
+            for a in pool:
+                for (dst, _rel) in self.cortex.get_adjacent_links(a, rel):
+                    if dst in pool_set and dst != a:
+                        edges.setdefault(a, set()).add(dst)
+            return edges
+
+        per_axis = [adjacency(r) for r in rels]
+        base = per_axis[0]
+        edges: Dict[str, set] = {}
+        for a, bs in base.items():
+            inter = set(bs)
+            for other in per_axis[1:]:
+                inter &= other.get(a, set())
+            if inter:
+                edges[a] = inter
+
+        # Chain: start at a node with no incoming surviving edge; walk deterministically.
+        incoming = set().union(*edges.values()) if edges else set()
+        start = next((a for a in pool if a not in incoming and a in edges), None)
+        if start is None:
+            start = next((a for a in pool if a not in incoming), pool[0] if pool else None)
+
+        path: List[str] = []
+        seen: set = set()
+        cur = start
+        while cur is not None and cur not in seen:
+            path.append(cur)
+            seen.add(cur)
+            nxts = sorted(edges.get(cur, set()))
+            cur = next((n for n in nxts if n not in seen), None)
+        # The narrative IS the chain the operation reveals: atoms not connected under
+        # every axis (e.g. time-adjacent but off the bloodline) are not on the path.
+        return path
+
+    # ── operators ───────────────────────────────────────────────────────────────
+
+    def op_new(self, title: str, thesis: str = "", set: str = "",
+               ids: Any = None, rels: Any = None, op: str = "intersect",
+               mode: str = "", alias: str = "") -> Dict[str, Any]:
+        """[curation.new] Create a curation — a narrative path interpreting a set of atoms.
+
+        Target the atoms with `set=<name>` and/or `ids=<a,b,c>`. Then either:
+          • derive  — pass `rels=<a,b>` (relation axes) [op=intersect]; the path is
+                      computed from the relationship structure.
+          • author  — pass `ids=` as the intended ORDER (no rels, or mode=authored);
+                      the path is taken as given and its curation:next edges written.
+
+        No burden of proof: the output is provenance:interpretation and records its
+        grounds (the relation axes / operation used), but does not prove them.
+        """
+        if not title or not title.strip():
+            raise ValueError("curation.new requires a title.")
+        # Idempotent when an alias is given: re-running (e.g. a boot-loaded example CSL)
+        # returns the existing curation instead of piling up duplicates.
+        if alias:
+            existing = self.cortex.resolve_alias(alias)
+            if existing and (self.cortex.get_meta(existing) or {}).get("concept") == "curation":
+                em = self.cortex.get_meta(existing) or {}
+                return {
+                    "status": "exists", "curation_id": existing,
+                    "title": em.get("title", ""), "mode": em.get("mode", ""),
+                    "op_applied": (em.get("lens") or {}).get("op", ""),
+                    "grounds": em.get("lens", {}),
+                    "path": [self._step(k) for k in (em.get("path") or [])],
+                    "length": len(em.get("path") or []),
+                }
+        author, scopes = self._author_scopes()
+        rel_list = _as_list(rels)
+        id_list = [k for k in (self._resolve(r) for r in _as_list(ids)) if k]
+
+        # Resolve the target pool. Accept the set name as given (user-facing sets from
+        # `set.add name=X` are stored literally as X) or with the `set:` prefix.
+        pool: List[str] = []
+        if set:
+            members = (self.cortex.get_collection_members(set)
+                       or self.cortex.get_collection_members(
+                           set if set.startswith("set:") else f"set:{set}"))
+            pool = [k for k in (members or []) if self._visible(k)]
+        if id_list:
+            # ids extend/define the pool; preserve their order (matters for authored).
+            pool = id_list + [k for k in pool if k not in id_list] if pool else id_list
+
+        # Decide mode.
+        authored = (mode == "authored") or (bool(id_list) and not rel_list)
+        if authored:
+            path = [k for k in id_list if self._visible(k)] or [k for k in pool if self._visible(k)]
+            op_applied = "authored"
+            resolved_mode = "authored"
+        else:
+            if not pool:
+                raise ValueError("derive mode needs a target: set=<name> or ids=<list>.")
+            op_applied = op if op in _ORDERS_IMPLEMENTED else "intersect"
+            path = self._derive_path([k for k in pool if self._visible(k)], rel_list, op_applied)
+            resolved_mode = "derived"
+
+        # Materialise the curation root.
+        root = self.cortex.put_chunk(
+            content=f"[ Curation: {title.strip()} ]",
+            meta={
+                "type":       "concept",
+                "concept":    "curation",
+                "role":       "root",
+                "title":      title.strip(),
+                "thesis":     thesis.strip(),
+                "mode":       resolved_mode,
+                "lens":       {"rels": rel_list, "op": op_applied},
+                "path":       path,
+                "provenance": "interpretation",       # no burden of proof (ASI06 class)
+                "created_at": time.time(),
+            },
+            author=author, scopes=scopes)
+        self.concept_id = root
+        self.set_name = f"set:concept:{root}"
         self.cortex.create_set(INDEX_SET)
+        self.cortex.add_to_set(INDEX_SET, root)
+        self.ensure_concept_set()                     # readable alias on the catalog set
+        if alias:
+            self.cortex.set_alias(root, alias)
 
-    def _get_or_create_concept_word(self, word: str) -> str:
-        alias = f"{_CONCEPT_WORD_ALIAS_PREFIX}{word}"
-        existing = self.cortex.resolve_alias(alias)
-        if existing:
-            return existing
-        author_id, scopes = self._author_and_scopes()
-        key = self.cortex.put_chunk(
-            content=word,
-            meta={
-                "type": "concept_word",
-                "word": word,
-                "concept_model": "curation",
-                "created_at": time.time(),
-            },
-            author=author_id,
-            scopes=scopes,
-        )
-        self.cortex.set_alias(key, alias)
-        return key
+        # Write the narrative edges (the derived interpretation) + membership.
+        for i, key in enumerate(path):
+            self.cortex.add_to_set(self.set_name, key)
+            self.cortex.put_link(root, key, _REL_OVER, w=float(i), author=author)
+            if i > 0:
+                self.cortex.put_link(path[i - 1], key, _REL_NEXT, w=float(i), author=author)
 
-    def _register(
-        self,
-        key: str,
-        subset_suffix: Optional[str] = None,
-        concept_word: Optional[str] = None,
-    ) -> None:
-        author_id, _ = self._author_and_scopes()
-        self.cortex.add_to_set(self._cur_set(), key)
-        if subset_suffix:
-            self.cortex.add_to_set(self._cur_set(subset_suffix), key)
-        if concept_word:
-            cw_key = self._get_or_create_concept_word(concept_word)
-            self.register_concept_node(cw_key)
-            self.cortex.put_link(key, cw_key, "sys:derived_from", author=author_id)
-
-    def _require_access(self, atom_id: str, label: str = "Atom") -> None:
-        if not atom_id:
-            raise ValueError(f"{label} id is required.")
-        if not self.cortex.check_access(atom_id, self.allowed_scopes):
-            raise RuntimeError(f"{label} not accessible: {atom_id[:12]}")
-
-    def _visible(self, atom_id: str) -> bool:
-        return bool(atom_id and self.cortex.check_access(atom_id, self.allowed_scopes))
-
-    def _members(self, suffix: str) -> List[str]:
-        return [
-            key for key in self.cortex.get_collection_members(self._cur_set(suffix))
-            if self._visible(key)
-        ]
-
-    def _meta(self, key: str) -> Dict[str, Any]:
-        return self.cortex.get_meta(key) or {}
-
-    def _content(self, key: str) -> str:
-        value = self.cortex.get_chunk(key)
-        if isinstance(value, dict):
-            return value.get("content", "")
-        return value or ""
-
-    def _summary(self, key: str) -> Dict[str, Any]:
-        return {"id": key, "content": self._content(key), "meta": self._meta(key)}
-
-    def _put_atom(
-        self,
-        content: str,
-        atom_type: str,
-        subset: str,
-        meta_extra: Optional[Dict[str, Any]] = None,
-        concept_word: Optional[str] = None,
-    ) -> str:
-        author_id, scopes = self._author_and_scopes()
-        meta = {
-            "type": atom_type,
-            "concept": "curation",
-            "created_at": time.time(),
-        }
-        if meta_extra:
-            meta.update(meta_extra)
-        key = self.cortex.put_chunk(
-            content=content,
-            meta=meta,
-            author=author_id,
-            scopes=scopes,
-        )
-        self._register(key, subset_suffix=subset, concept_word=concept_word)
-        relation = SUBSET_TO_RELATION.get(subset, f"curation:has_{subset}")
-        self.cortex.put_link(self.concept_id, key, relation, author=author_id)
-        return key
-
-    @staticmethod
-    def _clamp01(value: Any, default: float = 0.0) -> float:
-        try:
-            return max(0.0, min(1.0, float(value)))
-        except Exception:
-            return default
-
-    @staticmethod
-    def _as_list(value: Any) -> List[Any]:
-        if value is None:
-            return []
-        if isinstance(value, list):
-            return value
-        return [value]
-
-    # ------------------------------------------------------------------
-    # Basic operators
-    # ------------------------------------------------------------------
-
-    def op_new(self, title: str, description: str = "") -> Dict[str, Any]:
-        author_id, scopes = self._author_and_scopes()
-        if not title:
-            raise ValueError("curation.new requires title.")
-        root_id = self.cortex.put_chunk(
-            content=f"[ Curation: {title} ]",
-            meta={
-                "type": "concept",
-                "concept": "curation",
-                "role": "root",
-                "title": title,
-                "description": description,
-                "created_at": time.time(),
-            },
-            author=author_id,
-            scopes=scopes,
-        )
-        self.concept_id = root_id
-        self.set_name = f"set:concept:{self.concept_id}"
-        self._create_sets()
-        self.cortex.add_to_set(self._cur_set(), root_id)
-        self.cortex.add_to_set(INDEX_SET, root_id)
         if hasattr(self.session, "set_context"):
-            self.session.set_context(CONTEXT_KEY_ACTIVE, root_id)
+            self.session.set_context("active_curation_root", root)
+
         return {
-            "status": "created",
-            "concept_id": root_id,
-            "curation_id": root_id,
-            "title": title,
+            "status":      "created",
+            "curation_id": root,
+            "title":       title.strip(),
+            "mode":        resolved_mode,
+            "op_applied":  op_applied,
+            "grounds":     {"rels": rel_list, "op": op_applied},
+            "path":        [self._step(k) for k in path],
+            "length":      len(path),
         }
 
-    def op_open(self, curation_id: str) -> Dict[str, Any]:
-        meta = self._meta(curation_id)
-        if not meta or meta.get("concept") != "curation":
-            raise RuntimeError(f"Atom '{curation_id[:12]}' is not a curation root.")
-        if not self._visible(curation_id):
-            raise RuntimeError(f"Curation not accessible: {curation_id[:12]}")
-        self.concept_id = curation_id
-        self.set_name = f"set:concept:{self.concept_id}"
-        if hasattr(self.session, "set_context"):
-            self.session.set_context(CONTEXT_KEY_ACTIVE, curation_id)
+    def op_narrate(self, curation_id: str = "", name: str = "") -> Dict[str, Any]:
+        """[curation.narrate] Read a curation's narrative path: the ordered atoms, the
+        transitions between them, and the grounds (relation axes / operation). This is
+        the story STRUCTURE — hand it to Jataka (`jataka.present as=narrative`) for prose."""
+        ctx_get = getattr(self.session, "get_context", None)
+        ref = curation_id or name or (ctx_get("active_curation_root") if ctx_get else None)
+        if not ref:
+            raise ValueError("Provide 'curation_id' or 'name'.")
+        root = self.cortex.resolve_alias(ref) if ":" in str(ref) else None
+        root = root or ref
+        meta = self.cortex.get_meta(root) or {}
+        if meta.get("concept") != "curation" or meta.get("role") != "root":
+            raise ValueError(f"'{str(ref)[:16]}' is not a curation.")
+        if not self._visible(root):
+            raise ValueError("Curation not accessible.")
+
+        path = [k for k in (meta.get("path") or []) if self._visible(k)]
+        steps = [self._step(k) for k in path]
+        transitions = [{"from": path[i - 1], "to": path[i], "rel": _REL_NEXT}
+                       for i in range(1, len(path))]
         return {
-            "status": "opened",
-            "concept_id": curation_id,
-            "curation_id": curation_id,
-            "title": meta.get("title", ""),
+            "type":        "curation:narrative",
+            "curation_id": root,
+            "title":       meta.get("title", ""),
+            "thesis":      meta.get("thesis", ""),
+            "mode":        meta.get("mode", ""),
+            "grounds":     meta.get("lens", {}),
+            "provenance":  meta.get("provenance", "interpretation"),
+            "steps":       steps,
+            "transitions": transitions,
+            "length":      len(steps),
         }
 
-    def op_list_all(self) -> Dict[str, Any]:
+    def op_ls(self) -> Dict[str, Any]:
+        """[curation.ls] List curations."""
         items = []
-        for key in self.cortex.get_collection_members(INDEX_SET):
+        for key in self.cortex.get_collection_members(INDEX_SET) or []:
             if not self._visible(key):
                 continue
-            meta = self._meta(key)
-            if meta.get("concept") != "curation":
+            meta = self.cortex.get_meta(key) or {}
+            if meta.get("concept") != "curation" or meta.get("role") != "root":
                 continue
             items.append({
                 "curation_id": key,
-                "concept_id": key,
-                "title": meta.get("title", ""),
-                "created_at": meta.get("created_at", 0),
+                "title":       meta.get("title", ""),
+                "thesis":      meta.get("thesis", ""),
+                "mode":        meta.get("mode", ""),
+                "length":      len(meta.get("path") or []),
+                "created_at":  meta.get("created_at", 0),
             })
         items.sort(key=lambda x: x.get("created_at", 0), reverse=True)
         return {"curations": items, "count": len(items)}
-
-    def op_delete(self) -> Dict[str, Any]:
-        self._require_concept()
-        target = self.concept_id
-        # Soft delete: remove from index, preserve atoms for auditability.
-        self.cortex.remove_from_set(INDEX_SET, target)
-        if hasattr(self.session, "set_context"):
-            self.session.set_context(CONTEXT_KEY_ACTIVE, None)
-        return {"status": "deleted", "curation_id": target, "soft_delete": True}
-
-    # ------------------------------------------------------------------
-    # Premise / Input
-    # ------------------------------------------------------------------
-
-    def op_add_premise(
-        self,
-        label: str,
-        as_of: str = "",
-        perspective: str = "",
-        source_policy: str = "all_accessible",
-        conflict_policy: str = "leave_unresolved",
-        policy_steps: Optional[List[Dict[str, Any]]] = None,
-        mode: str = "normal",
-        scope: Optional[Dict[str, Any]] = None,
-        note: str = "",
-    ) -> Dict[str, Any]:
-        """
-        Add a premise.
-
-        A Premise defines the world-view under which conflicts may be folded.
-        Curation is conditional — outputs are always relative to their premise.
-
-        policy_steps: composable conflict resolution pipeline.
-            Example:
-                [
-                  {"op": "filter", "field": "confidence", "gte": 0.5},
-                  {"op": "prefer", "field": "perspective", "value": "de_facto"},
-                  {"op": "prefer", "field": "time", "order": "newest"},
-                  {"op": "fallback", "action": "leave_unresolved"}
-                ]
-        """
-        self._require_concept()
-        if not label:
-            raise ValueError("premise label is required.")
-        if conflict_policy not in CONFLICT_POLICIES:
-            raise ValueError(f"conflict_policy must be one of {CONFLICT_POLICIES}.")
-        key = self._put_atom(
-            content=note or label,
-            atom_type="curation_premise",
-            subset="premises",
-            meta_extra={
-                "role": "premise",
-                "label": label,
-                "as_of": as_of,
-                "perspective": perspective,
-                "source_policy": source_policy,
-                "conflict_policy": conflict_policy,
-                "policy_steps": policy_steps or [],
-                "mode": mode,
-                "scope": scope or {},
-            },
-            concept_word="premise",
-        )
-        return {"status": "premise_added", "premise_id": key, "label": label}
-
-    def op_add_input(
-        self,
-        ref_id: str,
-        role: str = "other",
-        source_model: str = "",
-        premise_id: str = "",
-        weight: float = 1.0,
-        confidence: Optional[float] = None,
-        status: str = "candidate",
-        note: str = "",
-    ) -> Dict[str, Any]:
-        """
-        Register an input atom for curation.
-
-        Inputs can be facts, correspondences, country claims, sovereignty states,
-        administrations, events, or any other evidence-bearing atom.
-        The referenced atom is not copied — only a pointer is stored.
-        """
-        self._require_concept()
-        self._require_access(ref_id, "Input")
-        if premise_id:
-            self._require_access(premise_id, "Premise")
-        if role not in INPUT_ROLES:
-            raise ValueError(f"role must be one of {INPUT_ROLES}.")
-        author_id, _ = self._author_and_scopes()
-        ref_meta = self._meta(ref_id)
-        input_confidence = (
-            self._clamp01(confidence, 0.5)
-            if confidence is not None
-            else self._clamp01(ref_meta.get("confidence", ref_meta.get("credibility", 0.5)), 0.5)
-        )
-        key = self._put_atom(
-            content=note or f"input:{role}:{ref_id[:12]}",
-            atom_type="curation_input",
-            subset="inputs",
-            meta_extra={
-                "role": "input",
-                "input_role": role,
-                "ref_id": ref_id,
-                "source_model": source_model or ref_meta.get("concept", ""),
-                "premise_id": premise_id or None,
-                "weight": float(weight),
-                "confidence": input_confidence,
-                "status": status,
-            },
-            concept_word="input",
-        )
-        self.cortex.put_link(key, ref_id, "curation:refers_to", author=author_id)
-        if premise_id:
-            self.cortex.put_link(key, premise_id, "curation:under_premise", author=author_id)
-        return {
-            "status": "input_added",
-            "input_id": key,
-            "ref_id": ref_id,
-            "role": role,
-            "confidence": input_confidence,
-        }
-
-    # ------------------------------------------------------------------
-    # View / Fold / Conclusion
-    # ------------------------------------------------------------------
-
-    def op_run_view(
-        self,
-        premise_id: str,
-        label: str = "",
-        input_ids: Optional[List[str]] = None,
-        derive_from_view_id: str = "",
-        status: str = "draft",
-        note: str = "",
-    ) -> Dict[str, Any]:
-        """
-        Create a View under a Premise.
-
-        Does not automatically decide truth — gathers candidate inputs and
-        records the premise-bound view state. Views may be derived from
-        prior views for historiography lineage.
-        """
-        self._require_concept()
-        self._require_access(premise_id, "Premise")
-        if derive_from_view_id:
-            self._require_access(derive_from_view_id, "Parent view")
-        if status not in VIEW_STATUS:
-            raise ValueError(f"status must be one of {VIEW_STATUS}.")
-        author_id, _ = self._author_and_scopes()
-        selected_inputs = input_ids or [
-            i for i in self._members("inputs")
-            if not self._meta(i).get("premise_id")
-            or self._meta(i).get("premise_id") == premise_id
-        ]
-        for input_id in selected_inputs:
-            self._require_access(input_id, "Input")
-        premise_meta = self._meta(premise_id)
-        view_label = label or f"view:{premise_meta.get('label', premise_id[:12])}"
-        key = self._put_atom(
-            content=note or view_label,
-            atom_type="curation_view",
-            subset="views",
-            meta_extra={
-                "role": "view",
-                "label": view_label,
-                "premise_id": premise_id,
-                "input_ids": selected_inputs,
-                "status": status,
-                "derived_from_view_id": derive_from_view_id or None,
-                "created_under": {
-                    "as_of": premise_meta.get("as_of", ""),
-                    "perspective": premise_meta.get("perspective", ""),
-                    "conflict_policy": premise_meta.get("conflict_policy", ""),
-                    "policy_steps": premise_meta.get("policy_steps", []),
-                    "mode": premise_meta.get("mode", "normal"),
-                },
-            },
-            concept_word="view",
-        )
-        self.cortex.put_link(key, premise_id, "curation:uses_premise", author=author_id)
-        for input_id in selected_inputs:
-            self.cortex.put_link(key, input_id, "curation:uses_input", author=author_id)
-        if derive_from_view_id:
-            self.cortex.put_link(key, derive_from_view_id, "curation:derived_from_view", author=author_id)
-        return {
-            "status": "view_created",
-            "view_id": key,
-            "premise_id": premise_id,
-            "input_count": len(selected_inputs),
-        }
-
-    def op_add_fold(
-        self,
-        view_id: str,
-        resolution_scope: Dict[str, Any],
-        competing_input_ids: List[str],
-        winner_id: str = "",
-        dropped_ids: Optional[List[str]] = None,
-        unresolved: bool = False,
-        rationale: Optional[Dict[str, Any]] = None,
-        note: str = "",
-    ) -> Dict[str, Any]:
-        """
-        Record how a conflict was folded inside a View.
-
-        Fold is an audit atom. It records what conflict was being resolved,
-        which inputs competed, and the outcome (winner, dropped, or unresolved).
-
-        resolution_scope example:
-            {"entity": "<id>", "relation": "controlled_by",
-             "time": "1940", "perspective": "de_facto"}
-        """
-        self._require_concept()
-        self._require_access(view_id, "View")
-        if not competing_input_ids:
-            raise ValueError("fold requires competing_input_ids.")
-        for input_id in competing_input_ids:
-            self._require_access(input_id, "Competing input")
-        if winner_id:
-            self._require_access(winner_id, "Winner input")
-        for dropped_id in self._as_list(dropped_ids):
-            self._require_access(dropped_id, "Dropped input")
-        author_id, _ = self._author_and_scopes()
-        key = self._put_atom(
-            content=note or f"fold:{resolution_scope}",
-            atom_type="curation_fold",
-            subset="folds",
-            meta_extra={
-                "role": "fold",
-                "view_id": view_id,
-                "resolution_scope": resolution_scope,
-                "competing_input_ids": competing_input_ids,
-                "winner_id": winner_id or None,
-                "dropped_ids": dropped_ids or [],
-                "unresolved": bool(unresolved),
-                "rationale": rationale or {},
-            },
-            concept_word="fold",
-        )
-        self.cortex.put_link(key, view_id, "curation:in_view", author=author_id)
-        for input_id in competing_input_ids:
-            self.cortex.put_link(key, input_id, "curation:compares", author=author_id)
-        if winner_id:
-            self.cortex.put_link(key, winner_id, "curation:selects", author=author_id)
-        for dropped_id in self._as_list(dropped_ids):
-            self.cortex.put_link(key, dropped_id, "curation:drops", author=author_id)
-        return {
-            "status": "fold_added",
-            "fold_id": key,
-            "view_id": view_id,
-            "unresolved": bool(unresolved),
-            "winner_id": winner_id or None,
-        }
-
-    def op_add_conclusion(
-        self,
-        view_id: str,
-        statement: str,
-        conclusion_type: str = "state",
-        subject: str = "",
-        predicate: str = "",
-        obj: str = "",
-        scope: Optional[Dict[str, Any]] = None,
-        supported_by: Optional[List[str]] = None,
-        confidence: float = 0.5,
-        status: str = "provisional",
-        note: str = "",
-    ) -> Dict[str, Any]:
-        """
-        Add a structured conclusion inside a View.
-
-        The natural-language statement is preserved alongside the
-        subject/predicate/object triple for downstream processing.
-        """
-        self._require_concept()
-        self._require_access(view_id, "View")
-        if conclusion_type not in CONCLUSION_TYPES:
-            raise ValueError(f"conclusion_type must be one of {CONCLUSION_TYPES}.")
-        if not statement:
-            raise ValueError("conclusion statement is required.")
-        for support_id in self._as_list(supported_by):
-            self._require_access(support_id, "Support atom")
-        author_id, _ = self._author_and_scopes()
-        key = self._put_atom(
-            content=note or statement,
-            atom_type="curation_conclusion",
-            subset="conclusions",
-            meta_extra={
-                "role": "conclusion",
-                "view_id": view_id,
-                "conclusion_type": conclusion_type,
-                "statement": statement,
-                "subject": subject,
-                "predicate": predicate,
-                "object": obj,
-                "scope": scope or {},
-                "supported_by": supported_by or [],
-                "confidence": self._clamp01(confidence, 0.5),
-                "status": status,
-            },
-            concept_word="conclusion",
-        )
-        self.cortex.put_link(key, view_id, "curation:concluded_in", author=author_id)
-        for support_id in self._as_list(supported_by):
-            self.cortex.put_link(key, support_id, "curation:supported_by", author=author_id)
-        return {
-            "status": "conclusion_added",
-            "conclusion_id": key,
-            "view_id": view_id,
-            "confidence": self._clamp01(confidence, 0.5),
-        }
-
-    def op_add_dispute(
-        self,
-        target_id: str,
-        reason: str,
-        severity: str = "medium",
-        source_id: str = "",
-        note: str = "",
-    ) -> Dict[str, Any]:
-        self._require_concept()
-        self._require_access(target_id, "Target")
-        if source_id:
-            self._require_access(source_id, "Source")
-        if not reason:
-            raise ValueError("dispute reason is required.")
-        author_id, _ = self._author_and_scopes()
-        key = self._put_atom(
-            content=note or reason,
-            atom_type="curation_dispute",
-            subset="disputes",
-            meta_extra={
-                "role": "dispute",
-                "target_id": target_id,
-                "reason": reason,
-                "severity": severity,
-                "source_id": source_id or None,
-            },
-            concept_word="dispute",
-        )
-        self.cortex.put_link(target_id, key, "curation:disputed_by", author=author_id)
-        if source_id:
-            self.cortex.put_link(key, source_id, "curation:evidenced_by", author=author_id)
-        return {"status": "dispute_added", "dispute_id": key, "target_id": target_id}
-
-    # ------------------------------------------------------------------
-    # Analysis
-    # ------------------------------------------------------------------
-
-    def op_map(self) -> Dict[str, Any]:
-        self._require_concept()
-        meta = self._meta(self.concept_id)
-        return {
-            "curation_id": self.concept_id,
-            "concept_id": self.concept_id,
-            "title": meta.get("title", ""),
-            **{suffix: self._members(suffix) for suffix in self.SUBSETS},
-        }
-
-    def op_trace(self, target_id: str) -> Dict[str, Any]:
-        """
-        Trace a Curation atom.
-
-        View  → premise, inputs, folds, conclusions
-        Fold  → competing inputs, winner, dropped
-        Conclusion → view and support chain
-        """
-        self._require_concept()
-        self._require_access(target_id, "Target")
-        meta = self._meta(target_id)
-        atom_type = meta.get("type", "")
-        result: Dict[str, Any] = {
-            "target_id": target_id,
-            "type": atom_type,
-            "content": self._content(target_id),
-            "meta": meta,
-        }
-        if atom_type == "curation_view":
-            premise_id = meta.get("premise_id")
-            input_ids = meta.get("input_ids", [])
-            result["premise"] = self._summary(premise_id) if self._visible(premise_id) else None
-            result["inputs"] = [self._summary(i) for i in input_ids if self._visible(i)]
-            result["folds"] = [
-                self._summary(f)
-                for f in self._members("folds")
-                if self._meta(f).get("view_id") == target_id
-            ]
-            result["conclusions"] = [
-                self._summary(c)
-                for c in self._members("conclusions")
-                if self._meta(c).get("view_id") == target_id
-            ]
-        elif atom_type == "curation_fold":
-            view_id = meta.get("view_id", "")
-            result["view"] = self._summary(view_id) if self._visible(view_id) else None
-            result["competing_inputs"] = [
-                self._summary(i)
-                for i in meta.get("competing_input_ids", [])
-                if self._visible(i)
-            ]
-            winner_id = meta.get("winner_id", "")
-            result["winner"] = self._summary(winner_id) if self._visible(winner_id) else None
-            result["dropped"] = [
-                self._summary(i)
-                for i in meta.get("dropped_ids", [])
-                if self._visible(i)
-            ]
-        elif atom_type == "curation_conclusion":
-            view_id = meta.get("view_id", "")
-            result["view"] = self._summary(view_id) if self._visible(view_id) else None
-            result["supported_by"] = [
-                self._summary(i)
-                for i in meta.get("supported_by", [])
-                if self._visible(i)
-            ]
-        return result
-
-    def op_diagnose(self, limit: int = 10) -> Dict[str, Any]:
-        self._require_concept()
-        premises    = [self._summary(k) for k in self._members("premises")]
-        inputs      = [self._summary(k) for k in self._members("inputs")]
-        views       = [self._summary(k) for k in self._members("views")]
-        folds       = [self._summary(k) for k in self._members("folds")]
-        conclusions = [self._summary(k) for k in self._members("conclusions")]
-        disputes    = [self._summary(k) for k in self._members("disputes")]
-
-        unresolved_folds = [f for f in folds if f["meta"].get("unresolved")]
-        low_confidence_conclusions = [
-            c for c in conclusions if float(c["meta"].get("confidence", 1.0)) < 0.4
-        ]
-        views_without_conclusions = [
-            v for v in views
-            if not any(c["meta"].get("view_id") == v["id"] for c in conclusions)
-        ]
-        inputs_without_view = [
-            i for i in inputs
-            if not any(i["id"] in v["meta"].get("input_ids", []) for v in views)
-        ]
-        composite_premises = [
-            p for p in premises
-            if p["meta"].get("conflict_policy") == "composite"
-            or p["meta"].get("policy_steps")
-        ]
-        return {
-            "curation_id": self.concept_id,
-            "counts": {
-                "premises":    len(premises),
-                "inputs":      len(inputs),
-                "views":       len(views),
-                "folds":       len(folds),
-                "conclusions": len(conclusions),
-                "disputes":    len(disputes),
-            },
-            "diagnosis": {
-                "unresolved_folds":            unresolved_folds[-limit:],
-                "low_confidence_conclusions":  low_confidence_conclusions[-limit:],
-                "views_without_conclusions":   views_without_conclusions[-limit:],
-                "inputs_without_view":         inputs_without_view[-limit:],
-                "composite_premises":          composite_premises[-limit:],
-                "has_unresolved":              bool(unresolved_folds),
-                "has_disputes":                bool(disputes),
-            },
-        }

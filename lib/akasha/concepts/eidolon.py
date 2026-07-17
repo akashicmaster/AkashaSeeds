@@ -88,7 +88,7 @@ class EidolonConcept(BaseConcept):
         self.set_name = f"set:concept:{self.concept_id}"
 
         # B1: create all sets before writes
-        self.cortex.create_set(self.set_name)
+        self.ensure_concept_set()
         self.cortex.create_set(self._eidolon_set())
         self.cortex.create_set(self._eidolon_set("sub_locations"))
         self.cortex.create_set(self._eidolon_set("occupants"))

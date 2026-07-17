@@ -323,16 +323,31 @@ class Symbiosis:
             # C-extension package hangs or fails slowly; this makes it "wheel or
             # nothing" so we degrade fast to the self-owned floor. Pure-Python and
             # manylinux-wheel packages still install normally.
+            _base_cmd = [sys.executable, "-m", "pip", "install", "--quiet",
+                         "--disable-pip-version-check", "--only-binary=:all:", package_name]
             res = subprocess.run(
-                [sys.executable, "-m", "pip", "install", "--quiet",
-                 "--disable-pip-version-check", "--only-binary=:all:", package_name],
-                timeout=timeout,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                _base_cmd, timeout=timeout,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             )
             ok = res.returncode == 0
+            _stderr = res.stderr.decode("utf-8", errors="replace")
+
+            # PEP 668: a modern distro Python (Debian 12+, Ubuntu 23.04+, and newer
+            # Python builds) marks the system environment "externally managed" and
+            # refuses system-site installs. Akasha's optional deps are meant to
+            # self-provision, and running the seed is the operator's opt-in, so
+            # retry with --break-system-packages. Guarded on the exact error, so a
+            # non-PEP-668 pip is never handed the flag.
+            if not ok and ("externally-managed" in _stderr or "PEP 668" in _stderr):
+                res = subprocess.run(
+                    _base_cmd + ["--break-system-packages"], timeout=timeout,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                )
+                ok = res.returncode == 0
+                _stderr = res.stderr.decode("utf-8", errors="replace")
+
             if not ok:
-                lines = res.stderr.decode("utf-8", errors="replace").strip().splitlines()
+                lines = _stderr.strip().splitlines()
                 _err_detail = lines[-1] if lines else "(no output)"
         except subprocess.TimeoutExpired:
             _err_detail = f"timed out after {timeout}s"

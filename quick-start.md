@@ -514,6 +514,120 @@ This shows only the classification hierarchy — stripping out sensory, emotiona
 
 ---
 
+## Finding Related Atoms: Meaning-Layer Search
+
+`dive` and `tree` walk the links you (or the ontology) have **explicitly drawn**. But Akasha
+also builds a *meaning layer* underneath: every text Atom gets a semantic fingerprint, learned
+from the words it contains and from how it sits in the graph. That lets you ask questions the
+explicit links can't answer — *"what else is like this?"* — even when no link exists yet.
+
+There are three kinds of "related", and Akasha gives you a separate command for each.
+
+### `sim` — atoms that *mean* the same thing
+
+`sim <atom>` finds Atoms whose **meaning** is closest to the one you name. It is anchored on the
+Atom's own content — you are not typing a search phrase, you are saying *"find more like THIS."*
+
+```
+akasha/user $ sim Rome
+```
+
+You might get Athens, Carthage, and Constantinople — ancient capitals — even if you never linked
+them. The anchor Atom itself is always excluded from its own results. Add `limit=` to widen or
+narrow the list (`sim Rome limit=20`).
+
+> **Free-text variant.** If you want to search by a phrase instead of an existing Atom, use
+> `search query="ancient mediterranean city"`. Same ranking, different starting point.
+
+### `node.sim` — atoms *connected* the same way
+
+`node.sim <atom>` finds Atoms that occupy the **same structural position** in the graph —
+"wired in the same way" — regardless of what they mean.
+
+```
+akasha/user $ node.sim Rome
+```
+
+`sim` and `node.sim` deliberately disagree. Two capitals can *mean* similar things (`sim`) while
+being wired very differently (`node.sim`), and two unrelated Atoms can share a structural role.
+Reach for `sim` when you care about topic, `node.sim` when you care about role.
+
+### `view` — the meaning of one Atom, on its own
+
+`view <atom>` (also spelled `cosmos <atom>`) shows the **consciousness view** of a single Atom:
+its signposts (direct links), its resonance (semantically-near Atoms two hops out), and its
+position and aura colour in the cosmos field — without diving or changing your current focus.
+
+```
+akasha/user $ view Rome
+```
+
+It is the read-only "tell me about this one" companion to `dive`'s "take me there".
+
+### `emotion.find` — atoms that *feel* an emotion
+
+Emotions are first-class Atoms in the ontology (`emo:awe`, `emo:fear`, `emo:joy`, …).
+`emotion.find` runs the lookup in reverse — *which Atoms feel this?*
+
+```
+akasha/user $ emotion.find emo=awe
+```
+
+The mirror command, `emotion.profile <atom>`, gives you the emotional **vector** of a single
+Atom — which emotions it leans toward, and how strongly.
+
+### `dream` — sleeping on it
+
+The commands above rank what is *already* near. `dream` does the opposite: it hunts the
+**affinity gap** — Atoms that are **near in meaning but far in the explicit graph**. These are
+the connections you tend to notice only after sleeping on a problem, so `dream` behaves that way
+on purpose: it runs as a background job, and you check back for the result.
+
+```
+akasha/user $ dream Icarus
+☾ dream [Icarus]  incubating…
+  Come back with the same `dream id=` to see the staged bridges.
+```
+
+Do something else, then ask again:
+
+```
+akasha/user $ dream Icarus
+✦ dream [Icarus]  status=ready  2 bridge(s)
+     1. [lilienthal]  pioneer of flight        0.612
+     2. [ambition]    the drive to exceed      0.481
+```
+
+Each candidate is a **staged, tentative** bridge — `dream` never draws a real link on its own.
+**You** decide:
+
+- Type the number (or `dream.confirm dst=lilienthal`) to promote a bridge into a real link.
+- `dream.forget all=yes` to discard the rest.
+
+This human-in-the-loop step is deliberate: the point of a dream is whether the proposed
+connection **resonates with your own recall** — so the confirmation is yours to give, never
+the machine's. (These same instruments power the Dream panel in the Cosmos web viewport.)
+
+### Growing the graph: `gap.scan`
+
+Once you have written a fair amount, one command tells you **where your knowledge is thin**:
+
+```
+akasha/user $ gap.scan
+```
+
+`gap.scan` surfaces *important-but-under-linked* Atoms — concepts that many things point at, but
+which you have barely connected to anything themselves. That mismatch is a map of what to enrich
+next. It is the first step of Akasha's **self-expanding loop**: scan for gaps → fill them (write
+links, `fetch` from the web, or let an LLM propose them) → the graph gets richer → scan again.
+
+> **Under the hood.** The semantic search above rests on a *learned model* that Akasha trains from
+> your own graph — it improves as you write. That training runs automatically at startup; an admin
+> can also refresh the structural half by hand with `node.learn`. You never *have* to run it, but
+> it is why `sim` and `node.sim` get sharper the more you use Akasha.
+
+---
+
 ## Concept Models: Organizing for a Purpose
 
 Akasha's memory is free-form by design. You can write and link anything, in any order, without declaring schemas or tables in advance.

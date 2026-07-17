@@ -10,6 +10,13 @@ Where Contexa is the "input side" that binds fragments into contextual structure
 Rather than individual search results, it returns a story that weaves in the relationships,
 history, and context of Atoms.
 
+NOTE (live surface): the Jataka output side now runs on the I/O pipe as `jataka.present`
+(table / scatter / narrative — pipeline endpoints in lib/harmonia/pipeline.py, wired by the
+kernel `_handle_jataka_present`), and `dream` is the kernel's async affinity-gap incubation
+(`_handle_dream`). The methods in THIS class (dream/dream_affinities/lookup_historical_echoes/
+analyze_source) are legacy and not on the live dispatch path. See docs/for-llm/io-pipeline.md
+and CLAUDE.md "Jataka — Narrator".
+
   dream — Experimental generative output. In addition to Consciousness's interpretation
            (signposts + resonance), it overlays hidden affinities between Atoms
            (calc:hidden_affinity) to construct a more creative narrative that goes beyond

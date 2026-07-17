@@ -22,11 +22,15 @@ Responsibilities:
   3. Batch data reading (surveys, CSV, pre-collected datasets)
      Each row/response is read as a contextualised chunk linked back to its question Atom
      and respondent Atom, and added to the appropriate survey collection.
-     (Not yet implemented — scaffold via bind_context.)
+     (Live via the kernel `contexa.ingest` → `ResponseIngestSink`, which calls bind_context
+     per response. See docs/for-llm/io-pipeline.md.)
 
 Division of labour:
   Weaver   — micro: word decomposition, protoword links, component: set
   Contexa  — macro: ctx:answers, ctx:topic, ctx:thread links; dialogue: and survey: sets
+
+Pipe position: Contexa is the client session's INPUT side on the I/O pipe (fetch = Source,
+ingest = Sink); Jataka is the OUTPUT side; Consciousness is the substrate both flow through.
 """
 
 import urllib.request

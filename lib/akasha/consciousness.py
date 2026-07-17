@@ -39,6 +39,7 @@ Neighbours outside the scope are excluded as dark matter (not included in Jataka
 """
 import json
 import hashlib
+import math
 import time
 import sys
 import os
@@ -97,17 +98,112 @@ class CosmosMapper:
         """Determines the aura color by inspecting the destination atoms of outgoing links."""
         return cls.get_aura_color(cortex, key) or f"#{hashlib.md5(key.encode()).hexdigest()[:6]}"
 
+    # ── Semantic → 3-D projection ─────────────────────────────────────────────
+    # The cosmos position of an atom is a projection of its REAL self-owned semantic
+    # vector (meta['semantic_vector']) — so "near in space" means "near in meaning". A
+    # tier-agnostic fixed *random projection* (Johnson–Lindenstrauss) maps any embedding
+    # (96-d floor / SVD-learned mid / sentence-transformer high) to 3-D while approximately
+    # preserving pairwise distance. The projection matrix is deterministic (seeded by a hash
+    # per (axis, index)) so positions are stable across sessions and processes — no numpy,
+    # no persisted state. Degrades to a stable hash position when an atom has no vector.
+    _PROJ_CACHE: Dict[int, list] = {}
+
+    @classmethod
+    def _proj_matrix(cls, dim: int) -> list:
+        m = cls._PROJ_CACHE.get(dim)
+        if m is None:
+            m = []
+            for axis in range(3):
+                row = [((int(hashlib.md5(f"cosmos:{axis}:{i}".encode()).hexdigest()[:8], 16)
+                         % 2000) / 1000.0) - 1.0                      # deterministic [-1, 1]
+                       for i in range(dim)]
+                m.append(row)
+            cls._PROJ_CACHE[dim] = m
+        return m
+
+    @classmethod
+    def _project_3d(cls, vec: list) -> list:
+        """Fixed seeded random projection of an embedding to [x, y, z] (~unit scale)."""
+        dim = len(vec)
+        if not dim:
+            return [0.0, 0.0, 0.0]
+        norm = math.sqrt(sum(v * v for v in vec)) or 1.0            # tier-agnostic: unit-norm first
+        unit = [v / norm for v in vec]
+        m = cls._proj_matrix(dim)
+        # Var(sum unit_i * w_i) ≈ 1/3 (w ~ U[-1,1]); scale to ~unit spread.
+        scale = math.sqrt(3.0)
+        return [round(sum(u * w for u, w in zip(unit, row)) * scale, 5) for row in m]
+
+    @classmethod
+    def _learned_model(cls, cortex: AkashaEngine):
+        """The shared learned distributional model (OntologyLearner) if one has been built.
+        Its embedding dimensions are SVD-ORDERED, so the leading few are principal semantic
+        axes — a server-side fitted layout, no GUI algorithm. Cached; cheap to call per node."""
+        try:
+            from lib.akasha.semantic_learn import get_shared_model
+            nucleus = getattr(cortex, "_nucleus", None) if cortex else None
+            return get_shared_model(nucleus) if nucleus is not None else None
+        except Exception:
+            return None
+
+    @classmethod
+    def _principal_3d(cls, vec: list) -> list:
+        """Leading (principal, SVD-ordered) dimensions as [x, y, z], scaled to ~unit spread."""
+        norm = math.sqrt(sum(v * v for v in vec)) or 1.0
+        lead = (list(vec) + [0.0, 0.0, 0.0])[:3]
+        return [round(v / norm * math.sqrt(3.0), 5) for v in lead]
+
+    @classmethod
+    def position(cls, cortex: AkashaEngine, key: str,
+                 content: Optional[str] = None, meta: Optional[dict] = None) -> list:
+        """[x, y, z] cosmos position of an atom, derived from the real semantic layer.
+
+        Preference order (best fitted layout first, degrading gracefully):
+          1. **Learned tier (fitted)** — if a distributional model exists, project the atom's
+             content onto its leading SVD (principal) axes → a crisp, topic-clustered layout,
+             computed entirely server-side (the GUI just consumes x/y/z).
+          2. **Floor tier (seed)** — a fixed seeded random projection of the stored
+             feature-hashing vector: distance-preserving in expectation (a correlated seed).
+          3. **Hash fallback** — a stable position for atoms with no vector (proto-words)."""
+        vec = None
+        if isinstance(meta, dict):
+            vec = meta.get("semantic_vector")
+        if (not vec or content is None) and cortex is not None and hasattr(cortex, "core"):
+            row = cortex.core.get_chunk_raw(key)                    # one read yields both
+            if row:
+                if content is None:
+                    content = row.get("content")
+                if not vec and row.get("meta"):
+                    try:
+                        vec = json.loads(row["meta"]).get("semantic_vector")
+                    except Exception:
+                        vec = None
+        # 1. Fitted layout: principal axes of the learned model (crisp clustering, server-side).
+        if content:
+            lm = cls._learned_model(cortex)
+            if lm is not None:
+                try:
+                    lvec = lm.embed_text(content)
+                except Exception:
+                    lvec = None
+                if lvec:
+                    return cls._principal_3d(lvec)
+        # 2. Floor seed: random projection of the stored self-owned vector.
+        if vec:
+            return cls._project_3d(vec)
+        # 3. Stable hash fallback.
+        h = int(hashlib.md5(key.encode()).hexdigest()[:8], 16)
+        return [(h % 200) / 100.0 - 1.0, ((h // 200) % 200) / 100.0 - 1.0,
+                ((h // 40000) % 200) / 100.0 - 1.0]
+
     @classmethod
     def calculate_nd(cls, cortex: AkashaEngine, key: str, content: str, meta: dict, origin_key: str = None, depth: int = 0) -> list:
-        """Calculates the N-Dimensional cognitive vector: [X, Y, Z, T, Layer, Color]"""
-        base_vector = [0.0, 0.0, 0.0, 0.0]
-        if cortex.tensor and hasattr(cortex.tensor, 'embed'):
-            # Real embedding generation if available
-            pass
-        else:
-            h = int(hashlib.md5(key.encode()).hexdigest()[:8], 16)
-            base_vector = [(h % 100)/100.0, ((h//100) % 100)/100.0, ((h//10000) % 100)/100.0, 0.0]
-            
+        """Calculates the N-Dimensional cognitive vector: [X, Y, Z, T, Layer, Color].
+        X/Y/Z are the real semantic position (projection of meta['semantic_vector']); T is
+        reserved for the chrono axis (0 until the time layer feeds it); Layer is the BFS depth
+        from the focus; Color is the emotion/sense aura."""
+        x, y, z = cls.position(cortex, key, content, meta)
+        base_vector = [x, y, z, 0.0]
         layer = depth
         color = cls.get_color_from_meta(cortex, key)
         return base_vector + [layer, color]
@@ -127,6 +223,29 @@ class ConsciousnessEngine:
             if val:
                 return val
         return None
+
+    @staticmethod
+    def _is_hashlike(s: str) -> bool:
+        seg = (s or "").split(":")[-1]
+        return len(seg) >= 16 and all(ch in "0123456789abcdef" for ch in seg.lower())
+
+    def _readable_focus(self, key: str) -> str:
+        """A human-readable label for a focal key: a readable alias, else a content preview,
+        else a shortened key. Sentinels ($origin, None) and already-readable ids pass through."""
+        if not key or not isinstance(key, str) or key in ("$origin", "None"):
+            return key
+        if not self._is_hashlike(key):
+            return key                                   # already an alias / readable id
+        try:
+            for a in (self.cortex.get_aliases_by_key(key) or []):
+                if not self._is_hashlike(a):
+                    return a                             # prefer a readable alias
+            content = (self.cortex.get_chunk(key) or "").strip()
+            if content:
+                return content.split("\n", 1)[0][:40]    # content preview head
+        except Exception:
+            pass
+        return key[:12] + "…"
 
     # =========================================================================
     # 🧠 SELF-AWARENESS APPARATUS: "COGITO, ERGO SUM"
@@ -174,9 +293,12 @@ class ConsciousnessEngine:
             experiential_context["active_scopes_count"] = len(getattr(session, 'active_scopes', []))
             experiential_context["last_written_id"] = getattr(session, 'last_written_id', "None")
             
-            # Query focal point from session state
+            # Query focal point from session state — keep the key, but also resolve a
+            # human-readable label (alias / content preview) so the status panel reads
+            # "focus: Apple", not a bare hash. Concept-set foci resolve via their alias.
             focal_id = session.get_context("focus", "$origin")
             experiential_context["current_focal_point"] = focal_id
+            experiential_context["current_focal_label"] = self._readable_focus(focal_id)
             
             if getattr(session, 'last_written_id', None):
                 experiential_context["dialogue_continuum"] = "active_resonance"

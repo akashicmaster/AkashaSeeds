@@ -2,7 +2,15 @@
   "version": "2",
   "packages": [
     {
-      "name": "base",
+      "name": "base1",
+      "autoload": true
+    },
+    {
+      "name": "base2",
+      "autoload": true
+    },
+    {
+      "name": "base3",
       "autoload": true
     },
     {
@@ -59,7 +67,7 @@
     },
     {
       "name": "nutrition",
-      "autoload": false
+      "autoload": true
     },
     {
       "name": "people",
@@ -84,6 +92,14 @@
     {
       "name": "wine",
       "autoload": false
+    },
+    {
+      "name": "curation",
+      "autoload": true
+    },
+    {
+      "name": "recipe",
+      "autoload": true
     }
   ]
 }

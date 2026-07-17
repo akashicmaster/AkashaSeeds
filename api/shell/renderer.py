@@ -4,6 +4,7 @@ Formats JSON-RPC 2.0 responses into human-readable terminal output.
 """
 
 import io
+import os
 import sys
 import shutil
 import subprocess
@@ -83,7 +84,7 @@ def _page(text: str) -> None:
     numbered-selection commands (explore, dive, r) where the user needs to see
     the list while typing their selection number.
     """
-    if not sys.stdout.isatty():
+    if not sys.stdout.isatty() or os.environ.get("AKASHA_NO_PAGER"):
         sys.stdout.write(text)
         return
     try:
@@ -99,8 +100,10 @@ def _page(text: str) -> None:
             proc.wait()
         except BrokenPipeError:
             pass  # user pressed q before reading all output
-    except FileNotFoundError:
-        # less not installed (Windows minimal env, Docker scratch, etc.)
+    except Exception:
+        # No usable pager: `less` absent (Windows minimal env, Docker scratch) or
+        # subprocess unsupported/sandboxed (iOS a-Shell / Pyto). Never let the pager
+        # take down output — fall back to a plain write. AKASHA_NO_PAGER forces this.
         sys.stdout.write(text)
 
 
@@ -326,7 +329,10 @@ def render(resp: dict):
         content = result.get("content")
 
         # ── Structured views — checked before generic key/status fallback ──
-        if "links" in result:
+        # `links`/`nodes` must be LISTS here (the ln.ls / explore graph shapes). Some results
+        # (e.g. node.learn → {status, nodes: N, links: M}) use them as integer counts; those
+        # fall through to the generic status renderer instead of being iterated as a graph.
+        if isinstance(result.get("links"), list):
             links = result["links"]
             root  = (key or "?")[:16] + "…"
             if not links:
@@ -376,10 +382,13 @@ def render(resp: dict):
         if "voids" in result and "focal" in result:
             _render_assoc(result)
             return
-        if "proposals" in result and "status" in result:
+        if ("candidates" in result or "proposals" in result) and "status" in result:
             _render_dream(result)
             return
-        if "nodes" in result:
+        if result.get("status") in ("dreaming", "ready", "failed"):
+            _render_dream(result)
+            return
+        if isinstance(result.get("nodes"), list):
             _render_explore(result)
             return
         # ── Generic key/content/status fallback ──
@@ -732,11 +741,50 @@ def extract_assoc_menu(result: dict) -> dict:
 
 
 def _render_dream(result: dict):
-    """Render dream hypothetical-linking results with numbered proposals for approval."""
+    """Render dream results — the async affinity-gap flow ('sleep on it') and the
+    legacy synchronous-proposal shape."""
+    status = result.get("status", "")
+
+    # ── New async affinity-gap flow ───────────────────────────────────────
+    if "candidates" in result or status in ("dreaming", "ready", "failed"):
+        focus = result.get("focus", "")
+        focus_str = f" [{focus[:24]}]" if focus else ""
+        print(f"\n{c(Colors.CYAN, '─' * 52)}")
+        if status == "dreaming":
+            elapsed = result.get("elapsed_s")
+            el = f"  {c(Colors.DIM, f'{elapsed}s')}" if elapsed is not None else ""
+            print(f"{c(Colors.CYAN, '☾')} dream{focus_str}  {c(Colors.DIM, 'incubating…')}{el}")
+            print(c(Colors.DIM, "  Come back with the same `dream id=` to see the staged bridges."))
+            print()
+            return
+        if status == "failed":
+            print(f"{c(Colors.FAIL, '✗')} dream{focus_str}  {c(Colors.DIM, 'failed')}")
+            print(c(Colors.DIM, f"  {result.get('error','(no detail)')}"))
+            print()
+            return
+        cands = result.get("candidates", [])
+        print(f"{c(Colors.CYAN, '✦')} dream{focus_str}  {c(Colors.DIM, f'status=ready  {len(cands)} bridge(s)')}")
+        if not cands:
+            print(c(Colors.DIM, "  (no near-in-meaning / far-in-graph bridges found)"))
+            print()
+            return
+        print(f"\n{c(Colors.DIM, 'Bridges (near in meaning, far in the graph):')}")
+        for num, cand in enumerate(cands, start=1):
+            alias   = cand.get("alias") or cand.get("dst", "")[:14]
+            prv     = str(cand.get("preview", ""))[:38]
+            score   = cand.get("score")
+            sc_str  = f"  {c(Colors.DIM, f'{score:.3f}')}" if isinstance(score, (int, float)) else ""
+            hex_col = _alias_aura(alias)
+            dst_c   = aura_c(hex_col, f"[{alias}]") if hex_col else c(Colors.GREEN, f"[{alias}]")
+            print(f"  {c(Colors.CYAN, str(num)):>6}. {dst_c}  {c(Colors.DIM, prv)}{sc_str}")
+        print(c(Colors.DIM, "\n     (type a number or `dream.confirm dst=` to approve  |  `dream.forget all=yes` to drop)"))
+        print()
+        return
+
+    # ── Legacy synchronous-proposal shape ─────────────────────────────────
     focal     = result.get("focal") or {}
     proposals = result.get("proposals", [])
     committed = result.get("committed", [])
-    status    = result.get("status", "")
     axis      = result.get("axis", "all")
 
     alias_str = f" [{focal.get('alias')}]" if focal.get("alias") else ""
@@ -781,11 +829,29 @@ def _render_dream(result: dict):
 
 
 def extract_dream_menu(result: dict) -> dict:
-    """Extract numbered proposal menu from dream result for interactive approval."""
+    """Extract a numbered menu from a dream result for interactive approval.
+    Supports the async affinity-gap shape (`focus` + `candidates`) and the legacy
+    synchronous shape (`focal` + `proposals`). Only a `ready` dream yields a menu —
+    a `dreaming` (still-incubating) result carries no candidates yet."""
+    # New async shape: focus key + candidates
+    if "candidates" in result or result.get("status") in ("dreaming", "ready", "failed"):
+        focus_key = result.get("focus", "")
+        menu = {}
+        for i, cand in enumerate(result.get("candidates", []), start=1):
+            menu[i] = {
+                "focal_key":   focus_key,
+                "focal_alias": None,
+                "dst_key":     cand.get("dst", ""),
+                "dst_alias":   cand.get("alias"),
+                "rel":         cand.get("rel", ""),
+                "confirm":     True,   # approve via dream.confirm, not a raw ln
+            }
+        return {"focal_key": focus_key, "focal_alias": None, "menu": menu}
+
+    # Legacy synchronous shape: focal + proposals
     focal       = (result.get("focal") or {})
     focal_key   = focal.get("key", "")
     focal_alias = focal.get("alias")
-
     menu = {}
     for i, p in enumerate(result.get("proposals", []), start=1):
         rel = p.get("rel", "")
@@ -1409,7 +1475,7 @@ def _render_status(result: dict):
     # Session
     print(f"\n{c(Colors.DIM, '  Session')}")
     print(f"    user:     {c(Colors.GREEN, str(ctx.get('active_client', '—')))}")
-    focal = ctx.get("current_focal_point", "$origin")
+    focal = ctx.get("current_focal_label") or ctx.get("current_focal_point", "$origin")
     print(f"    focus:    {c(Colors.CYAN, str(focal))}")
     locale = ctx.get("locale_primary", "en")
     print(f"    locale:   {c(Colors.DIM, str(locale))}")
@@ -1452,14 +1518,20 @@ def _render_status(result: dict):
 
     # Libraries
     import importlib.util as _ilu
+    # Keep this in step with the boot auto-installer (akasha.py): show what
+    # Akasha actually provisions. fastapi/uvicorn (ASGI), spacy (NLP) and the
+    # ai-edge-litert ML primary are auto-installed; numpy/requests are core
+    # deps; torch + sentence-transformers are the opt-in high-tier embedding
+    # stack (installed only when the user asks, so normally ✗).
     _LIBS = [
         ("fastapi",               "fastapi"),
         ("uvicorn",               "uvicorn"),
         ("requests",              "requests"),
-        ("torch",                 "torch"),
-        ("sentence-transformers", "sentence_transformers"),
         ("numpy",                 "numpy"),
-        ("tflite-runtime",        "tflite_runtime"),
+        ("spacy",                 "spacy"),
+        ("ai-edge-litert",        "ai_edge_litert"),
+        ("sentence-transformers", "sentence_transformers"),
+        ("torch",                 "torch"),
     ]
     print(f"\n{c(Colors.DIM, '  Libraries')}")
     lib_pairs = [(_LIBS[i], _LIBS[i + 1] if i + 1 < len(_LIBS) else None)

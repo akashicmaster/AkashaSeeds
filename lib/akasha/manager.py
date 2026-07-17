@@ -252,9 +252,13 @@ class AkashaManager:
         # queue — eliminates check-then-set races without any locks.
         self._session_wq = WriteQueue(name="session-writer")
 
-        # Guest session pool — pre-allocated slots recycled on TTL expiry.
+        # Guest session pool — slots are allocated lazily (an idle slot costs
+        # nothing), so default generously enough for a small public portal.
+        # A visitor reuses ONE slot across page views (front-end caches the token),
+        # so this is ~concurrent-visitors, not page-views. Override with
+        # AKASHA_GUEST_POOL_SIZE for a busier deployment.
         from lib.akasha.jcl.guest_pool import GuestPool
-        _pool_size = int(_os.environ.get("AKASHA_GUEST_POOL_SIZE", "20"))
+        _pool_size = int(_os.environ.get("AKASHA_GUEST_POOL_SIZE", "128"))
         _pool_ttl  = int(_os.environ.get("AKASHA_GUEST_TTL",       "600"))
         self.guest_pool = GuestPool(
             size=_pool_size, ttl=_pool_ttl,
@@ -303,6 +307,26 @@ class AkashaManager:
 
     def close_session(self, client_id: str):
         self._session_wq.submit(lambda: self.sessions.pop(client_id, None))
+
+    def purge_client_cell(self, client_id: str) -> bool:
+        """Erase a client's entire private cell (its l_cortex.db and everything in it —
+        recipes, personal foods, measurements, all private atoms). Used by account
+        deletion. Closes the live session and deletes the cell directory; the shared
+        nucleus (and the retained IAM audit record) are never touched. Serialized through
+        _session_wq so it cannot race session creation. A guest slot / system id is never
+        a valid target here (the caller must gate that)."""
+        def _wipe() -> bool:
+            session = self.sessions.pop(client_id, None)
+            if session is not None:
+                try:
+                    session.local_cortex.close()
+                except Exception as e:
+                    logger.warning("[Account] cortex close failed for %s: %s", client_id, e)
+            import shutil as _shutil
+            cell_dir = os.path.join(self.base_dir, "cells", client_id)
+            _shutil.rmtree(cell_dir, ignore_errors=True)
+            return True
+        return self._session_wq.submit(_wipe)
 
     def count_sessions(self) -> dict:
         """Return live session counts broken down by role. Thread-safe (read-only snapshot)."""

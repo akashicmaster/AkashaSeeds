@@ -36,6 +36,11 @@ METHOD_TO_ACTION: Dict[str, str] = {
     "graph.tree": "read",
     "semantic.search": "read",
     "search": "read",
+    "sim": "read", "similar": "read",   # atom-anchored: semantic.search id=<atom>
+    "view": "read", "cosmos": "read",   # standalone generate_view (signposts/resonance/cosmos_nd/aura)
+    "emotion.find": "read", "emo.find": "read",  # reverse emotion lookup (atoms feeling emo:X)
+    "node.learn": "write",              # structural (node-walk) embeddings — learn + persist
+    "node.sim": "read", "node.similar": "read",  # structurally-similar atoms (connected the same)
     "semantic.learn": "write",
     "gap.scan": "read",
     "gaps": "read",
@@ -103,8 +108,12 @@ METHOD_TO_ACTION: Dict[str, str] = {
     "associate.unwritten": "read",
     # emotion.profile — read the Akasha-native (link-based) emotion vector of an atom.
     "emotion.profile": "read", "emo.vector": "read", "emo.profile": "read",
-    # Jataka (dream — hypothetical linking; commit=yes writes tent: links)
+    # Jataka (dream — async incubation: submits a LOW-priority JCL job, poll on return;
+    # candidates staged as tent: links; dream.confirm/forget are human-only approval).
     "jataka.dream": "write", "dream": "write",
+    "dream.run": "write",                       # internal background step (JCL-dispatched)
+    "dream.confirm": "write", "dream.approve": "write",
+    "dream.forget": "write", "dream.reject": "write",
     # Contexa. fetch WRITES external content into the cortex (atoms + weave), so it is a
     # write capability — this also puts it under the single-route write workspace (its
     # put_chunk would otherwise trip the guard once a live fetch returns text) and keeps
@@ -113,6 +122,12 @@ METHOD_TO_ACTION: Dict[str, str] = {
     "contexa.fetch": "write",
     "web.search": "read",
     "fetch": "write",
+    # Contexa ingest — the client's INPUT side: reads collected responses into a survey graph
+    # WITH macro context-binding (writes atoms/links/sets), so it is a write capability and runs
+    # under the single-route write workspace. Jataka present — the client's OUTPUT side: reads a
+    # selection through generate_view and renders a presentation inline, no graph write → read.
+    "contexa.ingest": "write", "survey.ingest": "write",
+    "jataka.present": "read",  "present": "read",
     # image.profile classifies an image (LiteRT) and writes the labels as atoms/links, so
     # it is a write capability (same guardrail class as fetch: provenance=external labels).
     "image.profile": "write",
@@ -413,20 +428,10 @@ METHOD_TO_ACTION: Dict[str, str] = {
     "fact.entity.link": "write",
     "fact.diagnose":    "read",
     "fact.trace":       "read",
-    # Curation
-    "curation.new":            "write",
-    "curation.open":           "read",
-    "curation.ls":             "read",
-    "curation.map":            "read",
-    "curation.rm":             "drop",
-    "curation.premise.add":    "write",
-    "curation.input.add":      "write",
-    "curation.view.run":       "write",
-    "curation.fold.add":       "write",
-    "curation.conclusion.add": "write",
-    "curation.dispute.add":    "write",
-    "curation.trace":          "read",
-    "curation.diagnose":       "read",
+    # Curation — interpretation as a narrative path over relationships
+    "curation.new":     "write",
+    "curation.narrate": "read",
+    "curation.ls":      "read",
     # Intelligence
     "intelligence.new":            "write",
     "intelligence.open":           "read",
@@ -480,20 +485,20 @@ METHOD_TO_ACTION: Dict[str, str] = {
     # Session context (all authenticated roles incl. GUEST)
     "session.context.set": "read",
     "session.context.get": "read",
-    # Thesaurus concept model (public read / authenticated write)
-    "thesaurus.shelf.score":    "read",
-    "thesaurus.shelf.list":     "read",
-    "thesaurus.shelf.link":     "write",
-    "thesaurus.shelf.link_ext": "write",
-    "thesaurus.curation.new":   "write",
-    "thesaurus.curation.ls":    "read",
-    "thesaurus.curation.atom":  "write",
-    "thesaurus.series.new":     "write",
-    "thesaurus.series.ls":      "read",
-    "thesaurus.series.add":     "write",
-    "thesaurus.view.atom":      "read",
-    "thesaurus.view.curation":  "read",
-    "thesaurus.view.series":    "read",
+    # Thesaurus concept model — glossary read surface (browse / search / detail)
+    "thesaurus.reference": "read",
+    "thesaurus.explore":   "read",
+    "thesaurus.concept":   "read",
+    # Archives concept model — GUI-free projection/navigation over the warehouse
+    # (public read structure; portal editing is authenticated write)
+    "archives.index":       "read",
+    "archives.portal":      "read",
+    "archives.space":       "read",
+    "archives.explore":     "read",
+    "archives.reference":   "read",
+    "archives.portal.new":  "write",
+    "archives.portal.set":  "write",
+    "archives.portal.add":  "write",
     # Weaver — constituent-word → protoword links (runs as JCL job under admin/client)
     # weave / weave_batch: nucleus writes — creates protowords, links to nucleus
     # weave_client: client cortex writes — links to existing nucleus protowords only,
@@ -529,6 +534,17 @@ METHOD_TO_ACTION: Dict[str, str] = {
     "user.mod":    "iam.manage",
     "user.passwd": "iam.manage",
     "user.rm":     "iam.manage",
+    # Entitlement plan: any authenticated user reads their own tier; only an admin
+    # (iam.manage) sets a tier — the server-side billing hook. Client can't self-upgrade.
+    "auth.plan":     "read",
+    "auth.plan.set": "iam.manage",
+    # Self-service account deletion (store-policy requirement). Mapped to "read" — NOT
+    # "write" — on purpose: it performs no composite graph write (it purges the caller's
+    # private cell files + the IAM/entitlement vault directly), so it must NOT open a
+    # graph workspace on the very cortex it is about to close (that would self-deadlock).
+    # The handler self-gates: it only ever deletes the CALLER's own account and refuses
+    # guests/admins.
+    "auth.account.delete": "read",
     # Group management
     "grp.new": "group.manage",
     "grp.add": "group.manage",

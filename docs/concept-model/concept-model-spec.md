@@ -123,6 +123,43 @@ This is the canonical way to populate the **concept catalog set**, which `serial
 uses for export and which deletion sweeps scan. Note: this registers the concept-word atoms,
 not the content atoms (see §3.3 for the distinction).
 
+### 2.5.1 Human-Readable Catalog Alias — `alias_concept_set` / `ensure_concept_set`
+
+**Human readability is the concept model's first priority.** The catalog set key is
+`set:concept:<hash>` — a bare hash. When a client warps to a concept, that set is the focus,
+so every read surface (Cosmos FOCAL LOCK / node labels / hover, the cockpit wake, `sim` /
+`node.sim` labels) would show `set:concept:a48c51e1…` unless something makes it readable.
+`BaseConcept` fixes this at the source: it gives the catalog set a real alias.
+
+```python
+def alias_concept_set(self, name: Optional[str] = None) -> Optional[str]   # register concept:<slug(name)>
+def ensure_concept_set(self) -> None                                       # create_set + alias, one step
+```
+
+- `alias_concept_set()` registers `concept:<slug(name)>` on `self.set_name`. When `name` is
+  omitted it is **derived** from the concept root's meta (`name` / `title`) or content head
+  (`"[ Survey: Foo ]"` → `Foo`) — so callers usually pass nothing.
+- **Two hooks apply it automatically, so a model rarely calls it directly:**
+  1. `register_concept_node` calls it (idempotent) — the universal hook: it fires for every
+     model that registers a catalog node, including those that build the set implicitly via
+     `add_to_set` (e.g. `note`, `log`).
+  2. `ensure_concept_set()` is the drop-in for `self.cortex.create_set(self.set_name)` in
+     `op_new` — use it so the alias is applied at creation even for models that register no
+     node at the root.
+- **Invariants:** *collision-safe* (first-wins — never steals an alias already bound to another
+  key, so an ontology `concept:apple` atom keeps its name) and *side-effect-free* (a raw
+  `core.put_alias` row, deliberately **not** the `set_alias` proto-word / collection-derivation
+  machinery — a set is not an atom). Idempotent; safe to call on every `op_new` / `op_open`.
+
+**When authoring a new model:** call `self.ensure_concept_set()` in `op_new` instead of
+`self.cortex.create_set(self.set_name)`, and (optionally) `self.alias_concept_set()` in
+`op_open` to back-fill pre-existing instances. Readability then comes for free.
+
+> **Beacon focal preview (Cockpit).** A related readability rule: any atom persisted as a
+> *reference* to a focal point should store a readable `focal_preview` (the focal atom's content
+> head), not only its key — see the Cockpit `op_drop_beacon` / `op_wake` (§10.1), so the Trace
+> Deck shows `LOC: Rome`, not a hash.
+
 ### 2.6 Primitive Write — `create_structured_chunk`
 
 ```python
@@ -511,7 +548,7 @@ class MyThingConcept(BaseConcept):
         self.set_name   = f"set:concept:{self.concept_id}"
 
         # ORDERING RULE: create ALL sets before any call that writes to them.
-        self.cortex.create_set(self.set_name)               # concept catalog set
+        self.ensure_concept_set()                           # concept catalog set + readable alias (§2.5.1)
         self.cortex.create_set(self._mt_set())              # main content set
         self.cortex.create_set(self._mt_set("items"))       # per-subset sets
         self.cortex.create_set(INDEX_SET)                   # global index (idempotent)
@@ -616,7 +653,8 @@ Use this before opening a PR or handing a concept model off for review.
 
 **`op_new`**
 - [ ] Root meta has `"type": "concept"`, `"concept": "<name>"`, `"role": "root"`.
-- [ ] `self.cortex.create_set(self.set_name)` called BEFORE any `_register` call.
+- [ ] `self.ensure_concept_set()` called (after the root atom exists) BEFORE any `_register`
+      call — creates the catalog set AND its human-readable alias (§2.5.1).
 - [ ] `INDEX_SET` created with `create_set` (idempotent) before `add_to_set`.
 - [ ] All content sets (`_mt_set()`, `_mt_set("items")`, …) created before any writes.
 - [ ] `_register` or `register_concept_node` called ONLY AFTER all sets exist.
@@ -1252,6 +1290,38 @@ Topology:
 
 **CLI aliases:** `cp.new`, `cp.ls`, `cp.open`, `cp.lock`, `cp.tune`, `cp.beacon`, `cp.wake`, `cp.status`, `cp.rm`
 
+#### 10.1.1 Cosmos projection — the vessel's viewport
+
+The Cockpit is the **projection source** for the Cosmos 3-D viewport (`dive.look` → `cosmos`
+payload; `services/static/cosmos/`). The vessel's own operators (above) manage focus/axis/scope
+and beacons; the **viewport it projects** now surfaces the full meaning layer, so navigation is
+over real semantic structure rather than a decorative graph. These capabilities are provided by
+the kernel + `CosmosMapper` (not new `cockpit.*` operators) and are reached from the cockpit
+console:
+
+**Real spatial position.** Each atom's Cosmos position (`cosmos_nd` X/Y/Z, and the per-node
+`x/y/z` in the `cosmos` graph payload) is a projection of its self-owned `semantic_vector`
+(`CosmosMapper.position`): *near in space ⇒ near in meaning*. When a learned distributional
+model exists it projects onto that model's **principal SVD axes** (a crisp, topic-clustered
+layout, fitted server-side — no client algorithm); otherwise a distance-preserving random
+projection; else a stable hash. Nodes also carry a **degree-based size** (`val`) and an
+emotion/sense **aura** `color`.
+
+**Instruments (kernel methods reached from the cockpit).** The lens axes (`structure` /
+`emotion` / `context`) genuinely filter relations; on top of that the console can call:
+
+| Instrument | Method | What it surfaces |
+|---|---|---|
+| Semantic neighbours | `sim` / `semantic.search id=` | atoms *like this one* (anchored on its meaning) |
+| Structural neighbours | `node.sim` (`node.learn` builds it) | atoms *connected the same way* |
+| Consciousness view | `view` / `cosmos` | signposts / resonance / `cosmos_nd` / aura, standalone (no dive) |
+| Emotion | `emotion.find` / `emotion.profile` | atoms that feel an emotion / an atom's emotion vector |
+| Gaps | `assoc` / `gap.scan` | missing 1-hop links / important-but-thin concepts |
+| **Dream bridges** | `dream` → `dream.confirm` / `dream.forget` | async "sleep-on-it" affinity-gap bridges (near in meaning, far in the graph), staged as `tent:` links for **mandatory human confirmation** |
+
+Full reference: `docs/developer/cosmos-frontend-requirements.md` (viewport contract),
+`docs/for-llm/semantic-layer.md` (embeddings / position), CLAUDE.md "Jataka — Narrator" (dream).
+
 ---
 
 ### 10.2 FieldNote
@@ -1417,210 +1487,276 @@ See `docs/concept-extensions.md §5` for design rationale, topology, and cross-c
 
 ### 10.7 Thesaurus
 
-**Source:** `lib/akasha/concepts/thesaurus.py`  
-**Prefix:** `thesaurus` · **Index sets:** `set:thesaurus:index`, `set:thesaurus:curations`, `set:thesaurus:series`
+**Source:** `lib/akasha/concepts/thesaurus.py`
+**Prefix:** `thesaurus` · **CLI:** `thesaurus.<op>` (canonical) · `th.<op>` (abbrev) · `thesaurus` mode. Operators: reference / explore / concept
 
-Semantic enrichment model that attaches typed relation links to any atom in the graph and computes a per-atom **ShelfScore** — a weighted quality index reflecting how richly an atom is semantically connected. The model also manages **CurationCollections** (curator-authored linear exhibition sequences) and **ExhibitionSeries** (themed groups of collections with archive and current-page routing).
+A **glossary read surface** over the graph — the preparation layer for projecting
+concepts onto web concept pages. Three read operators, no writes: the model reads
+the `thesaurus:*` relations (written by ontology load / Weaver — see
+`ontology/thesaurus/a_thesaurus_core.csl`) and the incrementally-maintained
+`meta['salience']` meaning-density score. It has no root lifecycle; it operates
+across the whole graph.
 
-Unlike other concept models, Thesaurus has no single-root lifecycle. It operates across the entire graph: any atom can be enriched by adding thesaurus links to it, and ShelfScore can be queried for any atom at any time.
+> **Simplified (breaking).** The former `shelf.*` (ShelfScore), `curation.*`
+> (CurationCollections), and `series.*` (ExhibitionSeries) operators were removed.
+> Ranking is now the single `salience` number; enrichment happens at ontology/weave
+> time, not through a write operator.
 
-**Relation types** (registered in `ontology/thesaurus/a_thesaurus_core.csl`):
+**No double code.** `explore` delegates to the shared filter-search core
+`lib/akasha/discovery.py:discover_atoms` — the same code behind the `explore`
+command. `concept` is built on `consciousness.generate_view` — the same dive basic
+view the `dive` / `view` commands produce — and extends it. There is one search
+implementation and one dive implementation.
 
-| Relation | Role |
-|---|---|
-| `thesaurus:synonym` | ShelfScore: synonym_coverage |
-| `thesaurus:near_synonym` | ShelfScore: synonym_coverage |
-| `thesaurus:antonym` | ShelfScore: antonym_presence |
-| `thesaurus:hypernym` | ShelfScore: chain_balance |
-| `thesaurus:hyponym` | ShelfScore: chain_balance |
-| `thesaurus:example_usage` | ShelfScore: example_density |
-| `thesaurus:affective` | ShelfScore: affective_score (emotion + sensory unified) |
-| `thesaurus:namespace_bridge` | ShelfScore: namespace_bridges |
-| `thesaurus:external_ref` | ShelfScore: external_refs (Wikipedia, Britannica, etc.) |
-| `thesaurus:interprets` | CuratedAtom → original (one-way shadow) |
-| `thesaurus:in_curation` | CuratedAtom → CurationCollection |
-| `thesaurus:seq_next` | Linear sequence within a collection |
-| `thesaurus:in_series` | CurationCollection → ExhibitionSeries (many-to-many) |
-
-**ShelfScore components** (each clamped \[0, 1\]):
-
-| Component | Formula | Weight |
-|---|---|---|
-| `link_total` | thesaurus link count / 8 | 0.05 |
-| `synonym_coverage` | (synonym + near_synonym) / 3 | 0.20 |
-| `antonym_presence` | min(antonym count, 1) | 0.05 |
-| `chain_balance` | hypernym + hyponym presence, balanced | 0.05 |
-| `example_density` | example_usage count / 2 | 0.20 |
-| `affective_score` | affective link count / 3 | 0.20 |
-| `namespace_bridges` | namespace_bridge count / 2 | 0.15 |
-| `external_refs` | external reference count / 4 | 0.10 |
-
-**Index maintenance:** `thesaurus.shelf.link` automatically registers both endpoint atoms into `set:thesaurus:index`. Atoms added via `thesaurus.curation.atom` register the original atom in `set:thesaurus:index`. `thesaurus.shelf.list` only enumerates atoms in this set.
-
-**Namespace contract:**
-
-| Set | Contents |
-|---|---|
-| `set:thesaurus:index` | All atoms that carry at least one `thesaurus:*` link |
-| `set:thesaurus:curations` | CurationCollection root atoms + CuratedAtoms |
-| `set:thesaurus:series` | ExhibitionSeries root atoms |
-
-**CurationCollection topology:**
-
-```
-CurationCollection ──thesaurus:seq_next──► CuratedAtom₁
-                                                │
-                                          thesaurus:seq_next
-                                                ▼
-                                          CuratedAtom₂
-                                                │
-                                          thesaurus:interprets
-                                                ▼
-                                          original atom  (never modified)
-```
-
-Each CuratedAtom also carries a `thesaurus:in_curation` link back to its collection. The sequence is strictly linear — no branching. Exiting the sequence means departing to a free dive; the sequence itself does not model divergence.
-
-**ExhibitionSeries topology:**
-
-```
-ExhibitionSeries  ←─thesaurus:in_series──  CurationCollection₁
-                  ←─thesaurus:in_series──  CurationCollection₂
-                  meta: {exhibitions: [col1_key, col2_key]}
-                         ↑ ordered: last = current, earlier = archive
-```
-
-A CurationCollection can belong to **multiple** ExhibitionSeries (many-to-many via `thesaurus:in_series` links). Each series independently maintains its own ordered `exhibitions` list in its atom meta. Calling `thesaurus.series.add` is idempotent for each (series, collection) pair.
-
-**URL permanence:** `_url_slug(alias)` strips the namespace prefix from an alias to derive a stable URL identifier:
-- `series:dreams-genealogy` → `dreams-genealogy` → `/series/dreams-genealogy`
-- `curations:sky-dreamers-vol1` → `sky-dreamers-vol1` → `/exhibition/sky-dreamers-vol1`
-- bare word alias `love` (proto-word) → `/word/love`
-
-Every atom with an alias automatically has a permanent URL slug — no additional data is needed.
-
-| Method | Required params | Optional params | Description |
+| Method (CLI) | Required | Optional | Description |
 |---|---|---|---|
-| `thesaurus.shelf.score` | `atom_id` or `name` | — | Compute full ShelfScore breakdown for one atom |
-| `thesaurus.shelf.list` | — | `limit` (default 20), `min_score` (default 0.0) | List indexed atoms ranked by ShelfScore |
-| `thesaurus.shelf.link` | `atom_id`/`name`, `target_id`/`target_name`, `rel` | `weight` (default 1.0) | Add a typed `thesaurus:*` link; indexes both atoms |
-| `thesaurus.shelf.link_ext` | `name` (or `atom_id`), `url`, `label` | — | Attach an external reference URL; creates `thesaurus:ExternalRef` atom (upsert on source+label); counts toward `external_refs` ShelfScore component |
-| `thesaurus.curation.new` | `title` | `concept`, `alias` | Create a CurationCollection atom |
-| `thesaurus.curation.ls` | — | — | List all CurationCollections |
-| `thesaurus.curation.atom` | `collection_id`, (`original_id` or `original_name`), `interpretation` | `position` | Add a CuratedAtom to a collection |
-| `thesaurus.series.new` | `title` | `slug`, `alias` | Create an ExhibitionSeries; idempotent if alias already exists |
-| `thesaurus.series.ls` | — | — | List all ExhibitionSeries |
-| `thesaurus.series.add` | (`series_id` or `alias`), (`collection` or `collection_id`) | — | Add a CurationCollection to a series as the new current exhibition; idempotent per (series, collection) pair |
-| `thesaurus.view.atom` | `atom_id` or `name` | — | Full UI projection: ShelfScore breakdown, semantic links grouped by type, external refs panel, curation waypoints for this atom |
-| `thesaurus.view.curation` | `collection_id` or `alias` | — | Full UI projection for a CurationCollection: ordered waypoints with original atom data, external refs, ShelfScore, and `url_slug` |
-| `thesaurus.view.series` | `series_id` or `alias` | — | Full UI projection for an ExhibitionSeries: `current` (latest) and `archive` (reverse-chronological) with `url_slug` per entry |
+| `thesaurus.reference` (`reference`) | — | `order` (default `alpha`), `ns`, `initial`, `limit` (default 200) | Glossary index of named concepts, **alphabetical**. `order=` is an open axis: `lang:<code>` (locale collation), `era` (chronological), `assoc` (associative index) are **reserved** and currently fall back to alpha — the response's `order_applied` says which comparator ran. `ns=` scopes to one namespace; `initial=` is the glossary letter-jump. |
+| `thesaurus.explore` (`lookup`) | `query` (or `ns`/`type`) | `ns`, `type`, `limit` (default 20) | Search for a target concept via the shared discovery core. `query` is a name/alias pattern (`%`/`_` wildcards). Each match carries `salience`; results rank by it. |
+| `thesaurus.concept` (`concept`) | `name` or `atom_id` | — | Concept page: the dive basic view (`signposts`, `resonance`, `cosmos_nd`) **plus the writer's view** — `synonyms` / `antonyms` / `broader` / `narrower` related terms, usage `examples` (文例), and `external_refs` — for investigating a word before using it in prose. |
 
-**Response shapes:**
-
-`thesaurus.shelf.score` returns:
+**`reference` output** (alphabetical glossary):
 ```json
-{
-  "atom_id": "...",
-  "shelf_score": 0.4250,
-  "components": {
-    "link_total": 0.375, "synonym_coverage": 0.667, "antonym_presence": 1.0,
-    "chain_balance": 0.28, "example_density": 0.5, "affective_score": 0.333,
-    "namespace_bridges": 0.5, "external_refs": 0.75
-  },
-  "link_counts": {
-    "synonym": 1, "near_synonym": 1, "antonym": 1, "hypernym": 1, "hyponym": 0,
-    "example_usage": 1, "affective": 1, "namespace_bridge": 1, "external_ref": 3
-  }
-}
+{ "order": "alpha", "order_applied": "alpha", "total": 3,
+  "concepts": [
+    {"key": "...", "name": "word:en:memory", "term": "memory",
+     "initial": "M", "description": "...", "salience": 0.87}
+  ] }
 ```
 
-`thesaurus.shelf.list` returns `{"atoms": [...], "total_indexed": N}` where each entry includes `atom_id`, `shelf_score`, `components`, `link_counts`, `content`, and `name`.
-
-`thesaurus.view.atom` returns a `thesaurus:AtomView` projection:
+**`explore` output** (glossary search):
 ```json
-{
-  "type": "thesaurus:AtomView",
-  "atom": { "key": "...", "name": "sky:myth:icarus", "description": "Son of Daedalus..." },
-  "shelf_score": { "shelf_score": 0.52, "components": {...}, "link_counts": {...} },
-  "semantic_links": {
-    "synonyms": [], "near_synonyms": [{"key":"...","name":"sky:pioneer:lilienthal","description":"..."}],
-    "antonyms": [{"key":"...","name":"sky:myth:daedalus","description":"..."}],
-    "hypernyms": [], "hyponyms": [], "example_usage": [],
-    "affective": [{"key":"...","name":"emo:awe","description":"..."},{"key":"...","name":"emo:fear","description":"..."}],
-    "namespace_bridges": [{"key":"...","name":"tech:aviation:glider","description":"..."}]
-  },
-  "external_refs": [
-    {"label": "Wikipedia", "url": "https://en.wikipedia.org/wiki/Icarus"},
-    {"label": "Britannica", "url": "https://www.britannica.com/topic/Icarus-Greek-mythology"},
-    {"label": "Perseus",    "url": "https://www.perseus.tufts.edu/..."}
-  ],
-  "curations": [
-    {
-      "curated_id": "...", "collection_id": "...",
-      "collection_title": "Those Who Yearned for the Sky — A Genealogy of Falls and Flights",
-      "interpretation": "Icarus is not a myth of failure...", "position": 1
-    }
-  ]
-}
+{ "query": "mem", "count": 1,
+  "matches": [
+    {"key": "...", "name": "word:en:memory", "term": "memory",
+     "preview": "...", "color": "#...", "salience": 0.87}
+  ] }
 ```
 
-`thesaurus.view.curation` returns a `thesaurus:CurationView` projection:
+**`concept` output** (dive basic view + writer's view):
 ```json
-{
-  "type": "thesaurus:CurationView",
-  "collection": {
-    "id": "...", "alias": "curations:sky-dreamers-vol1",
-    "url_slug": "sky-dreamers-vol1",
-    "title": "Those Who Yearned for the Sky — A Genealogy of Falls and Flights",
-    "concept": "flight_dream", "curator": "user1", "waypoint_count": 10
-  },
-  "waypoints": [
-    {
-      "position": 1, "curated_id": "...",
-      "interpretation": "Icarus is not a myth of failure...",
-      "original": {
-        "key": "...", "name": "sky:myth:icarus", "description": "Son of Daedalus...",
-        "shelf_score": 0.52,
-        "external_refs": [{"label": "Wikipedia", "url": "..."}]
-      }
-    }
-  ]
-}
+{ "type": "thesaurus:concept",
+  "atom": {"key": "...", "name": "word:en:memory", "term": "memory",
+           "description": "...", "aliases": [...], "meta": {...}},
+  "salience": 0.87,
+  "synonyms": [{"key":"...","name":"word:en:recall","term":"recall","salience":...}],
+  "antonyms": [{"...":"word:en:oblivion"}],
+  "broader":  [], "narrower": [],
+  "related":  [{"key":"...","name":"...","rel":"calc:associated_with","dir":"out","salience":...}],
+  "examples": [{"text": "Her memory of that summer never faded.", "key": "..."}],
+  "external_refs": [{"label": "Wikipedia", "url": "https://..."}],
+  "signposts": [...], "resonance": [...], "cosmos_nd": [x,y,z,T,layer,color] }
 ```
 
-`thesaurus.view.series` returns a `thesaurus:SeriesView` projection:
-```json
-{
-  "type": "thesaurus:SeriesView",
-  "series": {
-    "id": "...", "alias": "series:dreams-genealogy",
-    "url_slug": "dreams-genealogy",
-    "title": "Genealogy of the Dreamers",
-    "curator": "user1", "created_at": 1.7e9, "exhibition_count": 2
-  },
-  "current": {
-    "id": "...", "alias": "curations:sky-dreamers-vol2",
-    "url_slug": "sky-dreamers-vol2",
-    "title": "...", "waypoint_count": 8, "position": 2
-  },
-  "archive": [
-    {
-      "id": "...", "alias": "curations:sky-dreamers-vol1",
-      "url_slug": "sky-dreamers-vol1",
-      "title": "Those Who Yearned for the Sky — A Genealogy of Falls and Flights",
-      "waypoint_count": 10, "position": 1
-    }
-  ]
-}
-```
+The `related` cloud is a flat list carrying each link's `rel` and `dir` (out/in),
+deduped against the categorised buckets. `synonyms`/`antonyms`/`broader`/`narrower`
+fall back to `sys:*`/`calc:*` relations when `thesaurus:*` links have not been
+curated yet (common right after ontology load).
 
-`archive` entries are in reverse chronological order (most recently archived first). An empty series returns `"current": null, "archive": []`.
 
-**External ref atom structure:** `thesaurus.shelf.link_ext` creates (or upserts) an atom with alias `thesaurus:ext:{source-slug}:{label-slug}` (e.g. `thesaurus:ext:sky-myth-icarus:wikipedia`), content = URL, meta = `{"type": "thesaurus:ExternalRef", "label": label, "url": url}`. The source atom is linked to this atom via `thesaurus:external_ref`. Duplicate calls with the same source+label pair are idempotent (the existing ref atom is reused).
+### 10.8 Curation
 
-**URL slug derivation:** `_url_slug(alias)` strips the namespace prefix: `curations:sky-dreamers-vol1` → `sky-dreamers-vol1`. All view projections include `url_slug` for every alias-bearing entity (series, collections, proto-words). Proto-word (bare-word) aliases have no prefix, so they map directly: `love` → `love` → `/word/love`.
+**Source:** `lib/akasha/concepts/curation.py`
+**Prefix:** `curation` · **CLI:** `curation.<op>` (canonical) · `cur.<op>` (abbrev) · `curation` mode. Operators: new / narrate / ls · **Index set:** `set:curation:index`
 
----
+Curation is **interpretation as a narrative path over relationships**. Where `fact` /
+`thesaurus` deep-dive a *single* atom, curation interprets a *set* of atoms through
+the RELATIONSHIPS among them, and its output is a **narrative path**: an ordered walk
+Atom→Atom expressed as `curation:next` edges (the derived interpretation).
+
+Two invariants:
+- **Relationship-centred.** The operand is the relation structure, not the atom.
+- **No burden of proof.** A curation is an interpretation from a standpoint; it shows
+  its GROUNDS (which relations / operation produced the path) but does not prove them.
+  Output atoms carry `provenance:interpretation` — cross-check with `fact` atoms if
+  verification is actually required.
+
+> **Simplified (breaking).** The former premise / input / view / fold / conclusion /
+> dispute reconciliation engine (13 ops, 4 enums, `trace`/`diagnose`) was removed and
+> replaced by the 3 ops below.
+
+**Construction — two modes:**
+- **derived** — pass relation axes `rels=`; the path is computed from the relationship
+  structure. With ≥2 axes and `op=intersect` (default), an edge a→b survives only if b
+  is adjacent to a under EVERY axis (e.g. later-in-time ∩ descends-from → a lineage
+  narrative); a single axis follows that relation's chain. `union`/`compose`/`prefer`
+  are reserved and fall back to intersect (`op_applied` reports which ran).
+- **authored** — pass `ids=` as the intended ORDER (no rels, or `mode=authored`); the
+  path is taken verbatim and its `curation:next` edges written — narrative-order-first.
+
+| Method (CLI) | Required | Optional | Description |
+|---|---|---|---|
+| `curation.new` (`curate`) | `title` | `thesis`, `set`, `ids`, `rels`, `op` (default intersect), `mode`, `alias` | Create a curation: derive a path from relations, or author an order. `set=` targets a collection, `ids=` an explicit atom list (comma/space separated — CSL-friendly). Idempotent when `alias=` resolves to an existing curation. |
+| `curation.narrate` (`narrate`) | `curation_id` or `name` | — | Read the narrative path back: ordered `steps`, `transitions`, `grounds` (relation axes / op), `provenance`. This is the story STRUCTURE — hand to Jataka (`jataka.present as=narrative`) for prose. |
+| `curation.ls` (`cur.ls`) | — | — | List curations. |
+
+**Relations:** `curation:next` (path step, w = order), `curation:over` (root → each atom
+interpreted). **Examples shipped:** `ontology/curation/lineage_demo.ak` (a patriline with
+`chrono:before` + `lineage:begat` for **derived** auto path-discovery, autoloaded) and
+`curations/sky_dreamers.csl` (an **authored** thematic narrative). See
+`docs/for-llm/curation-model.md`.
+
+
+### 10.9 Recipe
+
+**Source:** `lib/akasha/concepts/recipe.py` · **extends `FormulaConcept`** (§10.10)
+**Prefix:** `recipe` · **CLI:** `recipe.<op>` (canonical) · `rcp.<op>` (abbrev) · `recipe` mode. Operators: new / add / step / food / nutrition / view / ls / suggest · **Index set:** `set:recipe:index`
+
+Recipe is the **cooking specialization of the `formula` base model** (§10.10): a root plus
+typed sub-groups — ingredients (materials), methods (operations), ordered steps, hints,
+presentation, and constraints (specs). Its distinguishing feature is the **dimensional
+axes** — season, ethnic, course, scene, plus the ingredients / methods / constraints it
+carries — held as *cross-recipe* membership sets, so specifying axes RETRIEVES recipes by
+weighted intersection (the composite `cross_query` idea applied to a menu). The file is a
+thin skin: it renames the base operators to cooking vocabulary, binds the material source
+to **food** atoms (USDA), and overrides the rollup's property hook to read nutrition — the
+`survey`-shaped universe, ordered process, rollup, specs, and suggestion are all inherited.
+Recipe is carried as a product surface (an iOS app backend), so its JSON-RPC field/operator
+names are kept stable even as the base evolves.
+
+Two points make recipe unlike curation:
+
+- **Recipes are authored data, not interpretation.** A recipe asserts a structure (these
+  ingredients, this order); there is no "narrative from a standpoint", so no
+  `provenance:interpretation`.
+- **Constraints are a hard, fail-closed filter — not a soft rank.** Allergy / taboo /
+  dietary restrictions must **subtract** candidates from a suggestion, never merely lower
+  a score. `recipe.suggest … avoid=peanut` drops *every* recipe that uses peanut or carries
+  the peanut constraint, regardless of how well it matches the other axes. This is enforced
+  structurally (set subtraction over `set:recipe:ing:{slug}` ∪ `set:recipe:constraint:{slug}`),
+  because getting it wrong is a safety incident.
+
+**Nutrition.** `recipe.nutrition` accumulates (grams / `basis_g`) × each nutrient over a
+recipe's ingredients, reading nutrition in **either of two representations** so both import
+paths work:
+
+- **Structured meta** — `recipe.food` writes `food:{slug}` with `meta.nutrition =
+  {"basis_g": 100, "kcal": …, "protein_g": …}`.
+- **USDA content string** — the ontology importer (`scripts/usda_food_import.py`) can't write
+  meta through `.ak def`, so it stamps `"… — per 100g: 18 kcal, Protein 0.6g, Fat 0.1g, …"`
+  into the atom's **content**; `recipe.nutrition` parses that (`_parse_nutrition_content`,
+  fires only on the `per <N>g:` marker) and maps USDA labels to the same canonical keys.
+
+Recipes reference ingredients **by slug only — they never stub the `food:` namespace** — so
+`recipe.nutrition` resolves each ingredient's food atom at read time **from either handle a
+USDA import provides**: a pinned `food:fdc:{id}` (from `fdc=` on the ingredient, or an
+`fdc:11429`-style value) → `food:{slug}` → a plain-name / leaf lookup. Both aliases are
+adopted, not one excluded, so a food is reachable by name **or** by fdc id — whichever the
+loader or the author used. A later USDA load always wins (`recipe.food` re-points with
+`set_alias(force=True)`; recipes resolve by slug/id, so the rebind is transparent). The
+accumulator is **schema-agnostic**: it sums every numeric nutrient key present, so new USDA
+fields total automatically. Only mass units (g/kg/mg/oz/lb) convert to grams; a count/portion
+unit is reported `unmeasured`, a food with no data `no_data` — degradation-first, never a
+silent drop. A `constraint=` that is a **nutrient bound** (`kcal<=600`, `protein_g>=20`) is
+stored as a **target** (`recipe:target`) checked against the accumulated totals — *not* an
+allergen; it never enters the `avoid=` subtraction set.
+
+> **Loader contract (recipe ↔ USDA).** Keep **both** aliases on each food atom — `food:fdc:{id}`
+> **and** `food:{slug}` (a cooking-name alias, e.g. `food:daikon`) — alongside the descriptive
+> key (`food:{category}:{normalized_name}`); do not drop the fdc id, since a recipe can pin to it
+> with `fdc=`. Nutrition can live in the content `per <N>g:` string or in `meta.nutrition`. When a
+> cooking name has no `food:{slug}` alias, an author bridges the short-name → USDA-descriptive
+> gap by pinning `fdc=<id>`; recipe.nutrition resolves by id/slug/name and reports `no_data` only
+> when none of them hit a food atom.
+
+| Operator | Positional | Keyword args | Description |
+|---|---|---|---|
+| `recipe.new` (`rcp.new`) | `title` | `season`, `ethnic`, `course`, `scene`, `group`, `alias` | Create a recipe root and tag its discrete axes (each becomes a cross-recipe membership set). Idempotent when `alias=` resolves to an existing recipe. |
+| `recipe.add` (`rcp.add`) | `recipe` | exactly one of `ingredient` (+`qty`,`unit`,`fdc`) / `method` / `hint` / `plating` / `constraint` | Add one operand. Ingredients are qty-carrying line atoms (`recipe:uses`); `fdc=<id>` pins the ingredient to a precise USDA food (`food:fdc:<id>`). Methods/allergen-constraints resolve to canonical `method:`/`constraint:` vocab; a constraint that is a nutrient bound (`kcal<=600`) becomes a target instead. |
+| `recipe.step` (`rcp.step`) | `recipe` | `text`, `uses`, `by` | Append an ordered step (chained via `sys:next`), crossing it with the ingredients (`recipe:step_uses`) and methods (`recipe:step_by`) it touches. |
+| `recipe.food` (`rcp.food`) | `name` | `basis_g` (default 100) + open nutrient set (`kcal`, `protein_g`, `fat_g`, …) | Define/refresh a food atom's nutrition (the USDA import write endpoint). Accepts an open set of nutrient fields via `**kwargs`. Fresh values on an existing food re-point `food:{slug}`. |
+| `recipe.nutrition` (`rcp.nutrition`) | `recipe` or `name` | — | Accumulate ingredient nutrition → `totals`, a per-ingredient table (each `measured`/`unmeasured`/`no_data`), and `targets` compliance (each `actual`, `met`). |
+| `recipe.view` (`rcp.view`) | `recipe` or `name` | — | Assemble the full card: ingredients (with qty), methods, ordered steps (with crossings), hints, presentation, axis tags, constraints, plus a nutrition summary and targets. GUI-ready. |
+| `recipe.ls` (`rcp.ls`) | — | `season`, `ethnic`, `course`, `scene`, `group` | List recipes, optionally filtered by discrete axis (intersection). |
+| `recipe.suggest` (`rcp.suggest`) | — | `season`, `ethnic`, `course`, `scene`, `group`, `have`, `avoid`, `mode`, `limit` | Rank recipes by axis intersection: score = (axes matched)/(axes requested). `avoid=`/allergen-constraints are a hard filter (subtract, never rank). `mode=generative` reserved (stage a new recipe skeleton for confirmation) → falls back to `retrieval`, reported as `mode_applied`. |
+
+> **Registry note.** `recipe.food` accepts an open nutrient set via `**kwargs`; the registry's
+> `_filter_params` (`concepts/registry.py`) passes all params through to any op that declares a
+> VAR_KEYWORD parameter (params are already stripped of framework keys upstream). Ops without
+> `**kwargs` are unaffected — extras are still filtered out by signature as before.
+
+**Relations:** `recipe:uses` (→ ingredient line, w = order), `recipe:by` (→ method),
+`recipe:step` (→ step, w = order), `sys:next` (step → step, the time axis),
+`recipe:step_uses` / `recipe:step_by` (step × ingredient / method crossings),
+`recipe:hint`, `recipe:plating`, `recipe:constraint`, `recipe:target` (→ a nutrient bound).
+**Axis index sets:** `set:recipe:group:{axis}:{value}`, `set:recipe:ing:{slug}`,
+`set:recipe:method:{slug}`, `set:recipe:constraint:{slug}`. **Nutrition:** stored in the
+`food:{slug}` atom's meta (`nutrition.basis_g` + per-nutrient values). **Examples shipped:**
+`ontology/recipe/pantry.ak` (canonical method + constraint vocab, autoloaded) and
+`curations/recipe_demo.csl` (three recipes + their `recipe.food` nutrition + a `kcal<=600`
+target, authored via CSL — recipes carry runtime state, so they are CSL not flat `.ak`; run at
+boot so `recipe.suggest` / `recipe.nutrition` work on a fresh install).
+
+
+### 10.10 Formula (base model)
+
+**Source:** `lib/akasha/concepts/formula.py`
+**Prefix:** `formula` · **CLI:** `formula.<op>` · `form.<op>` (abbrev) · `formula` mode. Operators: new / material / op / step / source / rollup / spec / view / ls / suggest · **Index set:** `set:formula:index`
+
+`FormulaConcept` is the **domain-neutral base** for "materials + operations + ordered
+process". `recipe` (§10.9) extends it for cooking; the same structure serves pigment/dye
+mixing, perfume, cosmetics, and process-industry / manufacturing (materials + procedure =
+ISA-88's "recipe"), including cost/BOM rollup and procurement. A domain model subclasses
+`FormulaConcept`, sets a few class attributes (`CONCEPT_PREFIX`, `AXES`, `SOURCE_NS`, the
+`ID_KEY`/`NOUN`), and skins the operator names; **all graph machinery is inherited** —
+relations and sets are parametrised by the subclass prefix, so `recipe` gets `recipe:*` /
+`set:recipe:*` from the same code that gives `formula` its `formula:*` / `set:formula:*`.
+
+Two capabilities lift it above a flat list:
+
+- **Property rollup** (`_rollup`, exposed as `formula.rollup` / `recipe.nutrition`) —
+  accumulate any numeric material property, weighted by quantity. Two contributions per
+  material: a **direct line property** (e.g. `cost=` entered on the line, summed as-is) and
+  **source-scaled properties** ((amount / `basis`) × each per-basis property from the
+  material's source atom, via the overridable `_source_props` hook). Schema-agnostic — it
+  sums every numeric key present, so nutrition, cost, mass, VOC, CO₂ … all total with no
+  code change. Recipe's hook reads food nutrition; the base reads `material:{slug}.meta.props`
+  (defined by `formula.source name=… cost=… [basis=]`). Degradation-first: a non-mass unit
+  is `unmeasured`, a mass material with no source and no direct prop `no_data`.
+- **Specs, two kinds** (`formula.spec`) — a numeric bound (`cost<=5`) is a **target** checked
+  against the rollup (`recipe:target`); anything else is a **categorical constraint** (a hard,
+  fail-closed filter that `suggest avoid=` subtracts). Never conflated. `step=`/`ccp=` scope a
+  target to a process step (the hook HACCP control points will use).
+
+| Operator | Positional | Keyword args | Description |
+|---|---|---|---|
+| `formula.new` | `title` | axis kwargs (`kind`, `line`, `grade`), `alias` | Create a root, tag its axes. Idempotent by alias. |
+| `formula.material` | `formula` | `name`, `qty`, `unit`, `source`, + numeric props (`cost=`) | Add a material line; numeric kwargs become direct line properties for the rollup. |
+| `formula.op` | `formula` | `name` | Add an operation / technique. |
+| `formula.step` | `formula` | `text`, `uses`, `by` | Append an ordered process step, crossing material × operation. |
+| `formula.source` | `name` | `basis` (default 1) + numeric props | Define a material's per-basis properties (cost, density, …). Fresh values re-point `material:{slug}`. |
+| `formula.rollup` | `formula` | — | Accumulate material properties → totals + per-material table + target compliance. |
+| `formula.spec` | `formula` | `value`, `step`, `unit`, `ccp` | Add a spec: numeric bound → target, else categorical constraint. |
+| `formula.view` / `.ls` / `.suggest` | — | (as recipe) | Sheet assembly / axis-filtered list / axis-intersection ranking. |
+
+**PERT / critical path** (`formula.critical`, `recipe.critical`). Steps form a **dependency
+DAG**, not just a chain: `formula.step … dur=20 dur_unit=min after=<step[,step]> [label=x]`.
+`after=` names predecessor steps (by order index, `label`, or key); with no `after` a step
+depends on the previous one (linear default), and steps with no mutual dependency run in
+**parallel** (a second burner, the oven while you prep). `formula.critical` runs the Critical
+Path Method (forward/backward pass) → per-step ES/EF/LS/LF + slack, the zero-slack **critical
+path**, the **makespan** (accounting for parallel branches) and the naive sequential total.
+Relation `P:after` (step → predecessor); duration on step meta (`dur_min`). This is
+*design-time* process planning, distinct from the JCL/Harmonia runtime `depends_on` PERT.
+
+**Control points / HACCP** (`formula.control` / `.measure` / `.checkpoints`;
+`recipe.control` / `.measure` / `.haccp`). A **control spec** bounds a process parameter —
+`formula.control param=temp op='>=' value=75 unit=C step=<ref> ccp=yes` (a step/formula-scoped
+target with a `ccp` critical-control-point flag). `formula.measure param=temp value=78 [step=]`
+records an observed value (an audit trail — latest per param/step wins).
+`formula.checkpoints` checks every target against the best available actual — a recorded
+measurement for its parameter (preferring the same step) if present, else the material rollup —
+reporting per-target `pass`/`fail`/`pending`, the CCP subset, violations, and an overall `safe`
+flag. For cooking this is hygiene management: cook temperature (a CCP), holding/storage
+temperature, serve-within, shelf life. Relation `P:measure`; measurements in
+`set:P:{id}:measurements`.
+
+**Relations** (prefix `P` = the subclass's `CONCEPT_PREFIX`): `P:uses` (→ material line),
+`P:by` (→ operation), `P:step`, `P:after` (→ predecessor step), `sys:next` (step order),
+`P:step_uses` / `P:step_by` (step crossings), `P:spec` (→ constraint), `P:target` (→ numeric
+bound / control spec), `P:measure` (→ measurement), plus notes. **Sets:**
+`set:P:{id}:{materials|operations|steps|notes|presentation|specs|targets|measurements}`,
+`set:P:group:{axis}:{value}`, `set:P:{mat|op|spec}:{slug}`.
+
 
 ## 11. Root Lifecycle Guarantees *(stub — not yet specified)*
 
@@ -1775,3 +1911,16 @@ level `CONTEXT_KEY_ACTIVE` is already unique and no namespace is required.
 | 1.6 | Added §10.7 Thesaurus: cross-graph semantic enrichment model with ShelfScore, typed relation registry, and CurationCollection management. Unlike other models, Thesaurus has no single root — it operates across the entire graph. Relation types registered in `ontology/thesaurus/a_thesaurus_core.csl`. |
 | 1.7 | Thesaurus §10.7 extended: `thesaurus:external_ref` relation type added; `thesaurus.shelf.link_ext` operator attaches external URLs (Wikipedia, Britannica, etc.) to atoms; `external_refs` ShelfScore component (w=0.10) counts external refs / 4. `thesaurus.view.atom` and `thesaurus.view.curation` operators added for complete UI projection. ShelfScore weights rebalanced: `link_total` 0.10→0.05, `chain_balance` 0.10→0.05, `external_refs` new 0.10. Shell renderer extended to handle `thesaurus:AtomView` and `thesaurus:CurationView` result types. |
 | 1.8 | Thesaurus §10.7 extended with ExhibitionSeries: `thesaurus:in_series` relation added (many-to-many: a CurationCollection can belong to multiple series). `thesaurus.series.new`, `thesaurus.series.ls`, `thesaurus.series.add`, `thesaurus.view.series` operators added. `set:thesaurus:series` index set. `url_slug` field added to all view projections (series, curation, collection). URL permanence convention documented: `/series/{slug}`, `/exhibition/{slug}`, `/word/{alias}`. Shell renderer extended with `_render_thesaurus_series_view` for `thesaurus:SeriesView` result type. |
+| 1.9 | Added §10.9 Recipe: a `survey`-shaped cookable universe (root + ingredients/methods/steps/hints/presentation/constraints) with axis-driven suggestion. Dimensional axes (season/ethnic/course/scene + ingredients/methods/constraints) are cross-recipe membership sets; `recipe.suggest` ranks by weighted intersection (the `cross_query` idea on a menu). Constraints are a **hard, fail-closed filter** (`avoid=` subtracts candidates, never soft-ranks) — the deliberate asymmetry vs curation's no-burden-of-proof. Operators: new / add / step / view / ls / suggest. Examples: `ontology/recipe/pantry.ak` (method + constraint vocab, autoloaded) + `curations/recipe_demo.csl` (three recipes, boot-run so suggest works fresh). |
+| 1.10 | Recipe §10.9 nutrition: `recipe.food` (open nutrient set via `**kwargs`) writes USDA-style nutrition into `food:{slug}` meta (the USDA import endpoint); `recipe.nutrition` accumulates (grams/`basis_g`)×nutrient over an ingredient's food atom (resolved by slug/name at read time — recipes never stub `food:`, so a USDA load wins), schema-agnostic over nutrient keys, degradation-first (`unmeasured` for non-mass units, `no_data` for missing food). Reads nutrition from **either** structured `meta.nutrition` (`recipe.food`) **or** a USDA `.ak` content string `"… — per 100g: 18 kcal, Protein 0.6g, …"` (`_parse_nutrition_content`), since `.ak def` can't write meta — reconciles with `scripts/usda_food_import.py`. A `constraint=` nutrient bound (`kcal<=600`) becomes a `recipe:target` checked against totals, separate from allergen constraints; `recipe.view` gains a nutrition summary + targets. Registry `_filter_params` now passes all params through to VAR_KEYWORD ops (others unchanged). Loader contract documented: alias each food by `food:{slug}` so recipes resolve. |
+| 1.11 | Recipe food resolution adopts **both** aliases instead of excluding one: `recipe.nutrition` resolves an ingredient from `food:fdc:{id}` (pinned via `fdc=` on `recipe.add`, or an `fdc:11429`-style value) → `food:{slug}` → plain-name/leaf, so a food is reachable by name **or** by fdc id. `recipe.add ingredient=` gains `fdc=`; the id is stored on the ingredient line and surfaced in `recipe.view`. Bridges the short-cooking-name → USDA-descriptive-name gap without a synonym table. Loader contract updated: keep both `food:fdc:{id}` and `food:{slug}`. |
+| 1.12 | Added §10.10 **Formula base model** (`FormulaConcept`, `lib/akasha/concepts/formula.py`): the domain-neutral base for "materials + operations + ordered process" — generalises `recipe` to dye/perfume/cosmetics/manufacturing (ISA-88-style materials + procedure + cost/BOM rollup). Machinery (relations/sets parametrised by prefix, property rollup, specs, axis suggestion) is inherited; `recipe` is refactored to a **thin subclass** (`RecipeConcept(FormulaConcept)`) with its `recipe.*` API/field names unchanged (product-surface stability). New generic `formula.*` model registered (S1 of the base-model plan). **Property rollup** generalises `recipe.nutrition`: direct line props (`cost=`) + source-scaled props (`formula.source` / food nutrition), schema-agnostic; **specs** unify numeric targets and categorical constraints (with `step=`/`ccp=` scoping reserved for HACCP). `test/formula_eval.py` (6/6); `recipe_eval` 10/10 unchanged. Reserved: PERT (`dur`/`after`/`formula.critical`, S2) and HACCP control specs (S3). |
+| 1.13 | Formula **PERT / critical path** (S2): `formula.step`/`recipe.step` gain `dur=`/`dur_unit=` and `after=` (predecessor steps by order/label/key), forming a dependency DAG — omit `after` for the linear default, use it for parallel branches. `formula.critical`/`recipe.critical` run the Critical Path Method (forward/backward pass) → per-step ES/EF/LS/LF + slack, the zero-slack critical path, the makespan (parallel-aware) and the sequential total. Relation `P:after`; duration on step meta. Design-time planning, distinct from JCL runtime `depends_on`. `formula_eval` 7/7, `recipe_eval` 11/11. |
+| 1.21 | **Reference-recipe expansion** (ontology dish → structured recipe). The recipe ontology (TheMealDB ~744) stores each dish as ONE described atom in the shared nucleus, in a labelled grammar (`<Title> (<Cat> · <Cuisine> · <Country>). Ingredients: <m> <name>; …. Method: <step 1 …>. Source: <url>`). Module parser `_parse_dish` (+ `_parse_ing_line`, `_split_steps`) turns that back into `{title, axes, ingredients(+qty/unit), steps, source}` deterministically (validated across all 744: 0 with zero steps/ingredients; median 9 steps / 10 ingredients; `step N` markers → split, else newlines, else sentence segmentation). Two operators: **`recipe.reference.get`** (READ, guest-ok) projects a dish atom into a recipe card on the fly (parsed steps + ingredients + linked `ingred:*` concepts + image + source) with NO materialisation — the reference library browses the shared atoms in place; **`recipe.reference.clone`** (WRITE) materialises a dish into the caller's OWN editable recipe (recipe.new + a step per instruction + an ingredient per parsed line, best-effort food pin), counts against quota — "save & customise". `test/recipe_reference_eval.py` 4/4 (parser on the exact grammar, guest projection, clone→editable recipe.view, step-marker vs prose fallback). Regression green (recipe/dict/food_search/tier/account/formula, cli_router, invariants 0 fail). External spec §4.2 (reference.get/clone). |
+| 1.20 | **Food-app surface** (iOS-lead consolidated spec — the app is now a food-information app, not only recipe suggestion). **A-1 `recipe.food.lookup`** — food-dictionary read of one food (nutrition + allergens/season/categories surfaced generically from the atom's links); exact-match preferred (case-insensitive), ambiguous → `{found:false, candidates:[…]}`. **A-2 `recipe.method.list` / A-3 `recipe.tool.list`** — catalogue reads `{methods|tools:[{name,label,desc}]}` via generic `FormulaConcept._catalog_scan(prefix)` over `method:`/`tool:` (cortex+nucleus). **A-4 `recipe.publish`** — publish own recipe to the public feed (`set:{P}:published` + public read grant); paid → free gets `{locked, upgrade_required}`. **B-1** `recipe.step` gains `tools=`/`temp=` (stored on step meta + `step_tool` link); `recipe.view` steps[] now return `dur_min`/`temp`/`tools`. **B-2 (answered)** the picked food id pins via a new `food=` field AND a tolerant `fdc=` (accepts a `food:…` id or a raw key, not just numeric — so the already-deployed client sending `fdc=food:daikon` works); resolved food stored as `food_key` on the ingredient line, honoured first by `_resolve_food`. **C-1** `mine` (owner, cross-device) on `recipe.ls`/`view`; **C-2** `hint_items` (item ids for per-memo delete). **D-2 (contract fix)** an unimplemented method now returns **-32601** (was -32001) so a client can tell "not built yet" from "not allowed" — capability-mapped/handled methods unaffected (cli_router + all evals green). Generic bits (`_catalog_scan`, `_published_set`/`_is_published`, step tools/temp, `mine`/published in `_ls`) live on `FormulaConcept`; recipe skins the food/method/tool/publish surface. `test/recipe_dict_eval.py` 9/9 (method/tool catalogues, dictionary lookup + allergen link + ambiguous candidates, food=/fdc= pin round-trip to nutrition, step tools/temp in view, publish free-lock vs paid, mine, hint_items, and the D-1/D-4/-32601 contract). Regression clean (recipe 13/13, formula 8/8, tier 6/6, account 5/5, food_search 5/5; thesaurus/curation/semantic green). External spec §4.1/§4.2/§6 updated. |
+| 1.19 | **Food catalogue search** (`recipe.food.search` / generic `formula.source.search`) — the ingredient picker the app needs. When the food ontology (base pack ~380 + the archives nutrition pack ~38k) loads, food atoms carry **category-namespaced keys** (`food:<category>:<slug>`) + a `food:fdc:<id>` alias and live in the **shared nucleus**, so a bare ingredient name is ambiguous and only `fdc=`-pinned adds resolved nutrition. New READ op searches by name (all tokens, via `get_aliases_by_pattern`) across **both** the shared nucleus catalogue AND the caller's private foods (`food:user:<uid>:…`), returning each hit's display name + `fdc` + per-basis nutrition (parsed from `meta.nutrition` or the `"… — per 100g: …"` content string) + `scope` (catalog|personal); paginated (default 20/max 100), guest-allowed. Flow: search → pick → `recipe.add ingredient=<name> fdc=<id>` → exact nutrition. Generic `_source_scan`/`op_source_search` on `FormulaConcept`; recipe skins it with fdc+nutrition. `test/recipe_food_search_eval.py` 5/5 (drives REAL base food data loaded into the nucleus: catalogue hit + fdc→nutrition round trip + personal-food merge + pagination + guest read). Regression clean (recipe 13/13, formula 8/8, tier 6/6, account 5/5). External spec §4.2 + §5 updated. |
+| 1.18 | **Recipe launch-hardening** (10-point iOS-lead review; all generic in `FormulaConcept` + the `recipe` skin + kernel). **(1) Monotonic `revision`** — an append-only revlog (`set:{P}:{root}:revlog`, uuid-fenced marker atoms, never removed) bumps on every write, so it changes even across an in-place edit (detach+recreate keeps the parts count); `expected_revision` is the preferred optimistic-lock guard (legacy `expected_updated_at` still honoured); `updated_at` kept for display, `version` (parts count) kept for back-compat but must not be locked on. **(2) Stable item ids** — each per-formula item atom (ingredient/step/note/target/measurement) carries a lid fenced into its content (`text⁣lid`, U+2063) so identical text across formulas never collapses into one meta-clobbered atom, and an edit carries the lid forward onto the new atom key; `recipe.step`/`recipe.add` return `step_id`/`ingredient_id` (stable) alongside `atom_key`; `after=`/`item=` resolve the lid → current key. **(3) request_key** scoped to `(client, rpc_method, request_key)` + ~24 h retention (expired hits re-execute). **(4) `recipe.food`** gated to librarian/admin (shared catalogue `food:<slug>`; `catalog_denied`); new **`recipe.food.personal`** writes a private `food:user:<uid>:<slug>` that `_resolve_food` prefers for that user. **(6) `auth.account.delete`** — self-service (own account only; `confirm` required; refuses guests/admins): deregisters the identity (soft-delete = retained audit), purges the private cell (`manager.purge_client_cell`), and deletes the entitlement entry; mapped to capability `read` so it does NOT open a graph workspace on the cortex it deletes. **(9) Pagination** default `limit=20`, max 100, whole list (`limit=0`) admin-only (`_page_limit`). **(10)** `recipe.control`/`recipe.measure` gated with `recipe.haccp` (one paid HACCP feature). Docs (5/7/8): billing wording → StoreKit 2 signed transaction / store purchase credential + server-to-server notifications; `session_token` exceptions (`auth.status`/`auth.register`/`/health`); `recipe_quota` documented as the single source of truth. `recipe_eval` 13/13, `formula_eval` 8/8, `recipe_tier_eval` 6/6, new `recipe_account_eval` 5/5. **Security:** account-delete only ever targets the caller; `recipe.food` catalogue write is librarian/admin; no invariant weakened. External spec `docs/api/recipe-jsonrpc-v1.md` updated end-to-end. |
+| 1.17 | **General self-registration + entitlement** (kernel, product-neutral, for iOS/Android). `auth.register` — bounded self-service signup: OFF unless `AKASHA_ALLOW_SELF_REGISTER=1`; role FORCED to `user` (client-supplied role ignored — no escalation); a taken id is REJECTED (never overwritten → no hijack); passphrase ≥8 chars (raw over HTTPS); auto-logs-in (returns an `akt:` token) on the free plan. `auth.plan` (read own tier, capability `read`) / `auth.plan.set` (admin, capability `iam.manage` — the billing hook) store the tier in the shared nucleus vault (`entitlement` KV, product-neutral); recipe tiering now reads this general store (`recipe.plan.set` ≡ `auth.plan.set`). Billing wiring documented (external receipt-validation service → `auth.plan.set` with an admin token; client never self-upgrades). `test/recipe_tier_eval.py` 6/6 (adds register + general plan). **Security:** self-registration is a deliberate, config-gated loosening of the admin-only user-management rule — role-forced, no-overwrite, verified adversarially (no privilege escalation; bare-id-over-network invariant intact). External spec `docs/api/recipe-jsonrpc-v1.md` §2.4 documents `auth.register` + the upgrade flow. |
+| 1.16 | Recipe **entitlement / tiering** (server-side, the akashickitchen product model): OFF by default (`AKASHA_RECIPE_TIERING`) so the OSS recipe model has no limits. When on, a free plan is capped at `AKASHA_RECIPE_FREE_QUOTA` own recipes (default 5; `recipe.new` → `quota_reached` error over quota) and the analytics in `AKASHA_RECIPE_PAID_FEATURES` (default nutrition/critical/haccp) return a `locked` result for free users (`recipe.view`'s nutrition block too). A user's plan lives in the shared **nucleus vault** (`recipe_plan` KV — server-side, cross-session, never a client-writable atom), set by the admin-only `recipe.plan.set user= tier=paid|free` (the billing/receipt-validation hook); `recipe.plan` reads the caller's tier/quota/usage/locked-features for the app UI. Per-user recipe ownership indexed via `set:recipe:owner:{uid}` (added to `FormulaConcept._mk_root`). `test/recipe_tier_eval.py` 5/5 (quota, gates, cross-session upgrade/downgrade, self-upgrade denied, OFF=unlimited); `recipe_eval` 13/13 unchanged (tiering off). Free self-registration (`auth.register`) + receipt-validation upgrade endpoint are the remaining product pieces (a deliberate loosening of the admin-only user-management invariant — pending review). |
+| 1.15 | Recipe **client-facing contract additions** (for the iOS product surface): idempotent writes (`request_key` on `recipe.add`/`step`/`measure` → a retry returns `status:"duplicate"`, no double insert); edit/delete (`recipe.remove`, `recipe.ingredient.remove`/`.update`, `recipe.step.remove`/`.update` — detach the immutable atom; update = detach + re-add); derived `version`/`updated_at` on the card + optimistic-lock `expected_updated_at` on writes (stale → `-32002` conflict); `limit`/`cursor` pagination on `recipe.ls`/`suggest` (→ `next_cursor`/`has_more`). All generic in `FormulaConcept`. External spec `docs/api/recipe-jsonrpc-v1.md` documents these + the MVP policy (HTTPS-gated writes, admin-provisioned users, guest read-only). `recipe_eval` 13/13, `formula_eval` 8/8. |
+| 1.14 | Formula **control points / HACCP** (S3): `formula.control`/`recipe.control` add a bound on a process parameter (`param=temp op='>=' value=75 step=<ref> ccp=yes`) — a step/formula-scoped target with a critical-control-point flag; `formula.measure`/`recipe.measure` record observed values (audit trail, latest per param/step wins); `formula.checkpoints`/`recipe.haccp` check each target against the best actual (a measurement for its param, preferring the same step, else the rollup) → per-target pass/fail/pending, the CCP subset, violations, and an overall `safe` flag. For cooking: cook temperature (CCP), storage temperature, serve-within, shelf life. Relation `P:measure`; `set:P:{id}:measurements`. `formula_eval` 8/8, `recipe_eval` 12/12, cli_router 5/5. Base-model plan (S1–S3) complete. |

@@ -128,7 +128,7 @@ class FactConcept(BaseConcept, ProvenanceMixin):
         return author_id, [f"owner:user_{author_id}", f"view:user_{author_id}"]
 
     def _create_sets(self) -> None:
-        self.cortex.create_set(self.set_name)
+        self.ensure_concept_set()
         self.cortex.create_set(self._fact_set())
         for suffix in self.SUBSETS:
             self.cortex.create_set(self._fact_set(suffix))

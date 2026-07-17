@@ -117,7 +117,10 @@ class CockpitConcept(BaseConcept):
         self.concept_id = root_id
         self.set_name   = f"set:concept:{self.concept_id}"
 
-        self.cortex.create_set(self.set_name)
+        # ensure_concept_set() creates the catalog set AND gives it a human-readable alias
+        # (derived from the root's name), so warping to this vessel reads as its name — not the
+        # hash key — in FOCAL LOCK / wake / node labels.
+        self.ensure_concept_set()
         self.cortex.create_set(self._content_set())
         self.register_concept_node(root_id)
 
@@ -157,6 +160,8 @@ class CockpitConcept(BaseConcept):
 
         self.concept_id = cockpit_id
         self.set_name   = f"set:concept:{self.concept_id}"
+        # Idempotent: back-fill the readable set alias for cockpits created before this existed.
+        self.alias_concept_set(meta.get("name"))
 
         if hasattr(self.session, "set_context"):
             self.session.set_context(CONTEXT_KEY_ACTIVE, cockpit_id)
@@ -211,16 +216,25 @@ class CockpitConcept(BaseConcept):
         focal_aliases = self.cortex.get_aliases_by_key(current_focus)
         focal_alias   = focal_aliases[0] if focal_aliases else None
 
+        # A human-readable label for the focal point. When you warp to a concept the focus is a
+        # hash-keyed set (set:concept:<hash>) whose alias is also hash-like, so alias/key alone
+        # are unreadable in the wake ("LOC: d0d22019…"). Persist the focal atom's content head so
+        # the Trace Deck can render "LOC: Apple" without guessing — the graph views already carry
+        # a preview per node, but a beacon stores none, so we capture it here at drop time.
+        focal_content = self.cortex.get_chunk(current_focus) or ""
+        focal_preview = focal_content.strip().split("\n", 1)[0][:60] or None
+
         beacon_id = self.cortex.put_chunk(
             content=note,
             meta={
-                "type":        "beacon",
-                "role":        "beacon",
-                "focal_key":   current_focus,
-                "focal_alias": focal_alias,
-                "axis":        current_axis,
-                "scope":       current_scope,
-                "created_at":  time.time(),
+                "type":          "beacon",
+                "role":          "beacon",
+                "focal_key":     current_focus,
+                "focal_alias":   focal_alias,
+                "focal_preview": focal_preview,
+                "axis":          current_axis,
+                "scope":         current_scope,
+                "created_at":    time.time(),
             },
             author=author_id,
             scopes=scopes,
@@ -269,13 +283,14 @@ class CockpitConcept(BaseConcept):
                 content = self.cortex.get_chunk(current_id)
                 meta    = self.cortex.get_meta(current_id)
                 wake.append({
-                    "id":          current_id,
-                    "content":     content,
-                    "focal_key":   meta.get("focal_key"),
-                    "focal_alias": meta.get("focal_alias"),
-                    "axis":        meta.get("axis"),
-                    "scope":       meta.get("scope"),
-                    "created_at":  meta.get("created_at"),
+                    "id":            current_id,
+                    "content":       content,
+                    "focal_key":     meta.get("focal_key"),
+                    "focal_alias":   meta.get("focal_alias"),
+                    "focal_preview": meta.get("focal_preview"),
+                    "axis":          meta.get("axis"),
+                    "scope":         meta.get("scope"),
+                    "created_at":    meta.get("created_at"),
                 })
             next_links = self.cortex.get_adjacent_links(current_id, "sys:next")
             current_id = next_links[0][0] if next_links else None

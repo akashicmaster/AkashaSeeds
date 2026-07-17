@@ -52,23 +52,60 @@ _NAV_MODE_COLOR = {
     "lens":    "\033[33m",   # yellow — projection engine
 }
 
+# Readline "non-printing" brackets: \001 (RL_PROMPT_START_IGNORE) / \002
+# (RL_PROMPT_END_IGNORE). They tell a readline-compatible line editor that the
+# bytes between them occupy ZERO display columns, so colour escapes don't inflate
+# the prompt's measured width. Only emit them when readline actually backs
+# input(): raw \001/\002 printed by an editor that ignores them shows as garbage.
+_RL_START = "\001"
+_RL_END   = "\002"
+
+
+def _prompt_span(color: str, text: str, *, color_on: bool, bracket: bool) -> str:
+    """Colour `text`, honouring the terminal's capabilities.
+
+    color_on=False → plain text (no escapes at all — safe on any dumb console).
+    bracket=True   → wrap the escapes in readline's \001/\002 so the editor
+                     excludes them from the visible column count.
+    """
+    if not color_on or not color:
+        return text
+    if bracket:
+        return f"{_RL_START}{color}{_RL_END}{text}{_RL_START}{Colors.ENDC}{_RL_END}"
+    return f"{color}{text}{Colors.ENDC}"
+
 
 def make_prompt(user_id: str, in_multiline: bool,
-                su_context: dict = None, nav_mode: dict = None) -> str:
-    """Generate a context-aware shell prompt string."""
+                su_context: dict = None, nav_mode: dict = None,
+                *, color: bool = True, readline_active: bool = False) -> str:
+    """Generate a context-aware shell prompt — line-editor safe.
+
+    Two properties keep minimal line editors (iOS a-Shell / Pyto) from drifting
+    the cursor column, hiding the prompt, and locking the session:
+
+    * **No embedded newline.** A multi-line prompt string makes such editors
+      miscount the column; the caller prints blank-line spacing separately.
+    * **Escapes are bracketed or absent.** With `readline_active` the colour
+      escapes are wrapped in \001/\002 (zero-width to readline); with
+      `color=False` (restricted console / NO_COLOR / dumb TERM) the prompt is
+      plain ASCII, which is unbreakable everywhere.
+    """
+    def sp(col: str, text: str) -> str:
+        return _prompt_span(col, text, color_on=color, bracket=readline_active)
+
     if in_multiline:
-        return _c(Colors.DIM, "...> ")
+        return sp(Colors.DIM, "...> ")
 
     mode_tag = ""
     if nav_mode and nav_mode.get("active"):
         name    = nav_mode["name"]
         col     = _NAV_MODE_COLOR.get(name, Colors.CYAN)
-        mode_tag = _c(col, f"[{name}]") + " "
+        mode_tag = sp(col, f"[{name}]") + " "
 
     if su_context and su_context.get("active"):
         target = su_context.get("target")
         if target == "root":
-            return f"\n{mode_tag}{_c(Colors.FAIL, '[root@akasha]')} {_c(Colors.FAIL, '#')} "
-        return f"\n{mode_tag}{_c(Colors.WARNING, f'akasha/{user_id}(su:{target})')} $ "
+            return f"{mode_tag}{sp(Colors.FAIL, '[root@akasha]')} {sp(Colors.FAIL, '#')} "
+        return f"{mode_tag}{sp(Colors.WARNING, f'akasha/{user_id}(su:{target})')} $ "
 
-    return f"\n{mode_tag}{_c(Colors.CYAN, f'akasha/{user_id}')} $ "
+    return f"{mode_tag}{sp(Colors.CYAN, f'akasha/{user_id}')} $ "

@@ -127,7 +127,7 @@ class AggregationConcept(BaseConcept):
         self.concept_id = agg_id
         self.set_name   = f"set:concept:{self.concept_id}"
 
-        self.cortex.create_set(self.set_name)
+        self.ensure_concept_set()
         self._register_to_package(agg_id, subset_suffix=None, concept_word="aggregation")
 
         for suffix in (None, "units", "groups", "measures", "analysis", "hierarchy"):

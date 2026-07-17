@@ -104,12 +104,12 @@ Slider: simple CSS opacity cross-fade, affine transform not needed for first pas
 | `archives/cookbook/index.html` | Entry page for all cookbook demos |
 | `archives/cookbook/map/index.html` | The map demo itself |
 | `curations/ancient_mediterranean.csl` | CSL curation loading place atoms |
-| `ontology/base/place.ak` | Core place atoms (Rome, Carthage, Athens, …) |
+| `ontology/base2/place.ak` | Core place atoms (Rome, Carthage, Athens, …) |
 
 ---
 
 ## Related
 
 - `curations/sky_dreamers.csl` — Icarus/Daedalus atoms share the Mediterranean context
-- `ontology/base/sky.ak` — sky:myth:* atoms already defined
+- `ontology/base2/sky.ak` — sky:myth:* atoms already defined
 - Pleiades entry for Crete: `place:crete` → connects to existing `sky:myth:daedalus`

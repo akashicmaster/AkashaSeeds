@@ -96,6 +96,9 @@ try:
         run_pipeline, FileSource, FileSink, InlineSource,
         TableSource, TableSink, DocSink, SetSource,
         LensScanSource, ConceptCastSink, ResponseSink,
+        ContexaWebSource, ResponseIngestSink,
+        SurveyAggregateSource, InterpretationSource,
+        PresentTableSink, ScatterSink, NarrativeSink,
     )
 except ImportError:
     FileIO = None  # type: ignore
@@ -774,6 +777,19 @@ class KernelDispatcher:
 
                 _pack_start = _time.time()
 
+                # ── growth narration ──────────────────────────────────────────
+                # Announce the theme now being woven so the progressive base1→
+                # base2→base3 load reads as the world tree *growing*, whatever the
+                # host speed.  The PACK.json "theme"/"label" is the human line.
+                try:
+                    import json as _pj
+                    _pmeta = _pj.load(open(os.path.join(ont_dir, pack_name, "PACK.json")))
+                    _theme = _pmeta.get("theme") or _pmeta.get("label") or pack_name
+                except Exception:
+                    _theme = pack_name
+                logger.info("[Kernel] 🌱 growing — %s  (%s, %d files)",
+                            _theme, pack_name, len(ak_files))
+
                 atoms_text  = f"[ont:ak] Pack '{pack_name}' atoms written"
                 atoms_key   = _hl.sha256(atoms_text.encode()).hexdigest()
                 atoms_alias = f"ont:ak:atoms:loaded:{pack_name}:{pmhash}"
@@ -1235,6 +1251,11 @@ class KernelDispatcher:
             return self._handle_auth_status(rid)
         if method in ("kernel.auth.verify", "auth.verify"):
             return self._handle_auth_verify(rid, data)
+        # Self-service registration — pre-auth (the registrant has no token yet),
+        # bounded + config-gated (see _handle_auth_register). Open to any client only
+        # when the operator enables it.
+        if method in ("kernel.auth.register", "auth.register"):
+            return self._handle_auth_register(rid, data)
 
         # Guest session management — operate on the binding directly, no Akasha
         # auth needed.  session.guest.create issues a new binding; extend renews
@@ -1288,8 +1309,17 @@ class KernelDispatcher:
                             "network. Call auth.verify to obtain one.")
             client_id = raw_token
 
-        # Map full RPC method names to the capability action tokens IAM understands
-        action = _METHOD_TO_ACTION.get(method, method)
+        # Map full RPC method names to the capability action tokens IAM understands.
+        # A method with no capability mapping (and not one of the capability-free built-ins
+        # authorize() accepts directly) has no handler here — it is genuinely
+        # unimplemented, so return -32601 (Method not found), NOT -32001 (permission), so a
+        # client can tell "not built yet" apart from "not allowed". Pre-auth methods
+        # (auth.*, session.guest.*, sys.ping/status) were already handled above.
+        action = _METHOD_TO_ACTION.get(method)
+        if action is None:
+            if method not in ("echo", "help", "status", "ping"):
+                return _err(rid, -32601, f"Method not found: {method}")
+            action = method
         try:
             authorized = self.iam.authorize(role, action, data)
         except PermissionError as quota_err:
@@ -1516,7 +1546,7 @@ class KernelDispatcher:
         if method == "graph.tree":
             return self._handle_graph_tree(rid, data, session, ctx, scopes)
 
-        if method in ("semantic.search", "search"):
+        if method in ("semantic.search", "search", "sim", "similar"):
             return self._handle_semantic_search(rid, data, session, ctx, scopes)
 
         if method == "semantic.learn":
@@ -1528,12 +1558,20 @@ class KernelDispatcher:
         if method in ("gap.fetch", "gap.enrich"):
             return self._handle_gap_fetch(rid, data, session, ctx, scopes, client_id)
 
+        if method == "node.learn":
+            return self._handle_node_learn(rid, data, session, ctx, scopes)
+        if method in ("node.sim", "node.similar"):
+            return self._handle_node_sim(rid, data, session, ctx, scopes)
+
         # ── Dive / View ────────────────────────────────────────────────
         if method in ("dive.look", "look"):
             return self._handle_dive_look(rid, data, session, scopes)
 
         if method in ("dive.out", "out"):
             return self._handle_dive_out(rid, data, session, scopes)
+
+        if method in ("view", "cosmos"):
+            return self._handle_view(rid, data, session, scopes)
 
         # ── Sets ──────────────────────────────────────────────────────
         if method in ("set.add",):
@@ -1654,6 +1692,9 @@ class KernelDispatcher:
         if method in ("emotion.profile", "emo.vector", "emo.profile"):
             return self._handle_emotion_profile(rid, data, session, ctx, scopes)
 
+        if method in ("emotion.find", "emo.find"):
+            return self._handle_emotion_find(rid, data, session, ctx, scopes)
+
         # ── Log ───────────────────────────────────────────────────────
         if LogConcept:
             if method == "log.new":        return self._handle_log_new(rid, data, session)
@@ -1711,13 +1752,25 @@ class KernelDispatcher:
         if method == "sys.cross.axes":  return self._handle_cross_axes(rid, data, session, ctx, scopes)
         if method == "sys.cross.atom":  return self._handle_cross_atom(rid, data, session, ctx, scopes)
 
-        # ── Jataka ────────────────────────────────────────────────────
+        # ── Jataka — dream (async incubation) ─────────────────────────
         if method in ("jataka.dream", "dream"):
-            return self._handle_jataka_dream(rid, data, session, ctx, scopes, history)
+            return self._handle_dream(rid, data, session, ctx, scopes, history)
+        if method == "dream.run":                       # internal background step
+            return self._handle_dream_run(rid, data, session, ctx, scopes)
+        if method in ("dream.confirm", "dream.approve"):
+            return self._handle_dream_confirm(rid, data, session, ctx, scopes, history)
+        if method in ("dream.forget", "dream.reject"):
+            return self._handle_dream_forget(rid, data, session, ctx, scopes, history)
 
-        # ── Contexa ───────────────────────────────────────────────────
+        # ── Contexa — the client session's INPUT side ─────────────────
         if method in ("contexa.fetch", "fetch"):
             return self._handle_contexa_fetch(rid, data, session, ctx, scopes, client_id)
+        if method in ("contexa.ingest", "survey.ingest"):
+            return self._handle_contexa_ingest(rid, data, session, ctx, scopes, client_id)
+
+        # ── Jataka — the client session's OUTPUT side ─────────────────
+        if method in ("jataka.present", "present"):
+            return self._handle_jataka_present(rid, data, session, ctx, scopes, client_id)
 
         if method in ("image.profile", "img.profile", "vision.classify"):
             return self._handle_image_profile(rid, data, session, ctx, scopes, client_id)
@@ -1776,6 +1829,16 @@ class KernelDispatcher:
             return self._handle_user_ls(rid, session)
         if method in ("user.add",):
             return self._handle_user_add(rid, data, session)
+        # Entitlement plan (general): read own tier; admin sets a user's tier (billing hook)
+        if method in ("auth.plan", "kernel.auth.plan"):
+            return self._handle_auth_plan(rid, session)
+        if method in ("auth.plan.set", "kernel.auth.plan.set"):
+            return self._handle_auth_plan_set(rid, data, session)
+        # Self-service account deletion (App Store / Play Store requirement). Deletes the
+        # CALLER's own account only — identity, private cell (recipes/personal foods/
+        # measurements), and entitlement — never another user's.
+        if method in ("auth.account.delete", "kernel.auth.account.delete"):
+            return self._handle_account_delete(rid, data, session, session.role)
         if method in ("user.rm",):
             return self._handle_user_rm(rid, data, session)
         if method in ("user.mod",):
@@ -2507,6 +2570,154 @@ class KernelDispatcher:
             "expires_at": minted["expires_at"],
             "role": role.value,
         })
+
+    # ------------------------------------------------------------------
+    # Self-service registration + entitlement plan (general, product-neutral)
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _self_register_enabled() -> bool:
+        return str(os.environ.get("AKASHA_ALLOW_SELF_REGISTER", "")).strip().lower() \
+            in ("1", "yes", "true", "on")
+
+    def _get_plan(self, uid: str) -> str:
+        """A user's entitlement tier from the shared nucleus vault ('entitlement' KV).
+        Product-neutral; 'paid' only if explicitly set, else 'free'."""
+        try:
+            v = self._nucleus().vault_retrieve("entitlement", uid)
+        except Exception:
+            v = None
+        return "paid" if str(v or "").strip().lower() == "paid" else "free"
+
+    def _set_plan(self, uid: str, tier: str) -> None:
+        self._nucleus().vault_store("entitlement", uid, tier)
+
+    def _handle_auth_register(self, rid, data) -> dict:
+        """Self-service account creation. DELIBERATELY BOUNDED (a loosening of the
+        admin-only user-management rule): OFF unless AKASHA_ALLOW_SELF_REGISTER is set;
+        role is FORCED to 'user' (never client-supplied, no privilege escalation); an
+        existing id is REJECTED (never overwritten → no account hijack); a passphrase is
+        required. Abuse controls (rate limiting, email/CAPTCHA) are a deployment concern.
+        On success it auto-logs-in (returns a session token) and starts on the free plan."""
+        if not self._self_register_enabled():
+            return _err(rid, -32601, "Self-registration is not enabled on this server.")
+        client_id  = (data.get("user_id") or data.get("client_id") or "").strip()
+        passphrase = data.get("passphrase", "")
+        display    = (data.get("display_name") or client_id).strip()
+        if not client_id or not passphrase:
+            return _err(rid, -32602, "auth.register requires 'user_id' and 'passphrase'.")
+        if not (3 <= len(client_id) <= 64) or not all(
+                c.isalnum() or c in "_.-" for c in client_id):
+            return _err(rid, -32602, "user_id must be 3-64 chars of [A-Za-z0-9_.-].")
+        if len(passphrase) < 8:
+            return _err(rid, -32602, "passphrase must be at least 8 characters.")
+        if self.iam.is_system_identity(client_id):
+            return _err(rid, -32001, "That identity is reserved.")
+        # No overwrite: a taken id is rejected (prevents account takeover).
+        try:
+            taken = self.iam._cache.get(client_id) is not None
+        except Exception:
+            taken = False
+        if taken:
+            return _err(rid, -32602, "That user id is already taken.")
+
+        presented = hashlib.sha256(passphrase.encode("utf-8")).hexdigest()
+        try:
+            self.iam.register_client(client_id, Role.USER,          # role FORCED to user
+                                     passphrase_hash=presented,
+                                     created_by="self-register", display_name=display)
+        except ValueError as e:
+            return _err(rid, -32602, str(e))
+
+        # Best-effort private identity record (same as admin user.add).
+        if _HumanConcept is not None:
+            try:
+                from lib.akasha.jcl.workspace_context import system_context as _sys_ctx
+                new_session = self.manager.get_session(client_id)
+                with _sys_ctx():
+                    _HumanConcept(new_session).op_new(
+                        name=display, description=f"Self-registered client '{client_id}'",
+                        client_id=client_id)
+            except Exception as exc:
+                logger.warning("[auth.register] identity record for '%s' failed: %s", client_id, exc)
+
+        try:
+            ttl = max(60, min(int(data.get("ttl", 1800)), 86400))
+        except (TypeError, ValueError):
+            ttl = 1800
+        try:
+            minted = self.iam.issue_session_token(client_id, ttl)
+        except PermissionError as e:
+            return _err(rid, -32001, str(e))
+        return _ok(rid, {"status": "registered", "user_id": client_id,
+                         "session_token": minted["session_token"],
+                         "expires_at": minted["expires_at"], "role": "user", "tier": "free"})
+
+    def _handle_account_delete(self, rid, data, session, role) -> dict:
+        """Self-service account deletion — the caller erases their OWN account. Deletes:
+        the identity (soft-deleted in IAM: active=False, so the login can never be used
+        again but the record is retained as the legally-required audit trail), the entire
+        private cell (l_cortex.db — every recipe, personal food, measurement, and private
+        atom the user authored), and the entitlement/plan entry. It never targets another
+        user, and it does not touch the shared nucleus/catalogue.
+
+        Requires an explicit confirmation (`confirm=true` or `confirm=<your user_id>`) so a
+        stray call can't wipe an account. Guests (no account) and admins (removed via
+        user-management so the Cell can't be locked out of its last admin) are refused."""
+        uid = session.client_id
+        confirm = str(data.get("confirm", "")).strip().lower()
+        if confirm not in ("true", "yes", "1", "delete", uid.lower()):
+            return _err(rid, -32602,
+                        "auth.account.delete requires confirm=true (irreversible: this "
+                        "erases your account, recipes, personal foods, and measurements).")
+        if role == Role.GUEST or self.iam.is_system_identity(uid):
+            return _err(rid, -32001, "This session has no deletable account.")
+        if role == Role.ADMIN:
+            return _err(rid, -32001,
+                        "Admin accounts are removed via user management, not self-deletion "
+                        "(prevents locking the Cell out of its last admin).")
+        # 1. Identity → soft-delete (audit retained).
+        try:
+            self.iam.deregister_client(uid)
+        except (KeyError, ValueError) as e:
+            return _err(rid, -32001, f"Account deletion failed: {e}")
+        # 2. Entitlement/plan entry → purge.
+        try:
+            self._nucleus().vault_delete("entitlement", uid)
+        except Exception as e:
+            logger.warning("[account.delete] entitlement purge for '%s' failed: %s", uid, e)
+        # 3. Private cell (all user-authored data) → erase.
+        purged = False
+        try:
+            purged = bool(self.manager.purge_client_cell(uid))
+        except Exception as e:
+            logger.warning("[account.delete] cell purge for '%s' failed: %s", uid, e)
+        # 4. Drop the live session (token can no longer resolve an active identity).
+        try:
+            self.manager.close_session(uid)
+        except Exception:
+            pass
+        return _ok(rid, {"status": "deleted", "user_id": uid, "cell_purged": purged,
+                         "note": "identity retained as audit (deactivated); all private "
+                                 "data erased. Sign-in with this id is no longer possible."})
+
+    def _handle_auth_plan(self, rid, session) -> dict:
+        """Read the caller's entitlement tier (product-neutral)."""
+        uid = session.client_id
+        return _ok(rid, {"user_id": uid, "tier": self._get_plan(uid)})
+
+    def _handle_auth_plan_set(self, rid, data, session) -> dict:
+        """(admin) Set a user's entitlement tier — the server-side billing hook. An
+        external billing service validates the store receipt (App Store / Play) and then
+        calls this with an admin token; the client can never set its own plan."""
+        err = self._assert_admin(session)
+        if err:
+            return _err(rid, -32003, err)
+        uid  = (data.get("user") or data.get("user_id") or "").strip()
+        tier = (data.get("tier") or "").strip().lower()
+        if not uid or tier not in ("free", "paid"):
+            return _err(rid, -32602, "auth.plan.set requires user=<id> and tier=free|paid.")
+        self._set_plan(uid, tier)
+        return _ok(rid, {"status": "set", "user_id": uid, "tier": tier})
 
     # ------------------------------------------------------------------
     # Memory handlers
@@ -3998,8 +4209,8 @@ class KernelDispatcher:
         pack_name = data.get("name", "").strip()
         if not pack_name:
             return _err(rid, -32602, "Missing param: name")
-        if pack_name == "base":
-            return _err(rid, -32602, "Pack 'base' has autoload:true — no enable needed.")
+        if pack_name in ("base1", "base2", "base3"):
+            return _err(rid, -32602, f"Pack '{pack_name}' has autoload:true — no enable needed.")
 
         _kernel_dir  = os.path.dirname(os.path.abspath(__file__))
         _project_dir = os.path.dirname(os.path.dirname(_kernel_dir))
@@ -4042,8 +4253,8 @@ class KernelDispatcher:
         pack_name = data.get("name", "").strip()
         if not pack_name:
             return _err(rid, -32602, "Missing param: name")
-        if pack_name == "base":
-            return _err(rid, -32602, "Pack 'base' is built-in and cannot be disabled.")
+        if pack_name in ("base1", "base2", "base3"):
+            return _err(rid, -32602, f"Pack '{pack_name}' is built-in and cannot be disabled.")
 
         _kernel_dir  = os.path.dirname(os.path.abspath(__file__))
         _project_dir = os.path.dirname(os.path.dirname(_kernel_dir))
@@ -4352,10 +4563,19 @@ class KernelDispatcher:
             # enrichment material. Curating them would loop fetch→gap→fetch. Skip.
             if _is_external(row.get("meta")):
                 continue
-            # Importance: how referenced this concept is — weave mentions (sys:refers_to)
-            # plus any other inbound links. A concept many atoms point to is important.
-            importance = len(ctx.get_incoming_links(key) or [])
-            if importance < 1:
+            # Importance: read the atom's incrementally-maintained meaning-density
+            # (meta['salience']) — bumped on every link, so no per-atom link scan here. Falls
+            # back to counting inbound links for atoms written before salience existed.
+            _m = row.get("meta")
+            if isinstance(_m, str):
+                try:
+                    _m = json.loads(_m)
+                except Exception:
+                    _m = {}
+            importance = (_m or {}).get("salience")
+            if importance is None:
+                importance = len(ctx.get_incoming_links(key) or [])
+            if not importance or importance < 0.5:
                 continue
             # Structural maturity: curated semantic links out (exclude sys:/weave scaffolding).
             adj = ctx.get_adjacent_links(key) or []
@@ -4478,14 +4698,93 @@ class KernelDispatcher:
         return _ok(rid, {"status": "learned", "docs": len(docs),
                          "vocab": len(learner.vocab), "dim": dim})
 
+    def _handle_node_learn(self, rid, data, session, ctx, scopes) -> dict:
+        """node.learn [dim=] [walks=] [length=] — learn STRUCTURAL node embeddings from the
+        typed-link graph (random walks → PPMI+SVD, the NodeWalkLearner). Complementary to the
+        content model: it captures "connected the same way" rather than "means the same".
+        Persisted to the nucleus vault. Admin/librarian only, numpy-gated."""
+        err = self._assert_admin(session)
+        if err:
+            return _err(rid, -32003, err)
+        from lib.akasha.semantic_learn import NodeWalkLearner, store_node_model
+        nucleus = getattr(session, "nucleus", None)
+        if nucleus is None:
+            return _err(rid, -32002, "Nucleus unavailable")
+        if not NodeWalkLearner.available():
+            return _err(rid, -32002, "numpy unavailable — node embeddings need numpy")
+        dim = max(8, min(int(data.get("dim", 32)), 256))
+        walks = max(1, min(int(data.get("walks", 10)), 40))
+        length = max(2, min(int(data.get("length", 8)), 20))
+        links = []
+        for src in (nucleus.core, ctx.core):
+            try:
+                links.extend(src.get_all_links(limit=200000) or [])
+            except Exception:
+                pass
+        nwl = NodeWalkLearner(dim=dim, walks_per_node=walks, length=length, seed=7)
+        if not nwl.learn(links):
+            return _err(rid, -32002,
+                        f"node.learn failed (links={len(links)} — need a connected graph)")
+        store_node_model(nucleus, nwl)
+        return _ok(rid, {"status": "learned", "links": len(links),
+                         "nodes": len(nwl.vocab), "dim": dim})
+
+    def _handle_node_sim(self, rid, data, session, ctx, scopes) -> dict:
+        """node.sim id= [limit=] — atoms STRUCTURALLY similar to an atom (nearest node-walk
+        embeddings): "connected the same way". Requires a learned model (node.learn) and that
+        the anchor is a linked node. Scope-filtered. Complements semantic.search (content)."""
+        from lib.akasha.semantic_learn import get_node_model, cosine as _lcos
+        nucleus = getattr(session, "nucleus", None)
+        model = get_node_model(nucleus) if nucleus is not None else None
+        if model is None:
+            return _err(rid, -32002, "no structural model — run node.learn first (or numpy absent)")
+        target = (data.get("id") or data.get("key") or session.last_written_id or "").strip()
+        if not target:
+            return _err(rid, -32602, "node.sim requires 'id'")
+        anchor = ctx.resolve_alias(target) or target
+        avec = model.node_vector(anchor)
+        if not avec:
+            return _err(rid, -32002,
+                        f"atom '{anchor}' is not in the structural model (no links, or re-run node.learn)")
+        limit = max(1, min(int(data.get("limit", 10)), 100))
+        scored = []
+        for key in list(model.vocab.keys()):
+            if key == anchor:
+                continue
+            if scopes and not ctx.check_access(key, scopes):
+                continue
+            v = model.node_vector(key)
+            if not v:
+                continue
+            s = _lcos(avec, v)
+            if s > 0.0:
+                scored.append((s, key))
+        scored.sort(key=lambda t: t[0], reverse=True)
+        results = [{"key": k, "score": round(s, 4),
+                    "preview": (ctx.get_chunk(k) or "")[:80]} for s, k in scored[:limit]]
+        return _ok(rid, {"anchor": anchor, "results": results, "count": len(results),
+                         "mode": "structural"})
+
     def _handle_semantic_search(self, rid, data, session, ctx, scopes) -> dict:
-        """semantic.search query= [limit=] [scan=] — rank atoms by cosine similarity to
-        the query. Scope-filtered (fail-closed). Uses the learned model when one has been
-        built (semantic.learn) — re-embedding candidates via the model so query and corpus
-        share one space — otherwise the stored feature-hashing vectors. `tier` says which."""
-        query = (data.get("query") or data.get("q") or data.get("id") or "").strip()
+        """semantic.search query=|id= [limit=] [scan=] — rank atoms by cosine similarity.
+        `query=` is free text; `id=`/`like=` anchors on an EXISTING atom ("find atoms like
+        THIS one") — its own content is re-embedded as the query and the anchor is excluded
+        from the results. Scope-filtered (fail-closed). Uses the learned model when one has
+        been built (re-embedding candidates into one space) else the stored feature-hashing
+        vectors. `tier` says which; `anchor` echoes the atom key when id-anchored."""
+        query = (data.get("query") or data.get("q") or "").strip()
+        anchor_ref = (data.get("id") or data.get("like") or "").strip()
+        anchor_key = None
+        if anchor_ref and not query:
+            # Atom-anchored: resolve to an existing atom and search by its own meaning.
+            resolved = ctx.resolve_alias(anchor_ref) or anchor_ref
+            content = ctx.get_scoped_chunk(resolved, scopes) if scopes else ctx.get_chunk(resolved)
+            if content is None:
+                query = anchor_ref                       # not an atom → treat as free text
+            else:
+                query, anchor_key = content, resolved
         if not query:
-            return _err(rid, -32602, "semantic.search requires 'query'")
+            return _err(rid, -32602, "semantic.search requires 'query' or 'id'")
         limit = max(1, min(int(data.get("limit", 10)), 100))
         scan = max(1, min(int(data.get("scan", 2000)), 20000))
 
@@ -4507,7 +4806,7 @@ class KernelDispatcher:
         scored = []
         for row in (ctx.stream(limit=scan) or []):
             key = row.get("key")
-            if not key or (scopes and not ctx.check_access(key, scopes)):
+            if not key or key == anchor_key or (scopes and not ctx.check_access(key, scopes)):
                 continue
             content = row.get("content") or ""
             if tier == "learned":
@@ -4528,8 +4827,12 @@ class KernelDispatcher:
         scored.sort(key=lambda t: t[0], reverse=True)
         results = [{"key": k, "score": round(s, 4), "preview": c[:80]}
                    for s, k, c in scored[:limit]]
-        return _ok(rid, {"query": query, "results": results,
-                         "count": len(results), "tier": tier})
+        out = {"results": results, "count": len(results), "tier": tier}
+        if anchor_key:
+            out["anchor"] = anchor_key
+        else:
+            out["query"] = query
+        return _ok(rid, out)
 
     def _handle_explore(self, rid, data, session, ctx, scopes, history) -> dict:
         """
@@ -4555,111 +4858,12 @@ class KernelDispatcher:
             return _err(rid, -32602,
                 "explore requires at least one filter: ns=, set=, type=, or pat= (or a positional pattern)")
 
-        # ── Collect candidate keys ───────────────────────────────────────
-        # candidate_keys: dict {key → alias_or_None} or None (not yet filtered)
-        candidate_keys = None
-
-        # Pattern / namespace → alias search
-        if pat or ns:
-            pattern = pat if pat else f"{ns}:%"
-            # Auto-add wildcard suffix if no wildcards present
-            if "%" not in pattern and "_" not in pattern:
-                pattern = f"{pattern}%"
-
-            rows = ctx.get_aliases_by_pattern(pattern)
-            seen_k = {r["key"] for r in rows}
-            if nucleus:
-                for r in nucleus.core.get_aliases_by_pattern(pattern) or []:
-                    if r["key"] not in seen_k:
-                        rows.append(r)
-                        seen_k.add(r["key"])
-            # Group-space atoms shared into the caller's groups (scope-gated).
-            for _gid, _ge in (self._member_group_engines(session, scopes) if session else []):
-                for r in (_ge.core.get_aliases_by_pattern(pattern) or []):
-                    if r["key"] not in seen_k:
-                        rows.append(r)
-                        seen_k.add(r["key"])
-
-            pat_keys = {}
-            for r in rows:
-                if r["key"] not in pat_keys:
-                    pat_keys[r["key"]] = r.get("alias")
-
-            candidate_keys = pat_keys if candidate_keys is None else {
-                k: v for k, v in pat_keys.items() if k in candidate_keys
-            }
-
-        # Set membership filter
-        if set_filt:
-            normalized = set_filt if set_filt.startswith("set:") else f"set:{set_filt}"
-            set_members = set(ctx.get_collection_members(normalized))
-            # A shared set's membership lives in the group engine.
-            for _gid, _ge in (self._member_group_engines(session, scopes) if session else []):
-                set_members |= set(_ge.core.get_collection_members(normalized))
-
-            if candidate_keys is None:
-                candidate_keys = {k: None for k in set_members}
-            else:
-                candidate_keys = {k: v for k, v in candidate_keys.items() if k in set_members}
-
-        if candidate_keys is None:
-            candidate_keys = {}
-
-        # Meta-type filter (checked against raw chunk meta)
-        if atom_type:
-            filtered: Dict[str, Any] = {}
-            for k, alias in list(candidate_keys.items())[: limit * 4]:
-                raw = None
-                try:
-                    raw = ctx.core.get_chunk_raw(k)
-                except Exception:
-                    pass
-                if not raw and nucleus:
-                    try:
-                        raw = nucleus.core.get_chunk_raw(k)
-                    except Exception:
-                        pass
-                if not raw:
-                    for _gid, _ge in (self._member_group_engines(session, scopes) if session else []):
-                        try:
-                            raw = _ge.core.get_chunk_raw(k)
-                        except Exception:
-                            raw = None
-                        if raw:
-                            break
-                if raw:
-                    try:
-                        meta = json.loads(raw.get("meta", "{}") or "{}")
-                    except Exception:
-                        meta = {}
-                    if meta.get("type") == atom_type or meta.get("rec_type") == atom_type:
-                        filtered[k] = alias
-            candidate_keys = filtered
-
-        # ── Build result list ────────────────────────────────────────────
+        # ── Delegate to the shared discovery core (also backs thesaurus.explore) ──
+        from lib.akasha.discovery import discover_atoms
         group_engines = self._member_group_engines(session, scopes) if session else []
-        results = []
-        for k, alias in list(candidate_keys.items())[:limit]:
-            # Fail-closed: check_access denies when scopes is empty, so no
-            # `scopes and ...` short-circuit that would leak on an empty list.
-            src = ctx
-            if not ctx.check_access(k, scopes):
-                # Not in the local cortex/scope — is it shared into one of the
-                # caller's groups? If so, read it from that group engine; if not,
-                # it stays black-holed (another member's private atom).
-                src = next((ge for _gid, ge in group_engines if ge.check_access(k)), None)
-                if src is None:
-                    continue
-            if alias is None:
-                als = src.get_aliases_by_key(k)
-                alias = als[0] if als else None
-            content = src.get_chunk(k) or ""
-            results.append({
-                "key":     k,
-                "alias":   alias,
-                "preview": content[:60],
-                "color":   CosmosMapper.get_aura_color(ctx, k),
-            })
+        results = discover_atoms(
+            ctx, nucleus, group_engines, scopes,
+            ns=ns, set_filt=set_filt, atom_type=atom_type, pat=pat, limit=limit)
 
         session.set_context("last_signposts",
             [{"key": r["key"], "alias": r["alias"]} for r in results])
@@ -4709,6 +4913,24 @@ class KernelDispatcher:
     # ------------------------------------------------------------------
     # Dive / View (consciousness layer)
     # ------------------------------------------------------------------
+
+    def _handle_view(self, rid, data, session, scopes) -> dict:
+        """view id= — the consciousness view of an atom on its own: signposts (1-hop),
+        resonance (2-hop / semantic neighbours), cosmos_nd (spatial-emotional vector), and
+        aura_color. Same payload dive/look produces, but standalone and without changing the
+        session focus or signpost stack — a read-only 'show me the meaning of this'."""
+        ctx = session.local_cortex
+        target = (data.get("id") or data.get("key")
+                  or session.last_written_id or session.get_context("focus", "")).strip()
+        if not target:
+            return _err(rid, -32602, "view requires 'id' or a focus/last-written atom")
+        resolved = self._resolve_target(target, session, ctx.stream(10)) or target
+        if session.consciousness is None:
+            return _err(rid, -32001, "consciousness engine unavailable")
+        result = session.consciousness.generate_view(resolved, allowed_scopes=scopes)
+        if isinstance(result, dict) and "error" in result:
+            return _err(rid, -32002, result["error"])
+        return _ok(rid, result)
 
     def _handle_dive_look(self, rid, data, session, scopes) -> dict:
         ctx = session.local_cortex
@@ -6151,135 +6373,257 @@ class KernelDispatcher:
     # Jataka
     # ------------------------------------------------------------------
 
-    def _handle_jataka_dream(self, rid, data, session, ctx, scopes, history) -> dict:
-        """
-        dream — inference-based hypothetical linking.
+    # ── dream — the asynchronous incubation / bridge-proposer ─────────────────────────────
+    #
+    # Unlike assoc (1-hop, high-confidence gap-fill) and sim/node.sim (rank what is already
+    # near), dream finds atoms that are NEAR in meaning/emotion but FAR in the explicit graph
+    # — the connections the graph is missing — and stages them as tentative (tent:) links for
+    # a HUMAN to confirm. It runs as a LOW-priority background JCL job ("sleep on it"): the
+    # first call submits and returns "dreaming…"; a later call returns the staged candidates.
+    _DREAM_REL = "tent:calc:hidden_affinity"
 
-        Uses all available knowledge processing (JatakaEngine, vector proximity,
-        structural inference) to propose links that do not yet exist.
-        Proposed links are written with a 'tent:' prefix (tentative).
+    def _dream_pending(self, ctx, focus_key, scopes):
+        """The tent: candidates already staged on a focus (a completed dream awaiting approval)."""
+        out = []
+        try:
+            raw = ctx.core.get_adjacent_links(focus_key) or []
+        except Exception:
+            raw = []
+        for l in raw:
+            dst = l.get("dst") if isinstance(l, dict) else (l[0] if l else None)
+            rel = l.get("rel") if isinstance(l, dict) else (l[1] if len(l) > 1 else "")
+            if not dst or not str(rel).startswith("tent:"):
+                continue
+            if scopes and not ctx.check_access(dst, scopes):
+                continue
+            w = float(l.get("w", 0.0) or 0.0) if isinstance(l, dict) else 0.0
+            al = ctx.get_aliases_by_key(dst)
+            out.append({"dst": dst, "alias": al[0] if al else None,
+                        "score": round(w, 4), "rel": rel,
+                        "preview": (ctx.get_chunk(dst) or "")[:60]})
+        out.sort(key=lambda c: c["score"], reverse=True)
+        return out
 
-        Parameters:
-          id=     focus atom (optional; without id, runs a free dream cycle)
-          axis=   focus on one semantic axis (optional)
-          commit= yes → write tent: links; no (default) → return proposals only
-        """
-        target = (data.get("id") or "").strip()
-        axis   = (data.get("axis") or "").strip() or None
-        commit = data.get("commit", "").strip().lower() in ("yes", "true", "1")
+    def _handle_dream(self, rid, data, session, ctx, scopes, history) -> dict:
+        """dream id= [boldness=] [reach=] [again=yes] — incubate hidden connections for a
+        focus atom, asynchronously. First call submits a background job and returns
+        status="dreaming"; call again later to get status="ready" with the staged candidates
+        (near-in-meaning, far-in-graph) for you to confirm with dream.confirm. Human approval
+        is mandatory — dream never links on its own. Degrades to a synchronous run if JCL is
+        unavailable."""
+        target = (data.get("id") or session.get_context("dream:last") or "").strip()
+        if not target:
+            return _err(rid, -32602, "dream requires 'id' (the atom to dream around)")
+        focus = self._resolve_target(target, session, history) or ctx.resolve_alias(target) or target
+        if (ctx.get_scoped_chunk(focus, scopes) if scopes else ctx.get_chunk(focus)) is None:
+            return _err(rid, -32002, f"Atom '{focus}' not found or access denied")
+        session.set_context("dream:last", focus)
+        again = str(data.get("again", "")).lower() in ("yes", "true", "1")
 
-        focal_key: Optional[str] = None
-        if target:
-            focal_key = (
-                self._resolve_target(target, session, history)
-                or ctx.resolve_alias(target)
-                or target
-            )
+        # Poll an in-flight job for this focus.
+        job_id = session.get_context(f"dream:{focus}")
+        job = self.jcl_worker.get_job(job_id) if (job_id and self.jcl_worker) else None
+        if job and job.status in ("PENDING", "RUNNING") and not again:
+            elapsed = round(time.time() - (job.started_at or job.submitted_at), 1)
+            return _ok(rid, {"status": "dreaming", "focus": focus, "job_id": job_id,
+                             "elapsed_s": elapsed,
+                             "hint": "still incubating — come back with `dream id=` later"})
 
-        proposals: List[Dict[str, Any]] = []
-        _proposed_dsts: set = set()  # dedup by destination key
+        # A finished dream: staged tent: candidates awaiting approval.
+        if not again:
+            pending = self._dream_pending(ctx, focus, scopes)
+            if pending:
+                return _ok(rid, {"status": "ready", "focus": focus,
+                                 "candidates": pending, "count": len(pending),
+                                 "hint": "approve with `dream.confirm dst=` or drop with `dream.forget`"})
+            if job and job.status == "FAILED":
+                session.set_context(f"dream:{focus}", None)
+                return _ok(rid, {"status": "failed", "focus": focus, "error": job.error})
 
-        def _add_proposal(p: Dict[str, Any]) -> None:
-            dst = p.get("dst", "")
-            if dst and dst not in _proposed_dsts:
-                _proposed_dsts.add(dst)
-                proposals.append(p)
+        # Nothing pending (or again=yes) → start a fresh dream.
+        if again:
+            for c in self._dream_pending(ctx, focus, scopes):
+                try:
+                    ctx.remove_link(focus, c["dst"], c["rel"])
+                except Exception:
+                    pass
+        params = {"focus": focus,
+                  "boldness": float(data.get("boldness", 0.2)),
+                  "reach":    float(data.get("reach", 0.5)),
+                  "threshold": float(data.get("threshold", 0.12)),
+                  "limit":    int(data.get("limit", 5)),
+                  "scan":     int(data.get("scan", 2000))}
+        # Prefer the background JCL job (the "while sleeping" tier); degrade to synchronous.
+        if self.harmonia and self.jcl_worker and JCLJob and JCLStep:
+            job = JCLJob(owner=session.client_id, label=f"dream:{target[:32]}",
+                         steps=[JCLStep(method="dream.run", params=params)])
+            self.harmonia.submit_job(job, job_class=CLASS_LINK)
+            session.set_context(f"dream:{focus}", job.job_id)
+            return _ok(rid, {"status": "dreaming", "focus": focus, "job_id": job.job_id,
+                             "hint": "dreaming… come back with `dream id=` to see the candidates"})
+        # Synchronous fallback (no JCL): compute + stage now.
+        n = self._dream_stage(ctx, session, scopes, params)
+        return _ok(rid, {"status": "ready", "focus": focus,
+                         "candidates": self._dream_pending(ctx, focus, scopes),
+                         "count": n, "note": "computed synchronously (JCL unavailable)"})
 
-        # ── JatakaEngine: vector/Jaccard affinity discovery ────────────
-        if session.jataka and focal_key:
+    def _handle_dream_run(self, rid, data, session, ctx, scopes) -> dict:
+        """dream.run — the background computation (JCL-dispatched, internal). Computes the
+        affinity-gap candidates and stages them as tent: links. Not for direct use."""
+        params = {"focus": data.get("focus", ""),
+                  "boldness": float(data.get("boldness", 0.2)),
+                  "reach":    float(data.get("reach", 0.5)),
+                  "threshold": float(data.get("threshold", 0.12)),
+                  "limit":    int(data.get("limit", 5)),
+                  "scan":     int(data.get("scan", 2000))}
+        n = self._dream_stage(ctx, session, scopes, params)
+        return _ok(rid, {"status": "dreamed", "focus": params["focus"], "staged": n})
+
+    def _dream_stage(self, ctx, session, scopes, params) -> int:
+        """Compute affinity-gap candidates for a focus and write them as tent: links."""
+        focus = params["focus"]
+        cands = self._dream_affinities(ctx, session, focus, scopes, params)
+        author = getattr(session, "client_id", "system")
+        n = 0
+        for c in cands:
             try:
-                for hit in session.jataka.dream_affinities(ctx, focal_key):
-                    dst = hit.get("dst", "")
-                    if not dst:
-                        continue
-                    al = ctx.get_aliases_by_key(dst)
-                    _add_proposal({
-                        "axis":       "affinity",
-                        "rel":        f"tent:{hit.get('rel', 'calc:hidden_affinity')}",
-                        "dst":        dst,
-                        "alias":      al[0] if al else None,
-                        "preview":    hit.get("preview", ""),
-                        "confidence": hit.get("confidence", 0),
-                        "source":     "affinity",
-                        "color":      CosmosMapper.get_aura_color(ctx, dst),
-                    })
+                ctx.put_link(focus, c["dst"], self._DREAM_REL, w=c["score"], author=author)
+                n += 1
             except Exception:
                 pass
+        return n
 
-        # ── Structural inference: pattern from set peers ────────────────
-        if focal_key:
-            voids = ctx.find_link_voids(focal_key, axis=axis, allowed_scopes=scopes)
-            for void in voids:
-                for cand in void.get("candidates", [])[:2]:
-                    _add_proposal({
-                        "axis":    void["axis"],
-                        "rel":     f"tent:{cand['rel']}",
-                        "dst":     cand["key"],
-                        "alias":   cand.get("alias"),
-                        "preview": cand.get("preview", ""),
-                        "count":   cand.get("count", 0),
-                        "source":  "structural",
-                        "color":   CosmosMapper.get_aura_color(ctx, cand["key"]),
-                    })
+    def _dream_affinities(self, ctx, session, focus, scopes, params) -> list:
+        """The affinity gap: atoms NEAR in meaning/emotion/structure but FAR in the explicit
+        graph. Multi-signal, scope-filtered. Conservative by default (rewards signal
+        agreement and graph distance); `boldness` shifts toward a single strong signal, `reach`
+        strengthens the graph-distance reward."""
+        import json as _json
+        boldness = max(0.0, min(params.get("boldness", 0.2), 1.0))
+        reach = max(0.0, min(params.get("reach", 0.5), 2.0))
+        threshold = max(0.0, params.get("threshold", 0.12))
+        limit = max(1, min(int(params.get("limit", 5)), 50))
+        scan = max(1, min(int(params.get("scan", 2000)), 20000))
 
-        # ── Transitive inference: A→B, B→C → propose tent: A→C ─────────
-        if focal_key:
+        tensor = getattr(ctx, "tensor", None)
+        nucleus = getattr(session, "nucleus", None)
+        try:
+            from lib.akasha.semantic_learn import get_node_model, cosine as _lcos
+            node_model = get_node_model(nucleus) if nucleus is not None else None
+        except Exception:
+            node_model, _lcos = None, None
+
+        def _meta_vec(key, row=None):
             try:
-                a_links = ctx.get_adjacent_links(focal_key) or []
-                existing_dsts = {lnk[0] for lnk in a_links} | {focal_key} | _proposed_dsts
-                trans_counts: Dict[str, Dict[str, Any]] = {}
-                for b_key, _rel_ab in a_links[:12]:
-                    for c_key, rel_bc in (ctx.get_adjacent_links(b_key) or []):
-                        if c_key in existing_dsts:
-                            continue
-                        # Skip meta/system rels and tent: to avoid noise
-                        if rel_bc.startswith(("sys:", "tent:", "chrono:")):
-                            continue
-                        if c_key not in trans_counts:
-                            trans_counts[c_key] = {"count": 0, "rel": rel_bc}
-                        trans_counts[c_key]["count"] += 1
-                for c_key, info in sorted(trans_counts.items(),
-                                          key=lambda x: -x[1]["count"])[:3]:
-                    al = ctx.get_aliases_by_key(c_key)
-                    content = ctx.get_chunk(c_key) or ""
-                    _add_proposal({
-                        "axis":    "transitive",
-                        "rel":     f"tent:{info['rel']}",
-                        "dst":     c_key,
-                        "alias":   al[0] if al else None,
-                        "preview": content[:40],
-                        "count":   info["count"],
-                        "source":  "transitive",
-                        "color":   CosmosMapper.get_aura_color(ctx, c_key),
-                    })
+                raw = row if row is not None else ctx.core.get_chunk_raw(key)
+                m = _json.loads(raw["meta"]) if raw and raw.get("meta") else {}
+                v = m.get("semantic_vector") if isinstance(m, dict) else None
+                return v if isinstance(v, list) and v else None
+            except Exception:
+                return None
+
+        def _neighbors(key):
+            out = set()
+            try:
+                for l in (ctx.get_adjacent_links(key) or []):
+                    d = l[0] if not isinstance(l, dict) else l.get("dst")
+                    if d:
+                        out.add(d)
             except Exception:
                 pass
+            return out
 
-        # ── Write tentative links if commit=yes ─────────────────────────
-        committed: List[Dict[str, Any]] = []
-        if commit and focal_key:
-            author_id = getattr(session, 'client_id', 'system')
-            for p in proposals:
-                dst = p.get("dst")
-                rel = p.get("rel", "")
-                if dst and rel:
-                    if not rel.startswith("tent:"):
-                        rel = f"tent:{rel}"
-                    try:
-                        ctx.put_link(focal_key, dst, rel, author=author_id)
-                        committed.append({"rel": rel, "dst": dst, "alias": p.get("alias")})
-                    except Exception:
-                        pass
+        def _tags(nbrs):
+            return {n for n in nbrs}  # neighbour set doubles as the emo:/calc: tag set for overlap
 
-        focal_aliases = ctx.get_aliases_by_key(focal_key) if focal_key else []
-        return _ok(rid, {
-            "focal":     {"key": focal_key, "alias": focal_aliases[0] if focal_aliases else None}
-                         if focal_key else None,
-            "axis":      axis or "all",
-            "proposals": proposals,
-            "committed": committed,
-            "status":    "committed" if committed else ("proposed" if proposals else "empty"),
-        })
+        focus_vec = _meta_vec(focus)
+        focus_nbrs = _neighbors(focus)
+        focus_nvec = node_model.node_vector(focus) if node_model else None
+        linked = focus_nbrs | {focus}
+
+        scored = []
+        for row in (ctx.stream(limit=scan) or []):
+            dst = row.get("key")
+            if not dst or dst in linked:
+                continue
+            if scopes and not ctx.check_access(dst, scopes):
+                continue
+            # signals in [0,1]
+            content = 0.0
+            if tensor is not None and focus_vec:
+                cv = _meta_vec(dst, row)
+                if cv:
+                    content = max(0.0, tensor.cosine(focus_vec, cv))
+            struct = 0.0
+            if node_model is not None and focus_nvec:
+                nv = node_model.node_vector(dst)
+                if nv:
+                    struct = max(0.0, _lcos(focus_nvec, nv))
+            dst_nbrs = _neighbors(dst)
+            shared = len(focus_nbrs & dst_nbrs)
+            tag = (shared / len(focus_nbrs | dst_nbrs)) if (focus_nbrs or dst_nbrs) else 0.0
+            present = [s for s in (content, struct, tag) if s > 0.05]
+            if not present:
+                continue
+            gap = 1.0 / (1.0 + shared)                       # far in the graph → near 1.0
+            agreement = len(present) / 3.0
+            strength_cons = (sum(present) / len(present)) * (0.5 + 0.5 * agreement)
+            strength_bold = max(present)
+            nearness = (1.0 - boldness) * strength_cons + boldness * strength_bold
+            score = nearness * (gap ** reach)
+            if score >= threshold:
+                scored.append({"dst": dst, "score": round(score, 4),
+                               "signals": {"content": round(content, 3),
+                                           "struct": round(struct, 3),
+                                           "tag": round(tag, 3)},
+                               "shared_neighbours": shared})
+        scored.sort(key=lambda c: c["score"], reverse=True)
+        return scored[:limit]
+
+    def _handle_dream_confirm(self, rid, data, session, ctx, scopes, history) -> dict:
+        """dream.confirm dst= [src=] — promote a staged (tent:) dream link to a real link.
+        Human approval of a proposed connection: the tent: prefix is stripped so the affinity
+        becomes a first-class edge. `src` defaults to the last-dreamed focus."""
+        src_ref = (data.get("src") or data.get("id") or session.get_context("dream:last") or "").strip()
+        dst_ref = (data.get("dst") or "").strip()
+        if not src_ref or not dst_ref:
+            return _err(rid, -32602, "dream.confirm requires 'dst' (and 'src' or a last-dreamed focus)")
+        src = self._resolve_target(src_ref, session, history) or ctx.resolve_alias(src_ref) or src_ref
+        dst = ctx.resolve_alias(dst_ref) or dst_ref
+        # Find the staged tent: link src→dst.
+        rel = next((c["rel"] for c in self._dream_pending(ctx, src, scopes) if c["dst"] == dst), None)
+        if not rel:
+            return _err(rid, -32002, "no staged dream link from that focus to that atom")
+        real_rel = rel[len("tent:"):] if rel.startswith("tent:") else rel
+        author = getattr(session, "client_id", "system")
+        try:
+            ctx.remove_link(src, dst, rel)
+            ctx.put_link(src, dst, real_rel, author=author)
+        except Exception as exc:
+            return _err(rid, -32000, f"confirm failed: {exc}")
+        return _ok(rid, {"status": "confirmed", "src": src, "dst": dst, "rel": real_rel})
+
+    def _handle_dream_forget(self, rid, data, session, ctx, scopes, history) -> dict:
+        """dream.forget [dst=] [src=] [all=yes] — drop staged (tent:) dream links that did not
+        resonate. Without dst=, `all=yes` clears every staged candidate on the focus."""
+        src_ref = (data.get("src") or data.get("id") or session.get_context("dream:last") or "").strip()
+        if not src_ref:
+            return _err(rid, -32602, "dream.forget requires 'src' or a last-dreamed focus")
+        src = self._resolve_target(src_ref, session, history) or ctx.resolve_alias(src_ref) or src_ref
+        dst_ref = (data.get("dst") or "").strip()
+        drop_all = str(data.get("all", "")).lower() in ("yes", "true", "1") or not dst_ref
+        pending = self._dream_pending(ctx, src, scopes)
+        dropped = 0
+        for c in pending:
+            if drop_all or (dst_ref and (c["dst"] == (ctx.resolve_alias(dst_ref) or dst_ref)
+                                         or c["alias"] == dst_ref)):
+                try:
+                    ctx.remove_link(src, c["dst"], c["rel"])
+                    dropped += 1
+                except Exception:
+                    pass
+        session.set_context(f"dream:{src}", None)
+        return _ok(rid, {"status": "forgotten", "src": src, "dropped": dropped})
 
     # ------------------------------------------------------------------
     # Contexa
@@ -6755,6 +7099,217 @@ class KernelDispatcher:
         root = self.fileio.add_root(dirp)
         return _ok(rid, {"allowed": root, "roots": list(self.fileio.roots)})
 
+    # ── Contexa ingest / Jataka present — the client session's I/O sides ──────────
+    # These are the survey round-trip on the pipe: Contexa reads collected responses IN (with
+    # macro context-binding), the client projects/analyses via concept models (lens / table),
+    # and Jataka presents OUT. Consciousness is the substrate both flow through — Contexa's
+    # writes are auto-woven; Jataka's reads pass through generate_view — never a pipe endpoint.
+
+    def _survey_questions_ordered(self, dispatch, ctx, survey_id):
+        """Open a survey and return its question atom ids ordered by meta['order'] then
+        creation. Returns (question_ids, error_msg)."""
+        opened = dispatch("survey.open", {"survey_id": survey_id})
+        if not isinstance(opened, dict) or opened.get("error") or "result" not in opened:
+            return None, f"survey '{survey_id[:12]}' not found or not a survey root"
+        inv = (dispatch("survey.list", {}) or {}).get("result") or {}
+        q_ids = list(inv.get("questions") or [])
+
+        def _order(q):
+            m = ctx.get_meta(q) or {}
+            o = m.get("order")
+            return (o if o is not None else 1e9, m.get("created_at", 0))
+        return sorted(q_ids, key=_order), None
+
+    def _handle_contexa_ingest(self, rid, data, session, ctx, scopes, client_id) -> dict:
+        """contexa.ingest survey=<id> (path=|text=) [format=] [respondent_col=] [map=] — the
+        client's INPUT side: read collected responses (a CSV/JSON file, or an inline upload
+        payload) into the survey graph WITH Contexa macro-binding (ctx:answers → question,
+        ctx:from → respondent, per-question set) layered on the survey model's structural links.
+
+        Columns after the respondent column map to the survey's questions: explicitly via
+        map=col:qid[,col:qid] (qid may be a question id, an alias, or a 1-indexed position),
+        else to the survey's questions in order. Writes into the client's own survey (WRITE);
+        disk reads honour the io.allow list. Runs in the write workspace (single-route guard)."""
+        if _concept_registry is None:
+            return _err(rid, -32001, "concept models unavailable")
+        if not self.contexa:
+            return _err(rid, -32001, "ContexaEngine not available in this environment.")
+        survey_id = (data.get("survey") or data.get("survey_id") or "").strip()
+        if not survey_id:
+            survey_id = getattr(session, "get_context", lambda k: None)("active_survey_root") or ""
+        if not survey_id:
+            return _err(rid, -32602, "contexa.ingest requires 'survey' (survey id)")
+
+        dispatch = self._io_dispatch(session, rid)
+        q_ids, qerr = self._survey_questions_ordered(dispatch, ctx, survey_id)
+        if qerr:
+            return _err(rid, -32602, qerr)
+
+        # Source: an inline upload (text=) — the Web-GUI path — or a permitted file.
+        fmt = (data.get("format") or "").strip() or None
+        if data.get("text") is not None:
+            if not fmt:
+                return _err(rid, -32602, "contexa.ingest text= requires 'format'")
+            source = InlineSource(str(data["text"]), fmt, name=data.get("name") or "responses")
+        else:
+            path = (data.get("path") or data.get("file") or "").strip()
+            if not path:
+                return _err(rid, -32602, "contexa.ingest requires 'path' or 'text'")
+            if not self.fileio:
+                return _err(rid, -32001, "FileIO unavailable in this environment.")
+            # Disk reads are admin/librarian only (same posture as io.import — the io.allow
+            # list is maintainer-managed); a WRITE client ingests its own data via text=.
+            err = self._assert_admin(session)
+            if err:
+                return _err(rid, -32003, err)
+            source = FileSource(self.fileio, path, fmt)
+
+        try:
+            stream = source.read()
+        except PermissionError as exc:
+            return _err(rid, -32001, str(exc))
+        except FileNotFoundError:
+            return _err(rid, -32002, "file not found")
+        except (ValueError, RuntimeError) as exc:
+            return _err(rid, -32602, str(exc))
+        if stream.kind != "table":
+            return _err(rid, -32602, "contexa.ingest requires a tabular source (CSV/JSON rows)")
+
+        cols = list(stream.columns)
+        if not cols:
+            return _err(rid, -32602, "no columns in the response source")
+        respondent_col = (data.get("respondent_col") or "").strip() or cols[0]
+        if respondent_col not in cols:
+            return _err(rid, -32602,
+                        f"respondent_col '{respondent_col}' not in columns {cols}")
+
+        question_map = {}
+        if data.get("map"):
+            for pair in str(data["map"]).split(","):
+                if ":" not in pair:
+                    continue
+                col, q = (p.strip() for p in pair.split(":", 1))
+                if col not in cols:
+                    continue
+                if q.isdigit():
+                    idx = int(q) - 1
+                    if 0 <= idx < len(q_ids):
+                        question_map[col] = q_ids[idx]
+                elif q in q_ids:
+                    question_map[col] = q
+                else:
+                    resolved = ctx.resolve_alias(q)
+                    if resolved:
+                        question_map[col] = resolved
+        else:
+            q_cols = [c for c in cols if c != respondent_col]
+            for i, col in enumerate(q_cols):
+                if i < len(q_ids):
+                    question_map[col] = q_ids[i]
+        if not question_map:
+            return _err(rid, -32602, "no question columns could be mapped "
+                        "(add questions to the survey first, or pass map=col:qid)")
+
+        def _bind(resp_id, question_key=None, respondent_key=None, set_names=None):
+            return self.contexa.bind_context(
+                ctx, resp_id, question_key=question_key, respondent_key=respondent_key,
+                set_names=set_names, author=client_id)
+
+        sink = ResponseIngestSink(dispatch, _bind, survey_id, respondent_col, question_map)
+        try:
+            result = sink.write(stream)
+        except (ValueError, RuntimeError) as exc:
+            return _err(rid, -32602, str(exc))
+        result["mapped_questions"] = {c: q[:12] for c, q in question_map.items()}
+        if stream.origin:
+            result.setdefault("source", stream.origin)
+        return _ok(rid, result)
+
+    def _handle_jataka_present(self, rid, data, session, ctx, scopes, client_id) -> dict:
+        """jataka.present (survey=<id>|set=<name>|focus=<atom>) as=table|scatter|narrative
+        [format=] — the client's OUTPUT side: read a graph selection THROUGH the Consciousness
+        substrate and render a presentation, returned inline (READ-level; no graph write).
+          as=table     survey=|set=   → per-(question,answer) counts / listed rows (+ format=)
+          as=scatter   survey=|set=   → 2-D points positioned by cosmos_nd
+          as=narrative focus=|survey= → prose from generate_view (LLM-optional; template floor)"""
+        as_fmt = (data.get("as") or data.get("mode") or "table").strip().lower()
+        survey_id = (data.get("survey") or data.get("survey_id") or "").strip()
+        set_name = (data.get("set") or "").strip()
+        focus = (data.get("focus") or data.get("id") or "").strip()
+        dispatch = self._io_dispatch(session, rid)
+
+        def _view(k):
+            return session.consciousness.generate_view(k, allowed_scopes=scopes)
+
+        def _content(k):
+            return (ctx.get_scoped_chunk(k, scopes) if scopes else ctx.get_chunk(k)) or ""
+
+        def _agg_source(sid):
+            return SurveyAggregateSource(
+                lambda: (dispatch("survey.list", {}) or {}).get("result") or {},
+                lambda k: ctx.get_meta(k) or {}, _content, sid)
+
+        try:
+            if as_fmt == "table":
+                if survey_id:
+                    opened = dispatch("survey.open", {"survey_id": survey_id})
+                    if not isinstance(opened, dict) or "result" not in opened:
+                        return _err(rid, -32602, f"survey '{survey_id[:12]}' not found")
+                    source = _agg_source(survey_id)
+                elif set_name:
+                    source = SetSource(
+                        list_members=lambda: ctx.list_set(set_name, allowed_scopes=scopes),
+                        get_content=_content, set_name=set_name)
+                else:
+                    return _err(rid, -32602, "jataka.present as=table requires 'survey' or 'set'")
+                sink = PresentTableSink((data.get("format") or "").strip() or None)
+                return _ok(rid, run_pipeline(source, sink))
+
+            if as_fmt in ("scatter", "cosmos"):
+                sset = f"set:survey:{survey_id}:responses" if survey_id else set_name
+                if not sset:
+                    return _err(rid, -32602, "jataka.present as=scatter requires 'survey' or 'set'")
+                source = SetSource(
+                    list_members=lambda: ctx.list_set(sset, allowed_scopes=scopes),
+                    get_content=_content, set_name=sset)
+
+                def _coords(k):
+                    v = _view(k) or {}
+                    if "error" in v:
+                        return None
+                    f = v.get("focus") or {}
+                    nd = f.get("cosmos_nd") or []
+                    if len(nd) < 2:
+                        return None
+                    label = f.get("alias") or (f.get("content") or "")[:20].replace("\n", " ")
+                    color = nd[5] if len(nd) > 5 else "#888888"
+                    return (nd[0], nd[1], label, color)
+                return _ok(rid, run_pipeline(source, ScatterSink(_coords)))
+
+            if as_fmt in ("narrative", "story", "narrate"):
+                if not focus and survey_id:
+                    focus = survey_id
+                if not focus:
+                    return _err(rid, -32602,
+                                "jataka.present as=narrative requires 'focus' or 'survey'")
+                resolved = ctx.resolve_alias(focus) or focus
+                rows, cols = [], []
+                if survey_id:
+                    opened = dispatch("survey.open", {"survey_id": survey_id})
+                    if not isinstance(opened, dict) or "result" not in opened:
+                        return _err(rid, -32602, f"survey '{survey_id[:12]}' not found")
+                    agg = _agg_source(survey_id).read()
+                    rows, cols = agg.rows, agg.columns
+                source = InterpretationSource(_view, resolved, data_rows=rows, data_columns=cols)
+                return _ok(rid, run_pipeline(source, NarrativeSink(getattr(self, "_narrative_llm", None))))
+
+            return _err(rid, -32602,
+                        f"unknown presentation mode '{as_fmt}' (table|scatter|narrative)")
+        except (ValueError, RuntimeError) as exc:
+            return _err(rid, -32602, str(exc))
+        except Exception as exc:
+            return _err(rid, -32002, f"present failed: {str(exc)[:140]}")
+
     def _handle_web_search(self, rid, data, session, ctx, scopes, client_id) -> dict:
         """
         web.search — surface-level web search; results stored as lightweight refs.
@@ -6840,6 +7395,37 @@ class KernelDispatcher:
         profile = ctx.emotion_profile(focal_key, scope=scope,
                                       allowed_scopes=scopes, normalize=normalize)
         return _ok(rid, profile)
+
+    def _handle_emotion_find(self, rid, data, session, ctx, scopes) -> dict:
+        """emotion.find emo= [limit=] — the reverse of emotion.profile: the atoms that FEEL a
+        given emotion, i.e. those linking to the `emo:*` atom (incoming edges), ranked by edge
+        strength. `emo=` accepts 'awe' or 'emo:awe'. Scope-filtered (fail-closed)."""
+        emo = (data.get("emo") or data.get("emotion") or data.get("id") or "").strip()
+        if not emo:
+            return _err(rid, -32602, "emotion.find requires 'emo' (e.g. emo=awe)")
+        alias = emo if emo.startswith("emo:") else f"emo:{emo}"
+        emo_key = ctx.resolve_alias(alias) or (emo if emo != alias else None)
+        if not emo_key:
+            return _err(rid, -32002, f"emotion '{alias}' not found")
+        limit = max(1, min(int(data.get("limit", 20)), 200))
+        seen, results = set(), []
+        for link in (ctx.get_incoming_links(emo_key) or []):
+            src = link.get("src") if isinstance(link, dict) else (link[0] if link else None)
+            if not src or src in seen:
+                continue
+            seen.add(src)
+            if scopes and not ctx.check_access(src, scopes):
+                continue
+            content = ctx.get_chunk(src)
+            if content is None:
+                continue
+            w = link.get("w", 1.0) if isinstance(link, dict) else 1.0
+            rel = link.get("rel", "") if isinstance(link, dict) else ""
+            results.append({"key": src, "weight": float(w or 1.0), "rel": rel,
+                            "preview": content[:80]})
+        results.sort(key=lambda r: r["weight"], reverse=True)
+        return _ok(rid, {"emotion": alias, "results": results[:limit],
+                         "count": min(len(results), limit)})
 
     def _handle_associate(self, rid, data, session, ctx, scopes, history) -> dict:
         """
@@ -6959,15 +7545,31 @@ class KernelDispatcher:
         unwritten: Dict[str, Any],
         ctx=None,
     ) -> Dict[str, Any]:
-        """Formats associate result as a Cosmos/3D-Force-Graph ready payload."""
-        nodes: List[Dict[str, Any]] = [{
+        """Formats associate result as a Cosmos/3D-Force-Graph ready payload.
+
+        Each node carries a REAL semantic position (x/y/z = projection of its self-owned
+        embedding via CosmosMapper.position, scaled to force-graph units) so the layout means
+        something — near in space ⇒ near in meaning — and a degree-based size (val). A
+        front-end that seeds ForceGraph positions from x/y/z gets a semantic layout instead of
+        pure physics; one that ignores them is unaffected (additive, backward-compatible)."""
+        _POS_SCALE = 60.0   # force-graph world units (position() returns ~unit-scale)
+
+        def _geom(key: str, base_val: float):
+            x, y, z = CosmosMapper.position(ctx, key) if ctx else (0.0, 0.0, 0.0)
+            deg = len(ctx.get_adjacent_links(key)) if ctx else 0
+            return {"x": round(x * _POS_SCALE, 3), "y": round(y * _POS_SCALE, 3),
+                    "z": round(z * _POS_SCALE, 3), "val": round(base_val + min(deg, 40) * 0.6, 2)}
+
+        _focal_node = {
             "id":    focal["key"],
             "name":  focal["preview"],
             "alias": focal.get("alias"),
             "group": "focus",
-            "val":   20,
             "color": "#ffffff",
-        }]
+        }
+        _focal_node.update(_geom(focal["key"], 20))
+        _focal_node["val"] = 20          # focus stays visually dominant regardless of degree
+        nodes: List[Dict[str, Any]] = [_focal_node]
         links: List[Dict[str, Any]] = []
         seen: set = {focal["key"]}
 
@@ -6997,14 +7599,15 @@ class KernelDispatcher:
         for a in result.get("associations", []):
             if a["key"] not in seen:
                 color = _node_color(a["key"], a.get("type", "chunk"))
-                nodes.append({
+                node = {
                     "id":    a["key"],
                     "name":  a["preview"],
                     "alias": _alias(a["key"]),
                     "group": a.get("type", "association"),
-                    "val":   10,
                     "color": color,
-                })
+                }
+                node.update(_geom(a["key"], 8))
+                nodes.append(node)
                 seen.add(a["key"])
             links.append({
                 "source": focal["key"],
@@ -7016,14 +7619,15 @@ class KernelDispatcher:
         for r in result.get("resonance", []):
             if r["key"] not in seen:
                 color = _node_color(r["key"], "resonance")
-                nodes.append({
+                node = {
                     "id":    r["key"],
                     "name":  r["preview"],
                     "alias": _alias(r["key"]),
                     "group": "resonance",
-                    "val":   12,
                     "color": color,
-                })
+                }
+                node.update(_geom(r["key"], 10))
+                nodes.append(node)
                 seen.add(r["key"])
             links.append({
                 "source": focal["key"],

@@ -1,0 +1,7 @@
+{
+  "label": "Curation demo — narrative-path discovery",
+  "description": "A small relation-web (a patriline through time) for demonstrating curation's auto path-discovery: intersecting the time axis (chrono:before) with the bloodline axis (lineage:begat) reveals a succession narrative. Load, then run: curate \"Succession\" set=curation:demo:lineage rels=chrono:before,lineage:begat.",
+  "license": "MIT (editorial); figures are public-domain Greek mythology",
+  "source": "internal (illustrative)",
+  "version": "1.0"
+}

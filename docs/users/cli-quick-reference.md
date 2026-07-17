@@ -7,6 +7,24 @@ Type `help -c <model>` for detailed operators of any concept model.
 
 ---
 
+## Concept-model commands — one scheme, four ways
+
+Every concept model (thesaurus, curation, cast, note, fact, …) is reached the same way.
+Learn the model name; the rest follows.
+
+| Form | Example | When |
+|---|---|---|
+| **Full model name** (canonical) | `thesaurus.reference ns=word` | Always works, every model — the one to remember |
+| **`<model> <op>`** (one-shot) | `thesaurus reference ns=word` | Same, spelled with a space |
+| **Subcommand mode** | `thesaurus` ⏎ then `reference ns=word` | Exploring one model; prompt shows `[thesaurus]`, `out`/`exit` leaves |
+| **Abbreviation** (shortcut) | `th.reference ns=word` | Once you know it — `cs`=cast, `n`=note, `ft`=fact, `hum`=human, `cur`=curation, `th`=thesaurus, … |
+
+Inside a mode, bare operators (`reference`, `explore`, `concept`) resolve to
+`<model>.<op>`; ordinary commands (`help`, `status`, `w`, `r`) still work as a
+fallback. `help -c <model>` lists a model's operators.
+
+---
+
 ## REPL Shell — Interactive Commands
 
 These directives are handled by the shell itself and are not sent to the kernel.
@@ -83,10 +101,30 @@ Relations are auto-normalised: `supports` → `@supports`, `sys:is_a` kept as-is
 | `dive` / `d` | `<id>` | Dive into an atom — meaning space, signposts, cosmos field |
 | `explore` / `exp` | `<id> [depth]` | BFS graph exploration from a node |
 | `tree` | `<target> [depth=2] [follow=<rel>] [format=rich\|ascii]` | Link-traversal tree from an atom, set, or namespace |
-| `assoc` | `<id> [axis=] [fill=yes]` | Gap detection — find absent semantic links, number the candidates |
-| `dream` | `<id> [axis=] [commit=yes]` | Hypothetical linking — propose new connections via inference |
+| `assoc` | `<id> [axis=] [fill=yes]` | Gap detection — find absent 1-hop links, number the candidates |
+| `dream` | `<id> [boldness=] [reach=] [again=yes]` | Affinity-gap incubation — async "sleep on it"; stages bridges a human confirms |
 | `out` | `[id]` | Zoom out to the macro view |
-| `<n>` | *(bare number)* | Context-sensitive: follow signpost *(dive)*, create link *(assoc)*, approve proposal *(dream)* |
+| `<n>` | *(bare number)* | Context-sensitive: follow signpost *(dive)*, create link *(assoc)*, approve bridge *(dream)* |
+
+### Meaning-Layer Search (semantic / structural / emotional)
+
+These read the self-owned meaning layer (learned embeddings + link structure), not just the
+explicit graph. All are read-only.
+
+| Command | Args | Description |
+|---|---|---|
+| `sim` / `similar` | `<id> [limit=]` | Atoms semantically **like THIS atom** — anchored on its own meaning, not a text query. Excludes the anchor. |
+| `search` | `query=<text> [limit=]` | Free-text semantic search (rank atoms by cosine to a query string). |
+| `node.sim` | `<id> [limit=]` | Atoms **connected the same way** — structural (node-walk) similarity, complementary to `sim`. |
+| `node.learn` | *(admin)* | Learn/refresh the structural node-embedding model from the link graph (numpy). |
+| `gap.scan` | `[limit=]` | **Important-but-thin concepts** — atoms referenced a lot but under-linked. The self-expanding-ontology loop's "what to enrich next" signal. |
+| `emotion.find` | `emo=<name> [limit=]` | The atoms that **feel** an emotion (reverse of `emotion.profile`), e.g. `emotion.find emo=awe`. |
+| `emotion.profile` | `<id>` | The emotion **vector** of an atom (which `emo:*` atoms it links, weighted). |
+| `view` / `cosmos` | `<id>` | The **consciousness view** of an atom on its own — signposts (1-hop), resonance (2-hop, semantic), cosmos position + aura colour — without diving or changing focus. |
+
+`sim` vs `node.sim`: `sim` means *"means the same thing"* (content embedding); `node.sim` means
+*"is wired into the graph the same way"* (structure). They deliberately disagree — an atom can be
+a close neighbour on one and far on the other.
 
 ### `tree` — Link-Traversal Tree
 
@@ -118,20 +156,28 @@ A depth-1 tree shows only direct links. Depth-3 shows three levels of connected 
 
 ### Navigation Modes
 
-`dive`, `explore`, `assoc`, and `dream` each activate a **named mode** displayed in the prompt:
+A **mode** scopes the prompt to one activity, shown in brackets. There are two
+kinds, driven by the **same** controller as the concept-model subcommand modes
+above (`dive` and a concept model enter and resolve by one rule):
+
+- **Namespace mode** (`dive`, and every concept model). A bare number picks a
+  navigation target; bare operators resolve to `<mode>.<op>`; ordinary commands
+  still work as a fallback.
+- **Selection mode** (`assoc`, `lens`, `dream`). A bare number picks a *staged
+  candidate* from the last listing (create the link / cast / confirm the bridge).
 
 ```
-[assoc] akasha/user $      ← in assoc mode
-[dream] akasha/user $      ← in dream mode
-[dive]  akasha/user $      ← in dive mode
+[assoc] akasha/user $      ← in assoc mode  (selection)
+[dream] akasha/user $      ← in dream mode  (selection)
+[dive]  akasha/user $      ← in dive mode   (namespace)
 ```
 
 | Behaviour | What happens |
 |---|---|
-| `exit` or `quit` inside a mode | Exits the current mode and returns to the normal prompt. A second `exit` closes the session. |
+| `exit`, `quit`, `out`, or `..` inside a mode | Exits the current mode and returns to the normal prompt. A second `exit` closes the session. |
+| Bare number in **dive** mode | Navigates into signpost *n* (`dive.look signpost=n`). |
 | Bare number in **assoc** mode | Creates the link for candidate *n* immediately, then refreshes the void list. |
-| Bare number in **dream** mode | Approves proposal *n* as a permanent link (strips `tent:` prefix), then refreshes proposals. |
-| Bare number in **dive** mode | Navigates into signpost *n*. |
+| Bare number in **dream** mode | Confirms bridge *n* (calls `dream.confirm` — promotes the staged `tent:` link to a real one), then refreshes the remaining bridges. |
 | Any other command | Passes through to the kernel as normal — all commands work inside any mode. |
 
 #### `assoc` — Gap Detection
@@ -156,29 +202,56 @@ Scans the focal atom's outgoing links and identifies which **semantic axes** are
 
 Type a number to create that link and automatically refresh the void list. Use `fill=yes` to accept all top candidates at once.
 
-#### `dream` — Hypothetical Linking
+#### `dream` — Affinity-Gap Incubation ("sleep on it")
 
-Proposes links that do not yet exist using three complementary strategies:
+`dream` is deliberately unlike the fast explorers. `assoc` fills 1-hop high-confidence voids;
+`sim` / `node.sim` rank what is *already* near. `dream` searches the **affinity gap** — atoms
+**near in meaning but far in the explicit graph** — the connections you'd only notice after
+sleeping on a problem. So it runs as a **low-priority background job**, and every candidate is
+staged as a *tentative* link that **a human confirms**. It never writes a real edge on its own.
 
-| Label | Strategy | How it works |
-|---|---|---|
-| `[struct]` | Structural | Peers in shared collections carry this link — why doesn't the focal atom? |
-| `[trans]` | Transitive | A→B, B→C — propose A→C when the path recurs across multiple neighbours |
-| `[affin]` | Affinity | Cosine similarity on stored embeddings; Jaccard on keyword-extract sets |
+**It is asynchronous — call it twice:**
 
 ```
 [dream] akasha/user $ dream icarus
-✦ dream [icarus]  axis=all  status=proposed
-
-Proposals:
-     1. tent:calc:associated_with → [awe]        feeling of awe  [emo]     [struct]
-     2. tent:calc:associated_with → [hubris]      excessive pride  [transitive]  [trans]
-     3. tent:calc:hidden_affinity → [lilienthal]  pioneer of flight  [affinity]  [affin]
-
-     (type 1–3 to approve  |  commit=yes to write all as tent:)
+☾ dream [icarus]  incubating…
+  Come back with the same `dream id=` to see the staged bridges.
 ```
 
-Type a number to approve that proposal as a **permanent** link. Use `commit=yes` to write all proposals as `tent:` (tentative) links for later review.
+The first call submits the job and returns `status=dreaming` (with a `job_id`). Do other work,
+then call it again for the same focus:
+
+```
+[dream] akasha/user $ dream icarus
+✦ dream [icarus]  status=ready  2 bridge(s)
+
+Bridges (near in meaning, far in the graph):
+     1. [lilienthal]  pioneer of flight        0.612
+     2. [ambition]    the drive to exceed      0.481
+
+     (type a number or `dream.confirm dst=` to approve  |  `dream.forget all=yes` to drop)
+```
+
+**Confirm or forget — human approval is mandatory:**
+
+| Command | Effect |
+|---|---|
+| *(type a number)* | Confirms that bridge — promotes the staged `tent:` link to a real `calc:hidden_affinity` edge. |
+| `dream.confirm dst=<atom> [src=<focus>]` | Same, by name. `src` defaults to the last-dreamed focus. |
+| `dream.forget dst=<atom>` | Drops one staged bridge. |
+| `dream.forget all=yes` | Drops every staged bridge on the focus. |
+
+**Tuning the dream** (all optional, defaults are conservative):
+
+| Param | Default | Effect |
+|---|---|---|
+| `boldness=` | `0.2` | 0 = consensus of all signals present; 1 = the single boldest signal. |
+| `reach=` | `0.5` | How hard the *gap* is weighted — higher = only very-disconnected atoms score. |
+| `again=yes` | — | Re-dream a focus that already has staged bridges (recompute from scratch). |
+
+The score fuses **content** (embedding cosine), **structure** (node-walk cosine), and **tag**
+(shared-neighbour Jaccard) into a nearness, then multiplies by a gap term so only *missing*
+connections surface. Confirmed bridges become first-class edges; forgotten ones leave no trace.
 
 ---
 
@@ -614,3 +687,26 @@ Hidden from `help`. Require ADMIN role (or `su root`).
 | `grp.del <group_id>` | Dissolve a group |
 
 → Full admin reference: [`docs/users/admin-manual.md`](admin-manual.md)
+
+---
+
+## Terminal / environment tuning
+
+The shell auto-detects a capable terminal and only then colours the prompt,
+wrapping the colour codes so the line editor never miscounts them. On a full
+Unix/macOS terminal or over SSH nothing needs setting. On a **minimal terminal**
+— notably iOS **a-Shell** and **Pyto**, whose line editors measure the prompt
+width from the raw characters — a coloured prompt could otherwise drift the left
+margin and hide the prompt. These environment variables give explicit control:
+
+| Variable | Effect |
+|---|---|
+| `AKASHA_PLAIN_PROMPT=1` | Force a plain-ASCII prompt (no colour, no escape codes). Set this if the prompt ever looks misaligned or disappears while typing. |
+| `NO_COLOR=1` | Standard "no colour" convention — also yields the plain prompt. |
+| `TERM=dumb` | Treated as a non-capable terminal → plain prompt. |
+| `AKASHA_NO_PAGER=1` | Never pipe long output through `less`; print it directly. Useful where `less` is missing or `subprocess` is sandboxed. |
+| `AKASHA_CLI_TTL=<seconds>` | Interactive session token lifetime (default 86400 = 24 h; clamped to 60–86400). Raise for all-day monitoring sessions; the shell also re-logs-in automatically on expiry. |
+
+A restricted console (piped input, notebooks, iOS Python) is detected
+automatically and already uses the plain prompt — the variables above are the
+manual override when detection can't reach a particular terminal.

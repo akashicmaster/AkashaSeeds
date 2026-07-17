@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Akashic Kitchen — recipe web sample</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300..700;1,6..72,300..600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ───────────────────────────────────────────────────────────────────────────
+   Akashic Kitchen — a "なんちゃって" (mock) web GUI for the recipe JSON-RPC API.
+
+   PURPOSE. A single self-contained HTML file that exercises the real recipe API
+   (docs/api/recipe-jsonrpc-v1.md) end-to-end, so it can serve as the STARTING
+   POINT for the app build — whether that becomes a Flet web app, a SwiftUI
+   native app, or anything else. Everything the client needs to know about the
+   API contract is demonstrated here in one place:
+
+     • auth.verify / auth.register / auth.account.delete   (§2)
+     • recipe.plan  → the free/paid gate + quota            (§3.1)
+     • recipe.ls (paginated) / recipe.view                  (§4.2)
+     • recipe.new / recipe.add / recipe.step                (§4.1)
+     • recipe.nutrition (a PAID feature → may return locked) (§4.2 / §3.1)
+     • recipe.suggest                                       (§4.2)
+     • optimistic concurrency via `revision` / `expected_revision`   (§1)
+     • stable item handles `ingredient_id` / `step_id`      (§1)
+
+   It has NO build step and NO framework — just fetch() against /api/rpc. Port
+   the rpc() helper + the call shapes to your target platform verbatim.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --paper:  #faf6ef;   --paper2: #f2ece0;   --paper3: #e9e1d1;
+  --ink:    #2c241a;   --ink2:   #5e5140;   --ink3:   #938471;
+  --herb:   #4d6b3f;   --herb2:  #6d8a55;                     /* accent (green) */
+  --tom:    #b0472d;   --tom2:   #d06a4a;                     /* action (terracotta) */
+  --gold:   #a97c1e;   --border: #ddd4c2;   --rule: rgba(200,188,168,.6);
+  --shadow: rgba(44,36,26,.10);
+  --lock:   #9a6a12;   --lockbg: #f6ecd2;
+}
+* , *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--paper); color: var(--ink);
+  font-family: 'Zen Kaku Gothic New', 'Newsreader', system-ui, sans-serif;
+  font-size: 15px; line-height: 1.6; height: 100vh;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+h1,h2,h3 { font-family: 'Newsreader', serif; font-weight: 600; }
+a { color: var(--herb); }
+
+/* ── header ─────────────────────────────────────────────────────────────── */
+header {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 20px; border-bottom: 1px solid var(--border);
+  background: var(--paper2); box-shadow: 0 1px 0 var(--shadow); z-index: 5;
+}
+.brand { font-family: 'Newsreader', serif; font-size: 1.35rem; font-weight: 600;
+         letter-spacing: .01em; }
+.brand small { color: var(--ink3); font-size: .72rem; font-style: italic;
+               margin-left: 8px; letter-spacing: .04em; }
+.grow { flex: 1; }
+.plan-badge {
+  font-size: .74rem; padding: 3px 12px; border-radius: 20px;
+  border: 1px solid var(--border); color: var(--ink2); background: var(--paper);
+  white-space: nowrap;
+}
+.plan-badge.paid { border-color: var(--herb); color: var(--herb); }
+.plan-badge.free { border-color: var(--gold); color: var(--gold); }
+.who { font-size: .8rem; color: var(--ink3); }
+
+/* ── buttons ────────────────────────────────────────────────────────────── */
+.btn {
+  background: var(--tom); border: 1px solid var(--tom); color: #fff;
+  padding: 7px 16px; font: inherit; font-size: .84rem; cursor: pointer;
+  border-radius: 4px; transition: .15s; white-space: nowrap;
+}
+.btn:hover { background: var(--tom2); border-color: var(--tom2); }
+.btn:active { transform: scale(.98); }
+.btn.ghost { background: transparent; color: var(--tom); }
+.btn.ghost:hover { background: var(--paper3); }
+.btn.herb { background: var(--herb); border-color: var(--herb); }
+.btn.herb:hover { background: var(--herb2); border-color: var(--herb2); }
+.btn.muted { background: transparent; border-color: var(--border); color: var(--ink3); }
+.btn.muted:hover { background: var(--paper3); color: var(--ink2); }
+.btn.sm { padding: 4px 11px; font-size: .78rem; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+
+/* ── layout ─────────────────────────────────────────────────────────────── */
+main { flex: 1; display: flex; min-height: 0; }
+#list-col {
+  width: 340px; flex-shrink: 0; border-right: 1px solid var(--border);
+  background: var(--paper2); display: flex; flex-direction: column; min-height: 0;
+}
+#detail-col { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.col-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 16px; border-bottom: 1px solid var(--rule);
+}
+.col-head h2 { font-size: 1.05rem; }
+.scroll { flex: 1; overflow-y: auto; padding: 8px; }
+
+/* ── recipe list cards ──────────────────────────────────────────────────── */
+.rcard {
+  padding: 11px 13px; margin-bottom: 7px; border: 1px solid var(--border);
+  border-radius: 6px; background: var(--paper); cursor: pointer; transition: .12s;
+}
+.rcard:hover { border-color: var(--herb2); box-shadow: 0 2px 8px var(--shadow); }
+.rcard.active { border-color: var(--herb); background: #fff; }
+.rcard .t { font-family: 'Newsreader', serif; font-size: 1.05rem; font-weight: 600; }
+.rcard .ax { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px; }
+.tag {
+  font-size: .68rem; padding: 1px 8px; border-radius: 20px;
+  background: var(--paper3); color: var(--ink2); border: 1px solid var(--border);
+}
+.tag.herb { background: #e7efe0; color: var(--herb); border-color: #cfe0c2; }
+
+/* ── detail ─────────────────────────────────────────────────────────────── */
+.pad { padding: 18px 22px; }
+.recipe-title { font-size: 1.7rem; margin-bottom: 2px; }
+.meta-row { font-size: .78rem; color: var(--ink3); margin-bottom: 16px; }
+.section { margin-bottom: 22px; }
+.section > h3 {
+  font-size: .82rem; text-transform: uppercase; letter-spacing: .12em;
+  color: var(--ink3); border-bottom: 1px solid var(--rule);
+  padding-bottom: 5px; margin-bottom: 10px; font-family: inherit; font-weight: 700;
+}
+.ing-row, .step-row {
+  display: flex; align-items: baseline; gap: 10px; padding: 5px 0;
+  border-bottom: 1px dotted var(--rule);
+}
+.ing-row .q { color: var(--herb); font-variant-numeric: tabular-nums; min-width: 74px; }
+.step-row .n {
+  flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%;
+  background: var(--herb); color: #fff; font-size: .78rem;
+  display: grid; place-items: center; align-self: center;
+}
+.row-x { margin-left: auto; }
+.hint { color: var(--ink3); font-size: .78rem; }
+.id { font-family: ui-monospace, monospace; font-size: .68rem; color: var(--ink3); }
+
+/* an inline "add" row */
+.add-inline { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+input.f, select.f, textarea.f {
+  font: inherit; font-size: .86rem; padding: 6px 10px; border: 1px solid var(--border);
+  border-radius: 4px; background: var(--paper); color: var(--ink); min-width: 0;
+}
+input.f:focus, textarea.f:focus, select.f:focus { outline: none; border-color: var(--herb2); }
+input.q { width: 72px; } input.u { width: 62px; }
+
+/* ── nutrition + lock ───────────────────────────────────────────────────── */
+.nutri-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(110px,1fr)); gap: 8px; }
+.nutri-cell {
+  border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; background: var(--paper);
+}
+.nutri-cell .v { font-family: 'Newsreader', serif; font-size: 1.4rem; color: var(--herb); }
+.nutri-cell .k { font-size: .72rem; color: var(--ink3); text-transform: uppercase; letter-spacing: .05em; }
+.locked-card {
+  border: 1px dashed var(--lock); background: var(--lockbg); border-radius: 8px;
+  padding: 18px 20px; text-align: center; color: var(--lock);
+}
+.locked-card .big { font-size: 1.05rem; font-weight: 700; margin-bottom: 4px; }
+
+/* ── overlay / modal ────────────────────────────────────────────────────── */
+.overlay {
+  position: fixed; inset: 0; z-index: 50; display: grid; place-items: center;
+  background: rgba(44,36,26,.42); backdrop-filter: blur(3px);
+}
+.overlay.hidden { display: none; }
+.panel {
+  background: var(--paper); border: 1px solid var(--border); border-radius: 12px;
+  padding: 26px 28px; width: min(420px, 92vw); box-shadow: 0 18px 50px rgba(44,36,26,.28);
+}
+.panel h2 { font-size: 1.4rem; margin-bottom: 4px; }
+.panel .sub { color: var(--ink3); font-size: .82rem; margin-bottom: 18px; }
+.panel label { display: block; font-size: .74rem; color: var(--ink2); margin: 12px 0 4px; }
+.panel input.f, .panel select.f, .panel textarea.f { width: 100%; }
+.panel .actions { display: flex; gap: 10px; margin-top: 20px; }
+.panel .actions .btn { flex: 1; }
+.msg { min-height: 18px; font-size: .78rem; color: var(--tom); margin-top: 10px; }
+.tabs { display: flex; gap: 6px; margin-bottom: 16px; }
+.tabs .t { flex: 1; text-align: center; padding: 7px; font-size: .82rem; cursor: pointer;
+           border: 1px solid var(--border); border-radius: 5px; color: var(--ink3); }
+.tabs .t.on { background: var(--herb); color: #fff; border-color: var(--herb); }
+
+/* ── empty + toast ──────────────────────────────────────────────────────── */
+.empty { color: var(--ink3); text-align: center; padding: 50px 20px; font-style: italic; }
+#toast {
+  position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(20px);
+  background: var(--ink); color: var(--paper); padding: 9px 18px; border-radius: 6px;
+  font-size: .82rem; opacity: 0; transition: .25s; pointer-events: none; z-index: 90;
+}
+#toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+.load-more { text-align: center; padding: 8px; }
+</style>
+</head>
+<body>
+
+<!-- ── header ──────────────────────────────────────────────────────────── -->
+<header>
+  <div class="brand">Akashic&nbsp;Kitchen<small>recipe web sample</small></div>
+  <div class="grow"></div>
+  <span id="plan-badge" class="plan-badge" style="display:none"></span>
+  <span id="who" class="who"></span>
+  <button class="btn ghost sm" id="suggest-btn" onclick="openSuggest()" style="display:none">提案</button>
+  <button class="btn ghost sm" id="account-btn" onclick="openAccount()" style="display:none">アカウント</button>
+  <button class="btn muted sm" id="logout-btn" onclick="logout()" style="display:none">ログアウト</button>
+</header>
+
+<!-- ── main two-column layout ──────────────────────────────────────────── -->
+<main id="app" style="display:none">
+  <section id="list-col">
+    <div class="col-head">
+      <h2>レシピ</h2><div class="grow"></div>
+      <button class="btn sm" onclick="openNew()">＋ 新規</button>
+    </div>
+    <div class="scroll" id="list-scroll"><div class="empty">読み込み中…</div></div>
+  </section>
+
+  <section id="detail-col">
+    <div class="scroll" id="detail-scroll">
+      <div class="empty">← レシピを選ぶか、新規作成してください。</div>
+    </div>
+  </section>
+</main>
+
+<!-- ── login / register overlay ────────────────────────────────────────── -->
+<div class="overlay" id="auth-overlay">
+  <div class="panel">
+    <h2>Akashic Kitchen</h2>
+    <div class="sub">レシピ API のサンプルクライアント</div>
+    <div class="tabs">
+      <div class="t on" id="tab-login" onclick="authTab('login')">ログイン</div>
+      <div class="t" id="tab-reg" onclick="authTab('reg')">新規登録</div>
+    </div>
+    <label>ユーザーID</label>
+    <input class="f" id="au-user" autocomplete="username" placeholder="alice">
+    <label>パスフレーズ</label>
+    <input class="f" id="au-pass" type="password" autocomplete="current-password" placeholder="8文字以上">
+    <div class="msg" id="au-msg"></div>
+    <div class="actions">
+      <button class="btn herb" id="au-go" onclick="authSubmit()">ログイン</button>
+    </div>
+    <div class="hint" style="margin-top:12px">
+      パスフレーズは HTTPS 上でのみ送ってください（本番）。このサンプルは
+      <code>/api/rpc</code> に対して動きます。
+    </div>
+  </div>
+</div>
+
+<!-- ── new-recipe modal ────────────────────────────────────────────────── -->
+<div class="overlay hidden" id="new-overlay">
+  <div class="panel">
+    <h2>新しいレシピ</h2>
+    <div class="sub">recipe.new — タイトルと軸タグ（任意）</div>
+    <label>タイトル</label>
+    <input class="f" id="nw-title" placeholder="冬の大根スープ">
+    <label>季節 / 系統 / コース（任意・カンマ区切り可）</label>
+    <div style="display:flex; gap:8px">
+      <input class="f" id="nw-season" placeholder="季節 winter">
+      <input class="f" id="nw-ethnic" placeholder="系統 japanese">
+      <input class="f" id="nw-course" placeholder="コース soup">
+    </div>
+    <div class="msg" id="nw-msg"></div>
+    <div class="actions">
+      <button class="btn muted" onclick="closeModal('new-overlay')">やめる</button>
+      <button class="btn herb" onclick="createRecipe()">作成</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── suggest modal ───────────────────────────────────────────────────── -->
+<div class="overlay hidden" id="suggest-overlay">
+  <div class="panel">
+    <h2>レシピ提案</h2>
+    <div class="sub">recipe.suggest — 軸の交差でランキング（avoid はハードフィルタ）</div>
+    <label>季節 / 系統</label>
+    <div style="display:flex; gap:8px">
+      <input class="f" id="sg-season" placeholder="winter">
+      <input class="f" id="sg-ethnic" placeholder="japanese">
+    </div>
+    <label>手持ち食材 have（カンマ区切り）</label>
+    <input class="f" id="sg-have" placeholder="daikon,pork">
+    <label>避けたい avoid（アレルゲン等）</label>
+    <input class="f" id="sg-avoid" placeholder="peanut">
+    <div class="actions">
+      <button class="btn muted" onclick="closeModal('suggest-overlay')">閉じる</button>
+      <button class="btn herb" onclick="runSuggest()">提案</button>
+    </div>
+    <div id="sg-out" style="margin-top:16px"></div>
+  </div>
+</div>
+
+<!-- ── account modal (plan + delete) ───────────────────────────────────── -->
+<div class="overlay hidden" id="account-overlay">
+  <div class="panel">
+    <h2>アカウント</h2>
+    <div class="sub" id="ac-sub">recipe.plan / auth.account.delete</div>
+    <div id="ac-plan"></div>
+    <hr style="border:none;border-top:1px solid var(--rule);margin:18px 0">
+    <div class="hint">アカウント削除は取り消せません（自分のレシピ・個人食材・計測を全消去）。</div>
+    <div class="actions">
+      <button class="btn muted" onclick="closeModal('account-overlay')">閉じる</button>
+      <button class="btn" style="background:var(--tom);border-color:var(--tom)" onclick="deleteAccount()">アカウント削除</button>
+    </div>
+    <div class="msg" id="ac-msg"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   1. RPC transport — the ONE thing to port verbatim to Flet / Swift / etc.
+
+   The recipe API is JSON-RPC 2.0 over HTTP POST. Params use the FLAT form from
+   the spec (§1): session_token plus the operation arguments as sibling keys.
+   Success → { result }, failure → { error: { code, message } }.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+// For the app context: point this at https://akashickitchen.net/api/rpc once
+// TLS is live. Same-origin '/api/rpc' works when this file is served by Akasha.
+const API = '/api/rpc';
+
+let TOKEN = '';                 // the akt: session token (a credential — not a name)
+let ME    = '';                 // our user_id
+let PLAN  = null;               // last recipe.plan result (drives the free/paid UI)
+
+async function rpc(method, fields = {}) {
+  const res = await fetch(API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: Date.now(),
+      method,
+      // Flat params: token + fields side by side (the server merges them into `data`).
+      params: TOKEN ? { session_token: TOKEN, ...fields } : { ...fields },
+    }),
+  });
+  const j = await res.json();
+  if (j.error) {
+    const e = new Error(j.error.message || 'error');
+    e.code = j.error.code;            // -32002 conflict/quota, -32003 forbidden, …
+    throw e;
+  }
+  return j.result;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   2. Auth — login (auth.verify), register (auth.register), delete, logout.
+   ═══════════════════════════════════════════════════════════════════════════ */
+let AUTH_MODE = 'login';
+
+function authTab(mode) {
+  AUTH_MODE = mode;
+  document.getElementById('tab-login').classList.toggle('on', mode === 'login');
+  document.getElementById('tab-reg').classList.toggle('on', mode === 'reg');
+  document.getElementById('au-go').textContent = mode === 'login' ? 'ログイン' : '登録して開始';
+  document.getElementById('au-pass').autocomplete = mode === 'login' ? 'current-password' : 'new-password';
+  document.getElementById('au-msg').textContent = '';
+}
+
+async function authSubmit() {
+  const user = document.getElementById('au-user').value.trim();
+  const pass = document.getElementById('au-pass').value;
+  const msg  = document.getElementById('au-msg');
+  if (!user || !pass) { msg.textContent = 'ID とパスフレーズを入力してください。'; return; }
+  msg.textContent = '…';
+  try {
+    let r;
+    if (AUTH_MODE === 'login') {
+      // auth.verify: raw passphrase over HTTPS → server hashes it → returns akt: token.
+      r = await rpc('auth.verify', { user_id: user, passphrase: pass });
+    } else {
+      // auth.register: bounded self-signup (must be enabled server-side). Role is
+      // FORCED to 'user'; the account starts on the free plan and is auto-logged-in.
+      r = await rpc('auth.register', { user_id: user, passphrase: pass });
+    }
+    TOKEN = r.session_token;
+    ME = r.user_id || user;
+    closeModal('auth-overlay');
+    startApp();
+  } catch (e) {
+    msg.textContent = e.message;
+  }
+}
+
+function logout() {
+  // Tokens are stateless — logging out is just discarding it client-side.
+  TOKEN = ''; ME = ''; PLAN = null;
+  document.getElementById('app').style.display = 'none';
+  ['plan-badge','who','suggest-btn','account-btn','logout-btn']
+    .forEach(id => document.getElementById(id).style.display = 'none');
+  document.getElementById('auth-overlay').classList.remove('hidden');
+}
+
+async function deleteAccount() {
+  if (!confirm('本当にアカウントを削除しますか？取り消せません。')) return;
+  const msg = document.getElementById('ac-msg');
+  try {
+    // auth.account.delete — self-service, own account only; confirm is REQUIRED.
+    await rpc('auth.account.delete', { confirm: 'true' });
+    toast('アカウントを削除しました');
+    logout();
+    closeModal('account-overlay');
+  } catch (e) { msg.textContent = e.message; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   3. Bootstrap the app after login: plan badge + recipe list.
+   ═══════════════════════════════════════════════════════════════════════════ */
+async function startApp() {
+  document.getElementById('app').style.display = 'flex';
+  ['suggest-btn','account-btn','logout-btn']
+    .forEach(id => document.getElementById(id).style.display = '');
+  document.getElementById('who').textContent = '@' + ME;
+  document.getElementById('who').style.display = '';
+  await loadPlan();
+  await loadRecipes();
+}
+
+async function loadPlan() {
+  // recipe.plan drives every free/paid decision in the UI. recipe_quota is the
+  // SINGLE SOURCE OF TRUTH for the free limit — never hard-code a number.
+  try {
+    PLAN = await rpc('recipe.plan');
+  } catch { PLAN = { tier: 'paid', tiering: false }; }
+  const b = document.getElementById('plan-badge');
+  b.style.display = '';
+  b.className = 'plan-badge ' + (PLAN.tier === 'paid' ? 'paid' : 'free');
+  if (!PLAN.tiering) { b.textContent = 'OSS · 無制限'; }
+  else if (PLAN.tier === 'paid') { b.textContent = 'PAID · 無制限'; }
+  else {
+    b.textContent = `FREE · ${PLAN.recipes_used}/${PLAN.recipe_quota} 品`;
+  }
+}
+
+function isLocked(feature) {
+  // A feature is locked when tiering is on, we're free, and it's in the paid set.
+  return PLAN && PLAN.tiering && PLAN.tier !== 'paid'
+      && (PLAN.locked_features || []).includes(feature);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   4. Recipe list — recipe.ls, paginated (default 20, cursor for the next page).
+   ═══════════════════════════════════════════════════════════════════════════ */
+let LIST = [];          // accumulated recipe summaries
+let CURSOR = null;      // opaque next-page cursor (null = first page / no more)
+
+async function loadRecipes(more = false) {
+  const scroll = document.getElementById('list-scroll');
+  if (!more) { LIST = []; CURSOR = null; scroll.innerHTML = '<div class="empty">読み込み中…</div>'; }
+  const r = await rpc('recipe.ls', more && CURSOR ? { cursor: CURSOR } : {});
+  LIST = LIST.concat(r.recipes || []);
+  CURSOR = r.has_more ? r.next_cursor : null;
+  renderList(r.count);
+}
+
+function renderList(total) {
+  const scroll = document.getElementById('list-scroll');
+  if (!LIST.length) { scroll.innerHTML = '<div class="empty">まだレシピがありません。<br>「＋ 新規」から。</div>'; return; }
+  const cards = LIST.map(r => {
+    const axes = Object.entries(r.axes || {})
+      .flatMap(([k, vs]) => (vs || []).map(v => `<span class="tag">${esc(v)}</span>`)).join('');
+    const on = r.recipe_id === (CURRENT && CURRENT.recipe_id) ? ' active' : '';
+    return `<div class="rcard${on}" onclick="openRecipe('${r.recipe_id}')">
+      <div class="t">${esc(r.title || '(無題)')}</div>
+      <div class="ax">${axes}</div></div>`;
+  }).join('');
+  const more = CURSOR
+    ? `<div class="load-more"><button class="btn muted sm" onclick="loadRecipes(true)">
+         さらに読み込む（${LIST.length}/${total}）</button></div>` : '';
+  scroll.innerHTML = cards + more;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   5. Recipe detail — recipe.view. Keep the returned `revision` so edits can pass
+      `expected_revision` (optimistic lock). Items carry stable ids we address by.
+   ═══════════════════════════════════════════════════════════════════════════ */
+let CURRENT = null;     // the last recipe.view result (holds .revision, ingredients, steps)
+
+async function openRecipe(id) {
+  const d = document.getElementById('detail-scroll');
+  d.innerHTML = '<div class="empty">読み込み中…</div>';
+  CURRENT = await rpc('recipe.view', { recipe: id });
+  renderList(LIST.length);      // refresh active highlight
+  renderDetail();
+}
+
+function renderDetail() {
+  const c = CURRENT;
+  const axes = Object.entries(c.axes || {})
+    .flatMap(([k, vs]) => (vs || []).map(v => `<span class="tag herb">${esc(k)}:${esc(v)}</span>`)).join(' ');
+
+  const ings = (c.ingredients || []).map(i => `
+    <div class="ing-row">
+      <span class="q">${esc(i.qty)}${esc(i.unit)}</span>
+      <span>${esc(i.name)}</span>
+      <span class="id">${esc((i.ingredient_id || '').slice(0, 8))}</span>
+      <button class="btn ghost sm row-x" onclick="removeItem('ingredient','${i.ingredient_id || i.key}')">×</button>
+    </div>`).join('') || '<div class="hint">まだ食材がありません。</div>';
+
+  const steps = (c.steps || []).map((s, n) => `
+    <div class="step-row">
+      <span class="n">${n + 1}</span>
+      <span style="flex:1">${esc(s.text)}</span>
+      <span class="id">${esc((s.step_id || '').slice(0, 8))}</span>
+      <button class="btn ghost sm" onclick="removeItem('step','${s.step_id || s.key}')">×</button>
+    </div>`).join('') || '<div class="hint">まだ手順がありません。</div>';
+
+  document.getElementById('detail-scroll').innerHTML = `
+    <div class="pad">
+      <h1 class="recipe-title">${esc(c.title)}</h1>
+      <div class="meta-row">
+        ${axes || '<span class="hint">軸タグなし</span>'}
+        &nbsp;·&nbsp; rev ${c.revision} &nbsp;·&nbsp;
+        <span class="id">${esc(c.recipe_id.slice(0, 10))}</span>
+        <button class="btn ghost sm" style="float:right" onclick="removeRecipe()">レシピ削除</button>
+      </div>
+
+      <div class="section">
+        <h3>食材（ingredients）</h3>
+        ${ings}
+        <div class="add-inline">
+          <input class="f" id="ai-name" placeholder="食材名 daikon">
+          <input class="f q" id="ai-qty" placeholder="300">
+          <input class="f u" id="ai-unit" placeholder="g">
+          <button class="btn herb sm" onclick="addIngredient()">＋ 食材</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>手順（steps）</h3>
+        ${steps}
+        <div class="add-inline">
+          <input class="f" id="as-text" style="flex:1" placeholder="大根を輪切りにする">
+          <input class="f" id="as-dur" style="width:70px" placeholder="分 25">
+          <button class="btn herb sm" onclick="addStep()">＋ 手順</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>栄養（nutrition）— 有料機能</h3>
+        <div id="nutri-box"><button class="btn muted sm" onclick="loadNutrition()">計算する</button></div>
+      </div>
+    </div>`;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   6. Writes — new / add ingredient / add step. Every write refreshes CURRENT so
+      we always hold the latest `revision`. We pass expected_revision to catch a
+      concurrent edit (a second device) as a -32002 conflict instead of clobbering.
+   ═══════════════════════════════════════════════════════════════════════════ */
+async function createRecipe() {
+  const title = document.getElementById('nw-title').value.trim();
+  const msg = document.getElementById('nw-msg');
+  if (!title) { msg.textContent = 'タイトルを入力してください。'; return; }
+  const fields = { title };
+  const s = v => document.getElementById(v).value.trim();
+  if (s('nw-season')) fields.season = s('nw-season');
+  if (s('nw-ethnic')) fields.ethnic = s('nw-ethnic');
+  if (s('nw-course')) fields.course = s('nw-course');
+  try {
+    const r = await rpc('recipe.new', fields);
+    closeModal('new-overlay');
+    await loadPlan();                 // usage went up — refresh the quota badge
+    await loadRecipes();
+    await openRecipe(r.recipe_id);
+    toast('作成しました');
+  } catch (e) {
+    // Over the free quota → -32002 with a `quota_reached:` message → upsell.
+    msg.textContent = e.code === -32002 && /quota_reached/.test(e.message)
+      ? `無料枠（${PLAN?.recipe_quota} 品）に達しました。アップグレードで無制限に。`
+      : e.message;
+  }
+}
+
+async function addIngredient() {
+  const name = document.getElementById('ai-name').value.trim();
+  if (!name) return;
+  const qty = document.getElementById('ai-qty').value.trim();
+  const unit = document.getElementById('ai-unit').value.trim();
+  await write('recipe.add', {
+    recipe: CURRENT.recipe_id, ingredient: name, qty, unit,
+    // request_key makes a retry over a flaky network idempotent (no double insert).
+    request_key: 'add-ing-' + rid(),
+  });
+}
+
+async function addStep() {
+  const text = document.getElementById('as-text').value.trim();
+  if (!text) return;
+  const dur = document.getElementById('as-dur').value.trim();
+  await write('recipe.step', {
+    recipe: CURRENT.recipe_id, text, dur, request_key: 'add-step-' + rid(),
+  });
+}
+
+async function removeItem(kind, itemId) {
+  // itemId is the STABLE ingredient_id / step_id — safe to hold across edits.
+  const method = kind === 'ingredient' ? 'recipe.ingredient.remove' : 'recipe.step.remove';
+  await write(method, { recipe: CURRENT.recipe_id, item: itemId });
+}
+
+// Shared write wrapper: pass expected_revision, re-view, handle a conflict.
+async function write(method, fields) {
+  try {
+    await rpc(method, { ...fields, expected_revision: CURRENT.revision });
+    await openRecipe(CURRENT.recipe_id);     // re-view → new revision
+  } catch (e) {
+    if (e.code === -32002 && /conflict/.test(e.message)) {
+      toast('別の端末で更新されました。再読み込みします。');
+      await openRecipe(CURRENT.recipe_id);
+    } else { toast(e.message); }
+  }
+}
+
+async function removeRecipe() {
+  if (!confirm('このレシピを削除しますか？')) return;
+  await rpc('recipe.remove', { recipe: CURRENT.recipe_id });
+  CURRENT = null;
+  document.getElementById('detail-scroll').innerHTML = '<div class="empty">削除しました。</div>';
+  await loadPlan(); await loadRecipes();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   7. Nutrition — a PAID feature. On a free plan recipe.nutrition returns a
+      { locked: true } result (NOT an error); render an upgrade CTA instead.
+   ═══════════════════════════════════════════════════════════════════════════ */
+async function loadNutrition() {
+  const box = document.getElementById('nutri-box');
+  box.innerHTML = '<div class="hint">計算中…</div>';
+  const n = await rpc('recipe.nutrition', { recipe: CURRENT.recipe_id });
+  if (n.locked) {                 // upgrade_required
+    box.innerHTML = `<div class="locked-card">
+      <div class="big">🔒 栄養・原価計算は有料機能です</div>
+      <div>アップグレードで栄養計算・原価計算・並行工程・HACCP が使えます。</div>
+    </div>`;
+    return;
+  }
+  const t = n.totals || {};
+  const cells = Object.entries(t).map(([k, v]) =>
+    `<div class="nutri-cell"><div class="v">${round(v)}</div><div class="k">${esc(k)}</div></div>`).join('');
+  const notes = [];
+  if (n.unmeasured?.length) notes.push(`計量外: ${n.unmeasured.join(', ')}`);
+  if (n.no_data?.length) notes.push(`データなし: ${n.no_data.join(', ')}`);
+  box.innerHTML = `<div class="nutri-grid">${cells || '<div class="hint">データがありません。</div>'}</div>`
+    + (notes.length ? `<div class="hint" style="margin-top:8px">${notes.join(' · ')}</div>` : '');
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   8. Suggest — recipe.suggest (axis intersection; avoid is a hard filter).
+   ═══════════════════════════════════════════════════════════════════════════ */
+async function runSuggest() {
+  const f = {};
+  const s = v => document.getElementById(v).value.trim();
+  if (s('sg-season')) f.season = s('sg-season');
+  if (s('sg-ethnic')) f.ethnic = s('sg-ethnic');
+  if (s('sg-have')) f.have = s('sg-have');
+  if (s('sg-avoid')) f.avoid = s('sg-avoid');
+  const out = document.getElementById('sg-out');
+  out.innerHTML = '<div class="hint">検索中…</div>';
+  const r = await rpc('recipe.suggest', f);
+  if (!r.suggestions?.length) { out.innerHTML = '<div class="hint">該当なし。</div>'; return; }
+  out.innerHTML = r.suggestions.map(s => `
+    <div class="rcard" onclick="closeModal('suggest-overlay');openRecipe('${s.recipe_id}')">
+      <div class="t">${esc(s.title)}</div>
+      <div class="hint">一致 ${esc(s.coverage)} · スコア ${s.score}</div>
+    </div>`).join('');
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   9. Account modal — show plan detail + delete.
+   ═══════════════════════════════════════════════════════════════════════════ */
+async function openAccount() {
+  await loadPlan();
+  const p = PLAN || {};
+  const html = !p.tiering
+    ? '<div class="hint">このサーバーは課金オフ（OSS・無制限）です。</div>'
+    : `<div class="nutri-grid">
+        <div class="nutri-cell"><div class="v">${p.tier}</div><div class="k">tier</div></div>
+        <div class="nutri-cell"><div class="v">${p.recipes_used ?? '–'}</div><div class="k">used</div></div>
+        <div class="nutri-cell"><div class="v">${p.tier === 'paid' ? '∞' : p.recipe_quota}</div><div class="k">quota</div></div>
+       </div>` + (p.tier !== 'paid'
+        ? '<div class="hint" style="margin-top:8px">アップグレードは App Store / Play の課金 → 課金サービスが auth.plan.set で反映（クライアントは自分で変更不可）。</div>'
+        : '');
+  document.getElementById('ac-plan').innerHTML = html;
+  document.getElementById('ac-msg').textContent = '';
+  openModal('account-overlay');
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   helpers
+   ═══════════════════════════════════════════════════════════════════════════ */
+function openNew()    { document.getElementById('nw-msg').textContent = '';
+                        ['nw-title','nw-season','nw-ethnic','nw-course'].forEach(i=>document.getElementById(i).value='');
+                        openModal('new-overlay'); }
+function openSuggest(){ document.getElementById('sg-out').innerHTML=''; openModal('suggest-overlay'); }
+function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+function closeModal(id){ document.getElementById(id).classList.add('hidden'); }
+
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c =>
+  ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+function round(v) { const n = Number(v); return Number.isFinite(n) ? Math.round(n * 10) / 10 : v; }
+function rid()   { return Math.random().toString(36).slice(2, 10); }   // demo request_key
+let toastT;
+function toast(m) { const t = document.getElementById('toast'); t.textContent = m; t.classList.add('on');
+                    clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 2200); }
+
+// Enter-to-submit on the auth form.
+document.getElementById('au-pass').addEventListener('keydown', e => { if (e.key === 'Enter') authSubmit(); });
+document.getElementById('au-user').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('au-pass').focus(); });
+</script>
+</body>
+</html>

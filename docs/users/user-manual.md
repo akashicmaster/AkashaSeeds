@@ -715,6 +715,56 @@ For voids with no candidates, the display shows a `ln focal <target> rel` hint. 
 
 > **Semantic axes scanned:** emotion (`emo:`), color (`word:color:`), sense (`word:sense:`), time (`chrono:`), context (`calc:context`), story (`polti:`), structure (`sys:is_a` / `sys:antonym` etc.)
 
+#### Meaning-Layer Search — `sim` / `node.sim` / `view` / `emotion.find`
+
+`dive`, `tree`, and `assoc` all reason over the **explicit** links in the graph. Underneath them
+Akasha keeps a **meaning layer**: every text atom carries a learned semantic vector (from its
+words) and a structural vector (from its position in the link graph). These commands query that
+layer, so they surface relatives that no explicit link records. All are read-only and
+scope-filtered.
+
+**`sim <id>` (aliases `similar`) — atoms that *mean* the same thing.** Anchored on the atom's own
+content, not a typed phrase; the anchor is excluded from its own results.
+
+```
+akasha/user $ sim icarus              # atoms semantically nearest to Icarus
+akasha/user $ sim icarus limit=20     # widen the list (default 10)
+akasha/user $ search query="flight and hubris"   # free-text variant
+```
+
+**`node.sim <id>` — atoms *connected* the same way.** Structural (node-walk) similarity —
+"wired into the graph the same way" — independent of meaning. `sim` and `node.sim` deliberately
+disagree: `sim` answers *"means the same"*, `node.sim` answers *"connected the same"*.
+
+```
+akasha/user $ node.sim icarus
+```
+
+> **Implicit behaviour:** `node.sim` needs a trained structural model. The boot auto-learn builds
+> one; on a fresh, sparsely-linked Cell an admin can run `node.learn` once to train it, otherwise
+> `node.sim` returns nothing until enough structure exists.
+
+**`view <id>` (alias `cosmos`) — the consciousness view of one atom, in place.** Signposts (1-hop
+links), resonance (semantically-near atoms two hops out, ranked by real vector cosine), and the
+atom's cosmos position + aura colour — **without** diving or changing your current focus.
+
+```
+akasha/user $ view icarus
+```
+
+**`emotion.find emo=<name>` — atoms that *feel* an emotion.** The reverse of `emotion.profile`;
+emotions are ontology atoms (`emo:awe`, `emo:fear`, …). `emotion.profile <id>` gives the emotion
+**vector** of a single atom instead.
+
+```
+akasha/user $ emotion.find emo=awe    # atoms that link to awe
+akasha/user $ emotion.profile icarus  # Icarus's emotional vector
+```
+
+> **`sim` vs `node.sim` vs `dream`.** `sim`/`node.sim` rank what is *already* near (in meaning or
+> structure). `dream` (§6.10) does the opposite — it hunts atoms near in meaning but **far** in the
+> graph, the affinity gap, and stages them for you to confirm.
+
 ---
 
 ### 6.5 Sets
@@ -968,50 +1018,63 @@ Atom written: e77b...3301
 
 ### 6.10 Jataka
 
-#### `dream <id>` — Hypothetical Linking
+#### `dream <id>` — Affinity-Gap Incubation ("sleep on it")
 
-Proposes links that do not yet exist on the focal atom. Three complementary inference strategies contribute to the proposal list:
+`dream` occupies a distinct niche from the fast explorers. `assoc` fills 1-hop high-confidence
+voids; `sim` / `node.sim` rank what is *already* near. `dream` searches the **affinity gap** —
+atoms **near in meaning but far in the explicit graph** — the connections a person tends to notice
+only after sleeping on a problem. It runs as a **low-priority background job**, and every candidate
+is staged as a *tentative* link that a **human confirms**. It never writes a real edge on its own.
 
-| Label | Strategy | Mechanism |
+**Scoring.** Each candidate fuses three signals into a *nearness* — `content` (tensor cosine on the
+semantic vector), `struct` (node-walk cosine), and `tag` (neighbour-set Jaccard) — then multiplies
+by a **gap** term (`1/(1+shared_neighbours)`) so that only *missing* connections score. Two knobs
+tune it, both conservative by default:
+
+| Parameter | Default | Effect |
 |---|---|---|
-| `[struct]` | Structural | Peers in shared collections carry this link — the focal atom's gap is surfaced |
-| `[trans]` | Transitive | A→B, B→C — the path recurs across multiple neighbours; A→C is proposed |
-| `[affin]` | Affinity | Cosine similarity on stored embedding vectors; Jaccard similarity on keyword-extract sets (when vectors are unavailable) |
+| `boldness=` | `0.2` | `0` = consensus of all signals present; `1` = the single boldest signal. |
+| `reach=` | `0.5` | How hard the gap term is weighted — higher = only very-disconnected atoms score. |
+| `again=yes` | — | Re-dream a focus that already has staged candidates (recompute from scratch). |
 
-Proposals carry a `tent:` prefix to signal that they are **hypothetical** — they have not yet been written into the graph.
+**It is asynchronous — call it twice.** The first call submits the job and returns immediately:
 
 ```
 [dream] akasha/user $ dream icarus
-✦ dream [icarus]  axis=all  status=proposed
-
-Proposals:
-     1. tent:calc:associated_with → [awe]        feeling of awe  [emo]         [struct]
-     2. tent:calc:associated_with → [hubris]      excessive pride  [transitive]  [trans]
-     3. tent:calc:hidden_affinity → [lilienthal]  pioneer of flight  [affinity]  [affin]
-
-     (type 1–3 to approve  |  commit=yes to write all as tent:)
+☾ dream [icarus]  incubating…
+  Come back with the same `dream id=` to see the staged bridges.
 ```
 
-**Interactive approval:** while inside dream mode, type a bare number to approve that proposal as a **permanent link** (the `tent:` prefix is stripped). The proposal list auto-refreshes so you can continue approving remaining items.
-
-**Axis filter:** `dream icarus axis=emo` limits proposals to the emotional axis.
-
-**Commit all as tentative:** `dream icarus commit=yes` writes every proposal with its `tent:` prefix intact, creating a staging layer for later review. You can subsequently inspect tent: links with `ln.ls icarus` and promote or delete them individually.
-
-**Two-stage workflow:**
+The job stages its candidates as `tent:calc:hidden_affinity` links in the background. Do other
+work, then call `dream` again for the same focus to collect the result:
 
 ```
-# Stage 1 — generate and review
 [dream] akasha/user $ dream icarus
-[dream] akasha/user $ 1        ← approve proposal 1 as permanent link
-[dream] akasha/user $ 3        ← approve proposal 3
-[dream] akasha/user $ exit     ← return to normal prompt
+✦ dream [icarus]  status=ready  2 bridge(s)
 
-# Alt: commit all as tent: first, then review
-akasha/user $ dream icarus commit=yes
-akasha/user $ ln.ls icarus       ← inspect the tent: links
-akasha/user $ ln.rm icarus hubris tent:calc:associated_with   ← remove one
+Bridges (near in meaning, far in the graph):
+     1. [lilienthal]  pioneer of flight        0.612
+     2. [ambition]    the drive to exceed      0.481
+
+     (type a number or `dream.confirm dst=` to approve  |  `dream.forget all=yes` to drop)
 ```
+
+**Human confirmation is mandatory — there is no auto-approval by design.** The question a dream
+asks is whether a proposed connection **resonates with your own recall**, so the decision is
+always yours:
+
+| Command | Effect |
+|---|---|
+| *(type a bare number in dream mode)* | Confirms that bridge — calls `dream.confirm`, promoting the staged `tent:` link to a real `calc:hidden_affinity` edge. The list auto-refreshes. |
+| `dream.confirm dst=<atom> [src=<focus>]` | Same, by name. `src` defaults to the last-dreamed focus. |
+| `dream.forget dst=<atom>` | Drops a single staged bridge. |
+| `dream.forget all=yes` | Drops every staged bridge on the focus. |
+
+**Fallback.** If the JCL background layer is unavailable, `dream` degrades to a synchronous run —
+it computes and stages the candidates in one call and returns `status=ready` directly.
+
+**IAM.** A dream always inherits the session's active scopes — out-of-scope atoms are never
+proposed as bridges.
 
 ---
 

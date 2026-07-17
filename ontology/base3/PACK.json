@@ -1,0 +1,8 @@
+{
+  "label": "基本3 — 知の樹冠",
+  "description": "The canopy of knowledge: the professional food domain, the sciences and engineering, medicine & mind, the humanities and the arts, and the cross-cutting knowledge map that crowns them. Heaviest; loads last, in the background.",
+  "theme": "基本3 — 知の樹冠",
+  "license": "MIT (software and editorial content); WordNet 3.1 (word_core_*.ak — see LICENSE.md)",
+  "source": "internal + Princeton University WordNet 3.1",
+  "version": "1.0"
+}

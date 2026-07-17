@@ -31,6 +31,20 @@ class CommandRouter:
         "look":   {"method": "dive.look", "args": ["id"],  "desc": "Dive (legacy alias)"},
         "d":      {"method": "dive.look", "args": ["id"],  "desc": "Dive (short alias)"},
         "out":    {"method": "dive.out",  "args": ["id"],  "desc": "Zoom out to the macro view"},
+        # ── Meaning layer (semantic / structural / emotional search) ──
+        "view":        {"method": "view",            "args": ["id"],          "desc": "Consciousness view of an atom: signposts, resonance, cosmos position + aura (read-only, no dive)"},
+        "cosmos":      {"method": "cosmos",          "args": ["id"],          "desc": "Consciousness view (alias of view)"},
+        "sim":         {"method": "semantic.search", "args": ["id", "limit"], "desc": "Atoms semantically like THIS atom (anchored on its own meaning)"},
+        "similar":     {"method": "semantic.search", "args": ["id", "limit"], "desc": "Semantic neighbours (alias of sim)"},
+        "search":      {"method": "semantic.search", "args": ["query", "limit"], "desc": "Semantic text search: search query=<text> (free-text query)"},
+        "node.sim":    {"method": "node.sim",        "args": ["id", "limit"], "desc": "Atoms structurally similar to THIS atom (connected the same way)"},
+        "node.similar":{"method": "node.sim",        "args": ["id", "limit"], "desc": "Structural neighbours (alias of node.sim)"},
+        "node.learn":  {"method": "node.learn",      "args": [],              "desc": "Learn structural (node-walk) embeddings from the link graph (admin, numpy)"},
+        "emotion.find":{"method": "emotion.find",    "args": ["emo", "limit"],"desc": "Atoms that FEEL an emotion: emotion.find emo=awe (reverse of emotion.profile)"},
+        "emo.find":    {"method": "emotion.find",    "args": ["emo", "limit"],"desc": "Find atoms by emotion (alias of emotion.find)"},
+        "emotion.profile":{"method": "emotion.profile","args": ["id"],        "desc": "Emotion vector of an atom (the emotions it links to)"},
+        "emo.prof":    {"method": "emotion.profile", "args": ["id"],          "desc": "Emotion vector of an atom (alias of emotion.profile)"},
+        "gap.scan":    {"method": "gap.scan",        "args": ["limit"],       "desc": "Important-but-thin concepts (self-expanding-ontology loop)"},
         # ── Sets ──────────────────────────────────────────────────────
         "s.add":  {"method": "set.add",   "args": ["name", "id"],             "desc": "Add atom to set"},
         "s.rm":   {"method": "set.rm",    "args": ["name", "id"],             "desc": "Remove atom from set"},
@@ -116,7 +130,10 @@ class CommandRouter:
         "sv.list": {"method": "survey.list",    "args": [],                                   "desc": "Show active Survey structure"},
         "sv.rm":   {"method": "survey.rm",      "args": [],                                   "desc": "Delete the active Survey"},
         # ── Jataka ────────────────────────────────────────────────────
-        "dream":  {"method": "jataka.dream",   "args": ["id", "axis", "commit"], "desc": "Inference-based hypothetical linking (tent: prefix). commit=yes to write."},
+        "dream":         {"method": "jataka.dream",  "args": ["id", "boldness", "reach", "again"], "desc": "Incubate hidden affinity bridges (async 'sleep on it'). dream id=<atom> → dreaming; call again → ready + candidates. boldness=/reach= tune; again=yes re-dreams."},
+        "dream.confirm": {"method": "dream.confirm",  "args": ["dst", "src"], "desc": "Approve a staged dream bridge into a real link: dream.confirm dst=<atom> [src=<focus>]"},
+        "dream.forget":  {"method": "dream.forget",   "args": ["dst", "src"], "desc": "Drop staged dream bridges: dream.forget [dst=<atom>] [all=yes]"},
+        "present":       {"method": "jataka.present", "args": ["focus", "as"], "desc": "Narrate/report a selection: present (focus=|survey=|set=) as=table|scatter|narrative"},
         # ── Contexa ───────────────────────────────────────────────────
         "fetch":  {"method": "contexa.fetch",  "args": ["query"], "desc": "Fetch from web / Wikipedia"},
         # ── Cross ─────────────────────────────────────────────────────
@@ -187,20 +204,9 @@ class CommandRouter:
         "ft.ent.link":  {"method": "fact.entity.link", "args": ["fact_id", "entity_id", "entity_type", "role"],  "desc": "Link a Fact to an Entity"},
         "ft.diagnose":  {"method": "fact.diagnose",    "args": [],                                               "desc": "Diagnose quality and completeness of the Fact collection"},
         "ft.trace":     {"method": "fact.trace",       "args": ["fact_id"],                                      "desc": "Trace a Fact back to its Sources and provenance"},
-        # ── Curation (premise-bound reconciliation / view construction) ─
-        "cur.new":         {"method": "curation.new",            "args": ["title", "description"],                                "desc": "Create a new Curation workspace"},
-        "cur.open":        {"method": "curation.open",           "args": ["curation_id"],                                         "desc": "Open an existing Curation workspace"},
-        "cur.ls":          {"method": "curation.ls",             "args": [],                                                      "desc": "List all Curation workspaces"},
-        "cur.map":         {"method": "curation.map",            "args": [],                                                      "desc": "Show structure of active Curation workspace"},
-        "cur.rm":          {"method": "curation.rm",             "args": [],                                                      "desc": "Soft-delete the active Curation workspace"},
-        "cur.premise":     {"method": "curation.premise.add",    "args": ["label", "as_of", "perspective", "conflict_policy"],    "desc": "Add a Premise (world-view under which conflicts fold)"},
-        "cur.input":       {"method": "curation.input.add",      "args": ["ref_id", "role", "premise_id", "confidence"],         "desc": "Register an evidence-bearing atom as input"},
-        "cur.view":        {"method": "curation.view.run",       "args": ["premise_id", "label", "input_ids"],                   "desc": "Create a View under a Premise"},
-        "cur.fold":        {"method": "curation.fold.add",       "args": ["view_id", "resolution_scope", "competing_input_ids"], "desc": "Record a conflict fold (winner, dropped, or unresolved)"},
-        "cur.conclude":    {"method": "curation.conclusion.add", "args": ["view_id", "statement", "conclusion_type"],            "desc": "Add a structured conclusion inside a View"},
-        "cur.dispute":     {"method": "curation.dispute.add",    "args": ["target_id", "reason", "severity"],                    "desc": "Flag a dispute against a View, Fold, or Conclusion"},
-        "cur.trace":       {"method": "curation.trace",          "args": ["target_id"],                                          "desc": "Trace a View, Fold, or Conclusion back to its inputs"},
-        "cur.diagnose":    {"method": "curation.diagnose",       "args": [],                                                     "desc": "Diagnose unresolved folds, low-confidence conclusions, coverage gaps"},
+        # ── Curation (interpretation as a narrative path) — CLI commands
+        #    curate / narrate / cur.ls are auto-registered from the concept model's
+        #    annotated CONCEPT_METHODS (lib/akasha/concepts/curation.py).
         # ── Intelligence (decision-cycle orchestration) ─────────────────
         "intel.new":      {"method": "intelligence.new",            "args": ["title", "description"],                                               "desc": "Create a new Intelligence workspace"},
         "intel.open":     {"method": "intelligence.open",           "args": ["intelligence_id"],                                                     "desc": "Open an existing Intelligence workspace"},
@@ -495,6 +501,11 @@ class CommandRouter:
 
     @classmethod
     def _get_concept_group(cls, cmd: str) -> "str | None":
+        # Exact CLI-alias match first (e.g. "reference" → "thesaurus"); such aliases
+        # do not start with the "prefix." so the startswith scan below would miss them.
+        g = cls._command_groups.get(cmd)
+        if g:
+            return g
         for prefix, group in cls.CONCEPT_PREFIXES.items():
             if cmd.startswith(prefix):
                 return group
@@ -521,7 +532,7 @@ class CommandRouter:
         "human":          "Evidence-based actor records — bonds, assessments, timeline, merge detection",
         "correspondence": "Cross-system conceptual mapping with evidence provenance and dispute tracking",
         "fact":           "Fact collections — direct facts, claims, absences, inferred facts, source tracking",
-        "curation":       "Premise-bound view construction and conflict-fold resolution",
+        "curation":       "Interpretation as a narrative path over relationships (derived or authored)",
         "intelligence":   "Decision-cycle orchestration: requirements → gaps → tasking → assessment → recommendation",
         "country":        "Evidence-grounded country / polity / entity records with law and event sourcing",
         "homonoia":       "Game city model — districts, factions, laws, and events for Homonoia (ὁμόνοια), the city where everyone lives in harmony",
@@ -542,6 +553,12 @@ class CommandRouter:
     # ── Auto-augmentation from ConceptRegistry ───────────────────────────────
     # Populated lazily on first use; never overwrites hand-written entries.
     _augmented: bool = False
+    # CLI command → concept group, for aliases that don't start with the "prefix."
+    # (e.g. "reference" → "thesaurus"); consulted by _get_concept_group.
+    _command_groups: dict = {}
+    # Full method name → its CLI alias, so typing the method name ("thesaurus.reference")
+    # dispatches the same as the short alias ("reference"). Not shown in help.
+    _method_aliases: dict = {}
 
     @classmethod
     def augment_from_registry(cls, registry) -> None:
@@ -556,12 +573,26 @@ class CommandRouter:
         for cmd, spec in registry.get_command_specs().items():
             if cmd not in cls.COMMAND_SPECS:
                 cls.COMMAND_SPECS[cmd] = spec
+        # CLI-alias → concept-group map, so help groups aliases like "reference".
+        for cmd, group in registry.get_command_groups().items():
+            cls._command_groups.setdefault(cmd, group)
         for prefix, group in registry.get_concept_prefixes().items():
             if prefix not in cls.CONCEPT_PREFIXES:
                 cls.CONCEPT_PREFIXES[prefix] = group
         for name, label in registry.get_concept_labels().items():
             if name not in cls.CONCEPT_LABELS:
                 cls.CONCEPT_LABELS[name] = label
+
+        # The full concept-model method name always dispatches, uniformly across ALL
+        # models — the canonical form. Every command whose spec targets a different
+        # method (an abbreviation like "cs.new" → cast.new, or an alias) registers its
+        # method name as a dispatch alias, so `cast.new` works as well as `cs.new` and
+        # `thesaurus.reference` as well as any short form. Built from the full merged
+        # COMMAND_SPECS (hand-written abbreviations + registry entries alike).
+        for cmd, spec in cls.COMMAND_SPECS.items():
+            method = spec.get("method")
+            if method and method != cmd and method not in cls.COMMAND_SPECS:
+                cls._method_aliases.setdefault(method, cmd)
         cls._augmented = True
 
     @classmethod
@@ -576,6 +607,24 @@ class CommandRouter:
                 cls.augment_from_registry(reg)
         except ImportError:
             cls._augmented = True  # don't retry if import fails
+
+    @classmethod
+    def concept_namespaces(cls) -> "dict":
+        """Return {model-namespace: [operator-suffix, …]} for every concept model —
+        the set a shell can offer as subcommand modes. The namespace is the method
+        prefix (e.g. "thesaurus", "cast", "note"); the operators are its bare suffixes
+        (what you type inside `[thesaurus]` mode: reference / explore / concept)."""
+        cls._ensure_augmented()
+        ns: dict = {}
+        for cmd, spec in cls.COMMAND_SPECS.items():
+            if cls._get_concept_group(cmd) is None:
+                continue
+            method = spec.get("method", cmd)
+            if "." not in method:
+                continue
+            prefix, suffix = method.split(".", 1)
+            ns.setdefault(prefix, set()).add(suffix)
+        return {k: sorted(v) for k, v in ns.items()}
 
     @classmethod
     def list_concepts(cls) -> "list[str]":
@@ -634,7 +683,9 @@ class CommandRouter:
         # "ln.src" and "al.$it" are not in COMMAND_SPECS.
         if args:
             _sub = f"{cmd}.{args[0]}"
-            if _sub in cls.COMMAND_SPECS:
+            # Also match a full concept method name ("thesaurus reference" → thesaurus.reference,
+            # "cast new" → cast.new) so a concept model reads as "<model> <operator>".
+            if _sub in cls.COMMAND_SPECS or _sub in cls._method_aliases:
                 cmd, args = _sub, args[1:]
 
         # focus — all remaining tokens are the filter list (@me, @group:x, @ns:x, @all)
@@ -791,6 +842,11 @@ class CommandRouter:
         # Bare non-negative integer → navigate to stored signpost by index
         if cmd.isdigit():
             return cls._create_payload("dive.look", {"signpost": int(cmd)}, session_token)
+
+        # A full concept-method name typed directly ("thesaurus.reference") dispatches
+        # the same as its short CLI alias ("reference").
+        if cmd in cls._method_aliases:
+            cmd = cls._method_aliases[cmd]
 
         if cmd not in cls.COMMAND_SPECS:
             return None

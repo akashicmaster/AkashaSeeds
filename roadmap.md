@@ -117,7 +117,7 @@ extend them):
 [#40](https://github.com/henrigrohmann/akashictree/issues/40) vision expansion — detection, caption/OCR, gap-driven image fetch, cosmos embeddings ·
 [#41](https://github.com/henrigrohmann/akashictree/issues/41) import/export residuals — PDF/binary formats, JCL-orchestrated I/O steps, Contexa batch delegation ·
 [#42](https://github.com/henrigrohmann/akashictree/issues/42) emotion 2nd track (external-NLP sentiment), `cosmos_nd` affect axis ·
-[#43](https://github.com/henrigrohmann/akashictree/issues/43) pipeline endpoints — Importable/Exportable on more models, Contexa Source / Jataka Sink, mail model + attachments, comms endpoints.
+[#43](https://github.com/henrigrohmann/akashictree/issues/43) pipeline endpoints — Contexa input (`contexa.ingest`) + Jataka output (`jataka.present` table/scatter/narrative) **live** (survey round-trip); remaining: Importable/Exportable on more models, LLM-requiring endpoints (chatbot source, LLM narrator), Jataka file output, mail model + attachments, comms endpoints.
 
 ---
 

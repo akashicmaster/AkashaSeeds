@@ -136,6 +136,58 @@ _BARE_REL_REMAP: Dict[str, str] = {
 # entry point for user-facing set membership and handles proto-word creation.
 _AUTO_COLLECTION_RELS: frozenset = frozenset({"sys:is_a", "sys:part_of"})
 
+# ── Salience (meaning-density) — an incremental per-atom importance score ─────────────────
+# Every atom carries meta['salience']: a running, weighted degree that grows as the atom is
+# linked, so "the denser the meaning, the bigger the number." It is maintained INCREMENTALLY
+# on the write path (bumped on put_link, decremented on remove_link) — never scanned or
+# recomputed — so readers (thesaurus.explore / concept, gap.scan, ranking) just read it.
+# A link contributes to BOTH endpoints: inbound to dst (being referenced = salient) and, at
+# half weight, outbound to src (referencing richly = well-curated). Relation type sets how
+# much meaning a link carries.
+_SALIENCE_OUT_FACTOR = 0.5      # outbound contribution relative to inbound
+
+
+def _rel_salience_weight(rel: str) -> float:
+    """How much a link of this relation contributes to meaning-density: curated semantic links
+    carry full meaning; a weave mention is a lighter importance signal; structural scaffolding
+    and tentative links barely count."""
+    if not rel:
+        return 0.5
+    if rel.startswith("tent:") or rel == "specializes" or rel.startswith("proto"):
+        return 0.1
+    if rel == "sys:refers_to":
+        return 0.5                      # weave mention — a real importance signal, half weight
+    if rel.startswith("sys:") or rel.startswith("@"):
+        return 0.15                     # structural / narrative scaffolding — low meaning
+    return 1.0                          # semantic / curated (thesaurus:, calc:, is_a, emotion…)
+
+
+def _bump_salience(core, key: str, delta: float) -> None:
+    """Incrementally adjust an atom's stored meaning-density (meta['salience']) by `delta`.
+    Best-effort: any failure here must never break the link/atom write — salience is a derived
+    convenience, not ground truth. Clamped ≥ 0 and rounded to keep the meta compact."""
+    if not key or not delta:
+        return
+    try:
+        row = core.get_chunk_raw(key)
+        if not row:
+            return
+        meta = json.loads(row["meta"]) if row.get("meta") else {}
+        if not isinstance(meta, dict):
+            return
+        meta["salience"] = round(max(0.0, float(meta.get("salience", 0.0) or 0.0) + delta), 4)
+        core.update_meta(key, meta)
+    except Exception:
+        pass
+
+
+def _apply_link_salience(core, src: str, dst: str, rel: str, w: float, sign: float = 1.0) -> None:
+    """Bump (sign=+1 on add) or drop (sign=-1 on remove) the salience both endpoints gain from
+    a link. dst gets the inbound weight; src gets the smaller outbound share."""
+    wt = _rel_salience_weight(rel) * float(w or 1.0) * sign
+    _bump_salience(core, dst, wt)
+    _bump_salience(core, src, wt * _SALIENCE_OUT_FACTOR)
+
 # Axis → matched rel prefixes (spec §5)
 _AXIS_PREFIXES: Dict[str, List[str]] = {
     "emotion":   ["emo:"],
@@ -451,6 +503,7 @@ class AkashaEngine:
     # --- Links & Graph Topology ---
     def remove_link(self, src: str, dst: str, rel: str) -> None:
         self.core.remove_link_raw(src, dst, rel)
+        _apply_link_salience(self.core, src, dst, rel, 1.0, sign=-1.0)   # keep density current
 
     def delete_alias(self, alias: str) -> None:
         self.core.delete_alias(alias)
@@ -459,6 +512,8 @@ class AkashaEngine:
                  w: float = 1.0, author: str = "system", status: str = "verified"):
         _workspace_guard(author)
         self.core.put_link_raw(src, dst, rel, w=w, author=author, status=status, ts=time.time())
+        # Meaning-density: a new link makes both endpoints a little more salient (read-free later).
+        _apply_link_salience(self.core, src, dst, rel, w, sign=1.0)
         if rel in _AUTO_COLLECTION_RELS:
             nucleus = getattr(self, '_nucleus', None)
             dst_aliases = self.core.get_aliases_by_key(dst)
@@ -1267,9 +1322,24 @@ class AkashaEngine:
     ) -> List[Dict[str, Any]]:
         """
         Finds written chunks that share semantic tags (emo:* or calc:* targets)
-        with the focal atom.  Weight is 1.0 (cosine similarity reserved for future
-        TensorEngine integration).
+        with the focal atom.  When both the focal atom and a candidate carry a
+        `semantic_vector`, the weight is their cosine similarity (real semantic
+        proximity); otherwise it falls back to 1.0 (shared-tag co-membership).
+        Results are ranked by weight so the nearest-in-meaning surface first.
         """
+        tensor = getattr(self, "tensor", None)
+
+        def _vec_of(key: str, raw=None):
+            try:
+                raw = raw or self.core.get_chunk_raw(key)
+                m = json.loads(raw["meta"]) if raw and raw.get("meta") else {}
+                v = m.get("semantic_vector") if isinstance(m, dict) else None
+                return v if isinstance(v, list) and v else None
+            except Exception:
+                return None
+
+        focal_vec = _vec_of(focal_key)
+
         # Step 1: collect focal tags
         focal_tags: List[str] = []
         for link in self.core.get_adjacent_links(focal_key):
@@ -1299,13 +1369,20 @@ class AkashaEngine:
                 if allowed_scopes and not self.check_access(src, allowed_scopes):
                     continue
 
+                # Real semantic proximity when both vectors exist, else co-membership 1.0.
+                weight = 1.0
+                if tensor is not None and focal_vec is not None:
+                    cvec = _vec_of(src, raw)
+                    if cvec is not None:
+                        weight = round(tensor.cosine(focal_vec, cvec), 4)
+
                 candidates[src] = {
                     "via":    tag_key,
                     "rel":    link["rel"],
-                    "weight": 1.0,
+                    "weight": weight,
                 }
 
-        # Step 3: build result
+        # Step 3: build result, nearest-in-meaning first
         results: List[Dict[str, Any]] = []
         for key, info in candidates.items():
             content = self.get_chunk(key) or ""
@@ -1317,6 +1394,7 @@ class AkashaEngine:
                 "weight":  info["weight"],
             })
 
+        results.sort(key=lambda r: r["weight"], reverse=True)
         return results
 
     def associate(
@@ -1885,6 +1963,9 @@ class NucleusEngine:
     def put_link(self, src: str, dst: str, rel: str, w: float = 1.0, author: str = "system") -> None:
         """Links two nucleus atoms (or a local atom → nucleus atom)."""
         self.core.put_link_raw(src, dst, rel, w=w, author=author, ts=time.time())
+        # Meaning-density on the shared nucleus (ontology concepts, proto-words) — the corpus
+        # thesaurus.explore / gap.scan rank over. Bump the nucleus-resident endpoints.
+        _apply_link_salience(self.core, src, dst, rel, w, sign=1.0)
 
     # --- Delegation set support on nucleus (mirrors GroupEngine interface) ---
     def add_to_set(self, name: str, key: str) -> None:

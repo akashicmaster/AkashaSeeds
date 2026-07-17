@@ -110,10 +110,21 @@ class Symbiosis:
                         
                         # timeout=90 to prevent infinite hangs during impossible source builds (e.g. Rust/C extensions on iOS)
                         try:
-                            subprocess.check_call(
-                                [sys.executable, "-m", "pip", "install", package_name, "--prefer-binary"],
-                                timeout=90
-                            )
+                            # --prefer-binary — prefer a wheel, but let a capable host build
+                            # from source when no wheel exists for this Python. The 90 s
+                            # timeout below bounds the build, so a compiler-less env still
+                            # fails fast and degrades. (env_detector's core path stays
+                            # wheels-only by design; this optional installer favours
+                            # "install if at all possible".)
+                            _cmd = [sys.executable, "-m", "pip", "install", package_name, "--prefer-binary"]
+                            _r = subprocess.run(_cmd, timeout=90,
+                                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                            # PEP 668 (externally-managed): retry allowing the system-site install.
+                            if _r.returncode != 0 and b"externally-managed" in (_r.stderr or b""):
+                                _r = subprocess.run(_cmd + ["--break-system-packages"], timeout=90,
+                                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                            if _r.returncode != 0:
+                                raise subprocess.CalledProcessError(_r.returncode, "pip install")
                         except subprocess.TimeoutExpired:
                             print(f"\n    {Colors.FAIL}[-] Assimilation timed out (process took too long).{Colors.ENDC}")
                             print(f"    {Colors.DIM}[-] This usually happens when compiling C/Rust extensions in restricted environments.{Colors.ENDC}")

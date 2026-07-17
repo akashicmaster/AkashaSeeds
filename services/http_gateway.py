@@ -34,6 +34,30 @@ class Colors:
 
 logger = logging.getLogger("Harmonia.WebService")
 
+
+def portal_banner(host: str, port: int, scheme: str = "http") -> list:
+    """Human-readable 'the web portal is up' lines, honest about reachability.
+    Shared by both portals (httpd here, uvicorn in akasha.py) so a user is never
+    left guessing whether the site is local-only or actually published.
+    *scheme* is "https" when TLS is terminating in the portal."""
+    g, d, e = Colors.GREEN, Colors.DIM, Colors.ENDC
+    _default_port = 443 if scheme == "https" else 80
+    _hostport = lambda h: f"{h}" if port == _default_port else f"{h}:{port}"
+    _tls_note = "  (HTTPS · port 80 redirects here)" if scheme == "https" else ""
+    if host in ("0.0.0.0", "::"):
+        _dom = "" if port == _default_port else f" For a bare domain, run with AKASHA_PORT={_default_port}."
+        return [
+            f"{g}[+] Web portal is PUBLIC — listening on all interfaces, port {port}.{_tls_note}{e}",
+            f"{d}    Reach it at  {scheme}://<this-server-ip>{'' if port == _default_port else ':' + str(port)}/{e}",
+            f"{d}    Open the firewall for port {port}{' and 80' if scheme == 'https' else ''}.{_dom}{e}",
+        ]
+    if host in ("127.0.0.1", "localhost", "::1"):
+        return [
+            f"{g}[+] Web portal → {scheme}://{_hostport(host)}/   {d}(THIS MACHINE ONLY){e}",
+            f"{d}    To publish externally: AKASHA_HOST=0.0.0.0 [AKASHA_PORT={_default_port}] + open the firewall.{e}",
+        ]
+    return [f"{g}[+] Web portal → {scheme}://{_hostport(host)}/{_tls_note}{e}"]
+
 class BaseWebHandler(SimpleHTTPRequestHandler):
     """
     HTTP Request Handler.
@@ -97,12 +121,32 @@ class BaseWebHandler(SimpleHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
+    def _host_dir(self):
+        """Which archives sub-directory does the request's Host header map to?
+        None → default root. Shared rule with the ASGI portal (host_routing)."""
+        try:
+            from services.host_routing import resolve_host_dir
+            return resolve_host_dir(self.headers.get("Host", ""), self.directory)
+        except Exception:
+            return None
+
     def translate_path(self, path):
         """
         Override to serve <static>/<name>/index.html directly for /<name> and /<name>/
         requests, avoiding the 301 redirect that SimpleHTTPRequestHandler normally issues
         for directory paths (the redirect breaks Codespace port-forwarding proxies).
+
+        Also applies host-based document-root routing: a request on
+        world.<base> is served from <static>/world/… (see services/host_routing).
+        Only static GETs reach here — the RPC/readme endpoints are handled in
+        do_POST/do_GET before this — so no reserved-path exclusion is needed.
         """
+        host_dir = self._host_dir()
+        if host_dir:
+            pure = path.split('?', 1)[0].split('#', 1)[0]
+            prefix = '/' + host_dir
+            if not (pure == prefix or pure.startswith(prefix + '/')):
+                path = prefix + (pure if pure != '/' else '/')
         fs_path = super().translate_path(path)
         if os.path.isdir(fs_path):
             index = os.path.join(fs_path, 'index.html')
@@ -214,7 +258,11 @@ class BaseWebService:
     def add_route(self, path: str, method: str, handler: Callable):
         self.routes[path] = {'method': method.upper(), 'handler': handler}
 
-    def start(self):
+    def start(self, ready_event=None):
+        """Bind and serve. If *ready_event* is given, it is set once the banner
+        has been printed (or on failure) so the boot sequence can flush all
+        startup output before showing an interactive prompt — otherwise this
+        message, printed from the portal thread, races the genesis/auth prompt."""
         self.port = self._find_free_port()
         attrs = {
             'routes': self.routes,
@@ -225,10 +273,15 @@ class BaseWebService:
         handler_class = type('DynamicWebHandler', (BaseWebHandler,), attrs)
         try:
             self._httpd = HTTPServer((self.host, self.port), handler_class)
-            print(f"{Colors.GREEN}[+] Gateway Online: http://{self.host}:{self.port}/{Colors.ENDC}")
+            for _line in portal_banner(self.host, self.port):
+                print(_line, flush=True)
+            if ready_event is not None:
+                ready_event.set()
             self._httpd.serve_forever()
         except Exception as e:
-            print(f"{Colors.FAIL}[!] Gateway Failure: {e}{Colors.ENDC}")
+            print(f"{Colors.FAIL}[!] Gateway Failure: {e}{Colors.ENDC}", flush=True)
+            if ready_event is not None:
+                ready_event.set()
 
     def stop(self):
         if self._httpd:

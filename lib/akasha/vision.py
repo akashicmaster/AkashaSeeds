@@ -76,8 +76,19 @@ def _resolve_backend(allow_install: bool = True) -> Optional[Tuple[str, Any]]:
             import subprocess
             import sys
             logger.info("[Vision] Installing LiteRT (ai-edge-litert) on demand…")
-            subprocess.run([sys.executable, "-m", "pip", "install", "--quiet",
-                            "ai-edge-litert"], check=False, timeout=300)
+            # --prefer-binary — prefer a wheel, but let a capable host (a real VPS with
+            # a compiler) build from source when no wheel exists for this Python (e.g.
+            # a brand-new 3.x before LiteRT/deps publish wheels). The 300 s timeout below
+            # bounds any source build, so a compiler-less env still fails fast and degrades
+            # to the no-vision path. (env_detector's core path stays wheels-only by design;
+            # this optional heavy lib favours "install if at all possible" instead.)
+            _cmd = [sys.executable, "-m", "pip", "install", "--quiet",
+                    "--prefer-binary", "ai-edge-litert"]
+            r = subprocess.run(_cmd, check=False, timeout=300,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            # PEP 668 (externally-managed): retry allowing the system-site install.
+            if r.returncode != 0 and b"externally-managed" in (r.stderr or b""):
+                subprocess.run(_cmd + ["--break-system-packages"], check=False, timeout=300)
             found = _try_imports()
         except Exception as exc:
             logger.warning("[Vision] LiteRT install failed (non-fatal): %s", exc)

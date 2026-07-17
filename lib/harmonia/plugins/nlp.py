@@ -185,15 +185,20 @@ class MultiLocaleNLP:
         logger.info("[NLP] Model '%s' missing — attempting download…", model_name)
         try:
             import subprocess
-            res = subprocess.run(
-                [sys.executable, "-m", "spacy", "download", model_name,
-                 "--quiet"],
-                timeout=120,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
+            # `spacy download` shells out to `pip install` for the model wheel, so it
+            # hits PEP 668 (externally-managed-environment) on modern distros just like
+            # any other install. spacy forwards trailing args to pip, so retry with
+            # --break-system-packages when — and only when — that is the failure.
+            _base = [sys.executable, "-m", "spacy", "download", model_name, "--quiet"]
+            res = subprocess.run(_base, timeout=120,
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if res.returncode != 0:
                 err = res.stderr.decode("utf-8", errors="replace").strip()
+                if "externally-managed" in err or "PEP 668" in err:
+                    res = subprocess.run(_base + ["--break-system-packages"], timeout=120,
+                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    err = res.stderr.decode("utf-8", errors="replace").strip()
+            if res.returncode != 0:
                 logger.warning("[NLP] spacy download '%s' failed: %s", model_name, err)
                 return None
             importlib.invalidate_caches()

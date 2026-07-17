@@ -27,6 +27,7 @@ from api.shell.renderer import (render, paged_render, print_help, print_concepts
                                 print_concept_help, print_command_detail, c,
                                 extract_assoc_menu, extract_dream_menu, extract_lens_candidates)
 from api.shell.input import InputBuffer, make_prompt
+from api.shell.modes import ModeController
 
 
 # ─── Gateway helpers ──────────────────────────────────────────────────────────
@@ -79,11 +80,25 @@ def _genesis_rite(gw) -> Optional[Tuple[str, str]]:
     print(c(Colors.CYAN,  " [ The Pact of Genesis ]"))
     print(c(Colors.CYAN,  "=" * 52 + "\n"))
 
-    ak_name   = input("Name this system: ").strip() or "AKASHA"
-    user_name = input("Your identity (Admin ID): ").strip()
-    if not user_name:
-        print(c(Colors.FAIL, "[!] Admin ID is required."))
-        return None
+    # Name Akasha and the admin, then confirm before continuing. A first-time
+    # install can otherwise sail past on a stray Enter, before the operator has
+    # really chosen the names — so we read both, show them back, and ask.
+    while True:
+        ak_name   = input("Name this system: ").strip() or "AKASHA"
+        user_name = input("Your identity (Admin ID): ").strip()
+        if not user_name:
+            print(c(Colors.FAIL, "  [!] Admin ID is required.\n"))
+            continue
+
+        print()
+        print(c(Colors.CYAN, "  About to seal the pact:"))
+        print(f"    This system will be named  →  {c(Colors.GREEN, ak_name)}")
+        print(f"    You will be known as       →  {c(Colors.GREEN, user_name)}")
+        confirm = input("  Is this correct? [yes/no]: ").strip().lower()
+        if confirm in ("y", "yes"):
+            break
+        # Anything else (including a bare Enter) re-asks — never proceed by accident.
+        print(c(Colors.DIM, "  No worries — let's name things again.\n"))
 
     while True:
         p1 = env.secure_input("  Set passphrase: ")
@@ -122,9 +137,17 @@ def _auth_gate(gw, akasha_name: str) -> Optional[Tuple[str, str]]:
             continue
         pwd = env.secure_input(f"  Passphrase [{attempts} left]: ")
 
+        # The interactive console is a long-lived local operator session — request a
+        # generous token TTL (default 24 h, override with AKASHA_CLI_TTL seconds; kernel
+        # clamps to [60, 86400]) so a session doesn't die mid-use after 30 min. Expiry is
+        # still handled gracefully below (re-login + retry), this just makes it rare.
+        try:
+            _cli_ttl = int(os.environ.get("AKASHA_CLI_TTL", "86400"))
+        except (TypeError, ValueError):
+            _cli_ttl = 86400
         resp = gw.dispatch({
             "jsonrpc": "2.0", "method": "kernel.auth.verify",
-            "params": {"data": {"user_id": uid, "passphrase": pwd}},
+            "params": {"data": {"user_id": uid, "passphrase": pwd, "ttl": _cli_ttl}},
             "id": "auth",
         })
 
@@ -559,34 +582,58 @@ def run_cli(gw):
 
     _setup_readline()
 
+    # Prompt rendering policy. A coloured/multi-line prompt makes minimal iOS line
+    # editors (a-Shell / Pyto) miscount the cursor column — the left margin drifts,
+    # the prompt gets hidden, and the session becomes unusable. Emit colour only on
+    # a capable interactive TTY, and bracket the escapes for readline so even then
+    # they cost zero display columns. Any of NO_COLOR / TERM=dumb / a restricted
+    # console / AKASHA_PLAIN_PROMPT forces a bulletproof plain-ASCII prompt.
+    _prompt_plain = (
+        bool(os.environ.get("AKASHA_PLAIN_PROMPT"))
+        or bool(os.environ.get("NO_COLOR"))
+        or os.environ.get("TERM") == "dumb"
+        or not sys.stdout.isatty()
+        or env.is_restricted_console
+    )
+    _prompt_color = not _prompt_plain
+
     buf         = InputBuffer()
     cmd_queue:  List[str] = []
     cmd_history: List[str] = []
     su_context:   dict  = {"active": False, "target": None}
-    nav_mode:     dict  = {"active": False, "name": None}
+    nav_mode:     dict  = {"active": False, "name": None, "kind": None}
     _assoc_state: dict  = {"focal_key": None, "focal_alias": None, "menu": {}}
     _dream_state: dict  = {"focal_key": None, "focal_alias": None, "menu": {}}
     _lens_state:  dict  = {"src": "", "candidates": {}}
 
     # Commands that enter a named navigation mode
-    _NAV_ENTER = {
-        "dive": "dive", "look": "dive", "d": "dive",
-        "explore": "explore", "exp": "explore",
+    # Selection modes (numeric pick of a staged candidate) — bespoke in-mode handling
+    # lives in the loop below. Namespace modes (dive + concept models) are handled
+    # uniformly by the ModeController.
+    _SEL_ENTER = {
         "assoc": "assoc", "associate": "assoc",
         "lens": "lens",
     }
+    _modes = ModeController()   # dive + every concept model, one namespace-mode mechanism
 
     while True:
         try:
-            prompt = make_prompt(user_id, buf.in_multiline, su_context, nav_mode)
+            prompt = make_prompt(user_id, buf.in_multiline, su_context, nav_mode,
+                                 color=_prompt_color, readline_active=_readline_ok)
+            # Blank-line spacing is printed here, NOT embedded in the prompt string:
+            # a newline inside the string handed to input() breaks column tracking on
+            # minimal line editors.
+            _lead = "" if buf.in_multiline else "\n"
 
             if cmd_queue:
                 line = cmd_queue.pop(0)
                 if not buf.in_multiline and line.strip().startswith("#"):
                     continue
                 time.sleep(0.03)
-                print(f"{prompt}{line}")
+                print(f"{_lead}{prompt}{line}")
             else:
+                if _lead:
+                    print(_lead, end="")
                 line = input(prompt)
 
             if not buf.push(line):
@@ -598,21 +645,32 @@ def run_cli(gw):
 
             low = full_cmd.lower()
 
+            if low in ("exit", "quit", "bye", "out", "..") and nav_mode["active"]:
+                name = nav_mode["name"]
+                nav_mode.update({"active": False, "name": None, "kind": None})
+                if name == "assoc":
+                    _assoc_state.update({"focal_key": None, "focal_alias": None, "menu": {}})
+                elif name == "dream":
+                    _dream_state.update({"focal_key": None, "focal_alias": None, "menu": {}})
+                elif name == "lens":
+                    _lens_state.update({"src": "", "candidates": {}})
+                print(c(Colors.DIM, f"  ↩ Leaving {name} mode."))
+                continue
             if low in ("exit", "quit", "bye"):
-                if nav_mode["active"]:
-                    name = nav_mode["name"]
-                    nav_mode["active"] = False
-                    nav_mode["name"]   = None
-                    if name == "assoc":
-                        _assoc_state.update({"focal_key": None, "focal_alias": None, "menu": {}})
-                    elif name == "dream":
-                        _dream_state.update({"focal_key": None, "focal_alias": None, "menu": {}})
-                    elif name == "lens":
-                        _lens_state.update({"src": "", "candidates": {}})
-                    print(c(Colors.DIM, f"  ↩ Leaving {name} mode."))
-                    continue
                 print(c(Colors.DIM, "Suspending consciousness… Goodbye."))
                 break
+
+            # ── Enter a namespace mode by a bare model name ───────────
+            # e.g. `thesaurus` → [thesaurus]. Inside, bare operators resolve to
+            # <model>.<op> (handled uniformly by the ModeController); globals still
+            # work as a fallback. (dive enters by being dispatched; assoc/lens are
+            # selection modes handled below.)
+            if not nav_mode["active"] and " " not in full_cmd and _modes.bare_enter(low):
+                nav_mode.update({"active": True, "name": low, "kind": "ns"})
+                _ops = ", ".join(_modes.operators(low))
+                print(c(Colors.GREEN, f"  ▸ {low} mode") +
+                      c(Colors.DIM, f"  — operators: {_ops}   (out / exit to leave)"))
+                continue
 
             # ── History expansion (!! / !n / !-n / !prefix) ───────────
             if full_cmd.startswith("!"):
@@ -678,7 +736,7 @@ def run_cli(gw):
                                 )
                 continue
 
-            # ── Dream mode: numeric proposal approval ──────────────────
+            # ── Dream mode: numeric bridge approval ────────────────────
             if (nav_mode.get("name") == "dream"
                     and _dream_state["menu"]
                     and full_cmd.strip().isdigit()):
@@ -686,7 +744,7 @@ def run_cli(gw):
                 entry = _dream_state["menu"].get(sel)
                 if not entry:
                     hi = max(_dream_state["menu"].keys())
-                    print(c(Colors.FAIL, f"  [!] No proposal {sel} (valid: 1–{hi})."))
+                    print(c(Colors.FAIL, f"  [!] No bridge {sel} (valid: 1–{hi})."))
                     continue
 
                 focal_ref = entry["focal_alias"] or entry["focal_key"]
@@ -696,14 +754,19 @@ def run_cli(gw):
                     focal_ref = f'"{focal_ref}"'
                 if " " in dst_ref:
                     dst_ref = f'"{dst_ref}"'
-                ln_cmd = f"ln {focal_ref} {dst_ref} {rel}"
-                print(c(Colors.DIM, f"  → {ln_cmd}"))
-                ln_payload = CommandRouter.build_rpc_request(ln_cmd, session_token)
-                if ln_payload:
-                    ln_resp = gw.dispatch(ln_payload)
-                    paged_render(ln_resp)
-                    if "error" not in ln_resp:
-                        # Auto-refresh dream to show remaining proposals
+                # New async flow: approve a staged bridge via dream.confirm.
+                # Legacy flow: the proposal is written directly as a link.
+                if entry.get("confirm"):
+                    approve_cmd = f"dream.confirm dst={dst_ref} src={focal_ref}"
+                else:
+                    approve_cmd = f"ln {focal_ref} {dst_ref} {rel}"
+                print(c(Colors.DIM, f"  → {approve_cmd}"))
+                approve_payload = CommandRouter.build_rpc_request(approve_cmd, session_token)
+                if approve_payload:
+                    approve_resp = gw.dispatch(approve_payload)
+                    paged_render(approve_resp)
+                    if "error" not in approve_resp:
+                        # Auto-refresh dream to show remaining bridges
                         refresh_ref = entry["focal_alias"] or entry["focal_key"]
                         if " " in refresh_ref:
                             refresh_ref = f'"{refresh_ref}"'
@@ -1034,7 +1097,19 @@ def run_cli(gw):
                 dispatch_cmd  = dispatch_cmd.strip()
 
             # ── Kernel dispatch ───────────────────────────────────────
-            payload = CommandRouter.build_rpc_request(dispatch_cmd, session_token)
+            def _build(cmd, tok):
+                # In a namespace mode (dive / a concept model), resolve the input
+                # through the one ModeController rule: try <mode>-scoped candidates in
+                # order, fall back to the global command. Outside a mode, plain global.
+                if nav_mode.get("kind") == "ns":
+                    for cand in _modes.candidates(nav_mode["name"], cmd):
+                        p = CommandRouter.build_rpc_request(cand, tok)
+                        if p is not None:
+                            return p
+                    return None
+                return CommandRouter.build_rpc_request(cmd, tok)
+
+            payload = _build(dispatch_cmd, session_token)
             if payload is None:
                 print(c(Colors.FAIL,
                         f"[!] Unknown command: '{dispatch_cmd.split()[0]}'"
@@ -1043,13 +1118,31 @@ def run_cli(gw):
 
             resp = gw.dispatch(payload)
 
-            # Track navigation mode based on the dispatched command
+            # Session token expired/revoked → re-authenticate once and retry, so a
+            # long-running console recovers instead of dying on a cryptic -32001.
+            _e = resp.get("error") if isinstance(resp, dict) else None
+            if (_e and _e.get("code") == -32001
+                    and any(w in _e.get("message", "").lower() for w in ("expired", "revoked"))):
+                print(c(Colors.WARNING, "  [!] Session expired — please log in again."))
+                _re = _auth_gate(gw, akasha_name)
+                if _re:
+                    user_id, session_token, user_role = _re
+                    payload = _build(dispatch_cmd, session_token)
+                    resp = gw.dispatch(payload) if payload else resp
+                else:
+                    continue
+
+            # Track navigation mode based on the dispatched command. A command that
+            # enters a namespace mode (dive/look/d → dive) becomes a real [dive] mode
+            # via the ModeController; assoc/lens are selection modes.
             _nav_cmd = dispatch_cmd.split()[0].lower() if dispatch_cmd else ""
-            _entered = _NAV_ENTER.get(_nav_cmd)
-            if _entered and "error" not in resp:
-                if nav_mode.get("name") != _entered:
-                    nav_mode["active"] = True
-                    nav_mode["name"]   = _entered
+            if "error" not in resp:
+                _ns_mode  = _modes.command_enter(_nav_cmd)   # dive/look/d → "dive"
+                _sel_mode = _SEL_ENTER.get(_nav_cmd)         # assoc/lens
+                _target   = _ns_mode or _sel_mode
+                if _target and nav_mode.get("name") != _target:
+                    nav_mode.update({"active": True, "name": _target,
+                                     "kind": "ns" if _ns_mode else "sel"})
 
             # Extract assoc candidate menu for numeric selection
             if _nav_cmd in ("assoc", "associate") and "error" not in resp:

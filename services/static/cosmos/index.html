@@ -111,26 +111,29 @@
         /* Bottom Control Deck */
         #cockpit-deck {
             position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-            display: flex; gap: 20px; align-items: flex-end; width: 95%; max-width: 1300px; pointer-events: none;
+            display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end;
+            width: calc(100% - 40px); max-width: 1500px; pointer-events: none;
         }
+        /* Every deck panel may shrink below its content so the row never overflows the viewport */
+        #cockpit-deck > .cockpit-panel { min-width: 0; }
 
         /* 2. Sensor Array */
-        #panel-sensors { flex: 1; pointer-events: auto; }
+        #panel-sensors { flex: 1 1 200px; pointer-events: auto; }
         .cyber-select { background: #000; color: var(--accent); border: 1px solid var(--border); padding: 6px; font-family: inherit; font-size: 0.9rem; outline: none; width: 100%; }
         .cyber-slider { -webkit-appearance: none; width: 100%; background: #112; height: 4px; outline: none; }
         .cyber-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 18px; background: var(--accent); cursor: pointer; border-radius: 2px; }
 
         /* 3. Helm Navigation */
-        #panel-helm { flex: 1.2; text-align: center; pointer-events: auto; border-color: var(--accent); box-shadow: 0 0 15px rgba(0,255,204,0.2); }
+        #panel-helm { flex: 1 1 200px; text-align: center; pointer-events: auto; border-color: var(--accent); box-shadow: 0 0 15px rgba(0,255,204,0.2); }
         .warp-input-group { display: flex; gap: 8px; }
         .btn-warp { background: rgba(0,255,204,0.2); border: 1px solid var(--accent); color: var(--accent); font-weight: bold; font-family: inherit; cursor: pointer; padding: 0 20px; transition: 0.2s; text-transform: uppercase; }
         .btn-warp:hover { background: var(--accent); color: #000; }
         .btn-warp:active { transform: scale(0.95); }
 
         /* 4. Trace Deck */
-        #panel-trace { flex: 1.5; pointer-events: auto; border-color: var(--accent3); max-height: 200px; display: flex; flex-direction: column; }
-        .wake-stream { flex: 1; overflow-y: auto; background: rgba(0,0,0,0.5); border: 1px solid #333; padding: 6px; margin-bottom: 8px; font-size: 0.75rem; color: #ccc; }
-        .wake-item { border-left: 2px solid var(--accent3); padding-left: 6px; margin-bottom: 6px; }
+        #panel-trace { flex: 1.4 1 260px; pointer-events: auto; border-color: var(--accent3); max-height: 200px; display: flex; flex-direction: column; }
+        .wake-stream { flex: 1; overflow-y: auto; overflow-x: hidden; background: rgba(0,0,0,0.5); border: 1px solid #333; padding: 6px; margin-bottom: 8px; font-size: 0.75rem; color: #ccc; }
+        .wake-item { border-left: 2px solid var(--accent3); padding-left: 6px; margin-bottom: 6px; overflow-wrap: anywhere; word-break: break-word; }
         .wake-meta { color: var(--accent3); font-size: 0.7rem; }
         .btn-beacon { background: rgba(255,153,0,0.1); border: 1px solid var(--accent3); color: var(--accent3); width: 100%; padding: 8px; font-family: inherit; font-weight: bold; cursor: pointer; text-transform: uppercase; transition: 0.2s; }
         .btn-beacon:hover { background: var(--accent3); color: #000; box-shadow: 0 0 10px var(--accent3); }
@@ -187,6 +190,49 @@
         /* Guide tab in side tabbar */
         #side-tabbar .tab-btn.guide-tab { margin-top: auto; color: #446; }
         #side-tabbar .tab-btn.guide-tab:hover { color: var(--accent); }
+
+        /* ── Meaning Instruments Panel ──────────────────────────────── */
+        #panel-instruments { flex: 1 1 220px; pointer-events: auto; border-color: var(--accent2); }
+        .instr-btn { background: rgba(255,0,255,0.08); border: 1px solid rgba(255,0,255,0.4); color: var(--accent2); font-family: inherit; font-size: 0.78rem; font-weight: bold; cursor: pointer; padding: 6px 10px; text-transform: uppercase; transition: 0.2s; white-space: nowrap; }
+        .instr-btn:hover { background: var(--accent2); color: #000; box-shadow: 0 0 10px var(--accent2); }
+        .instr-btn.dream-btn { font-size: 0.85rem; width: 100%; padding: 10px; }
+        .instr-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+
+        /* ── Dream Overlay ────────────────────────────────────────────── */
+        #dream-overlay {
+            position: absolute; top: 20px; right: 20px; z-index: 50;
+            min-width: 260px; max-width: 340px; display: none;
+        }
+        #dream-overlay.active { display: block; }
+        .dream-status { font-size: 0.8rem; color: var(--accent2); text-align: center; padding: 8px; }
+        .dream-status.dreaming { animation: pulse 1.5s ease-in-out infinite; }
+        @keyframes pulse { 0%,100%{ opacity:1; } 50%{ opacity:0.35; } }
+        .dream-candidate { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-bottom: 1px solid rgba(255,0,255,0.15); font-size: 0.8rem; }
+        .dream-candidate:last-child { border-bottom: none; }
+        .dream-label { flex: 1; color: #ddd; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .dream-score { color: rgba(255,0,255,0.7); font-size: 0.72rem; min-width: 38px; text-align: right; }
+        .btn-dream-action { background: none; border: 1px solid; font-family: inherit; font-size: 0.85rem; cursor: pointer; width: 28px; height: 24px; padding: 0; font-weight: bold; transition: 0.2s; }
+        .btn-dream-confirm { border-color: var(--accent); color: var(--accent); }
+        .btn-dream-confirm:hover { background: var(--accent); color: #000; }
+        .btn-dream-forget  { border-color: #f55; color: #f55; }
+        .btn-dream-forget:hover  { background: #f55; color: #000; }
+
+        /* ── Present Overlay ──────────────────────────────────────────── */
+        #present-overlay {
+            position: absolute; bottom: 280px; right: 20px; z-index: 50;
+            width: 320px; max-height: 240px; display: none;
+        }
+        #present-overlay.active { display: block; }
+        #present-content { overflow-y: auto; max-height: 170px; font-size: 0.8rem; color: #bbb; line-height: 1.6; white-space: pre-wrap; }
+        .overlay-close { background: none; border: none; color: #666; font-family: inherit; font-size: 0.75rem; cursor: pointer; padding: 0; }
+        .overlay-close:hover { color: #aaa; }
+
+        /* ── Emotion Profile Bar ──────────────────────────────────────── */
+        .emo-profile { display: flex; flex-direction: column; gap: 3px; margin-top: 4px; }
+        .emo-bar-row { display: flex; align-items: center; gap: 6px; font-size: 0.72rem; }
+        .emo-bar-label { width: 75px; color: #888; text-align: right; overflow: hidden; }
+        .emo-bar-track { flex: 1; height: 5px; background: #111; border-radius: 2px; overflow: hidden; }
+        .emo-bar-fill  { height: 100%; border-radius: 2px; transition: width 0.4s; }
     </style>
 </head>
 <body>
@@ -242,8 +288,8 @@
                         <option value="structure">STRUCTURE (Ontology)</option>
                         <option value="emotion">EMOTION (Resonance)</option>
                         <option value="context">CONTEXT (Associative)</option>
-                        <option value="time">TIME (Chronological)</option>
-                        <option value="story">STORY (Narrative)</option>
+                        <option value="time">TIME (Chrono) [exp]</option>
+                        <option value="story">STORY (Narrative) [exp]</option>
                     </select>
                     <label style="font-size: 0.8rem; color:#aaa; margin-top: 4px;">Penetration Depth (Scope): <span id="scope-val" style="color:var(--accent)">2</span></label>
                     <input type="range" id="lens-scope" class="cyber-slider" min="1" max="5" value="2" onchange="tuneLens()" oninput="document.getElementById('scope-val').textContent=this.value">
@@ -269,7 +315,41 @@
                     <button class="btn-beacon" style="width: auto; padding: 0 15px;" onclick="dropBeacon()">DROP</button>
                 </div>
             </div>
+
+            <div class="cockpit-panel" id="panel-instruments">
+                <div class="panel-title" style="color: var(--accent2);">Meaning Instruments</div>
+                <button class="instr-btn dream-btn" onclick="dreamInstrument()">⊕ DREAM BRIDGES</button>
+                <div class="instr-grid" style="margin-top:8px;">
+                    <button class="instr-btn" onclick="simInstrument()" title="Semantic neighbours">SIM</button>
+                    <button class="instr-btn" onclick="nodeSimInstrument()" title="Structurally similar">NODE.SIM</button>
+                    <button class="instr-btn" onclick="emotionInstrument()" title="Emotion profile">EMO</button>
+                    <button class="instr-btn" onclick="presentInstrument()" title="Narrative summary">PRESENT</button>
+                    <button class="instr-btn" onclick="ingestInstrument()" title="Fetch &amp; ingest URL">INGEST</button>
+                    <button class="instr-btn" onclick="clearOverlay()" style="border-color:#333;color:#556;">CLEAR</button>
+                </div>
+                <div id="emo-profile-bar" class="emo-profile" style="display:none; margin-top:6px;"></div>
+            </div>
         </div>
+
+        <!-- Dream Overlay -->
+        <div class="cockpit-panel" id="dream-overlay">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                <div class="panel-title" style="color:var(--accent2); margin:0;">Dream Bridges</div>
+                <button class="overlay-close" onclick="closeDream()">✕ CLOSE</button>
+            </div>
+            <div id="dream-status" class="dream-status"></div>
+            <div id="dream-candidates"></div>
+        </div>
+
+        <!-- Present Overlay -->
+        <div class="cockpit-panel" id="present-overlay">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                <div class="panel-title" style="margin:0;">Narrative</div>
+                <button class="overlay-close" onclick="closePresent()">✕ CLOSE</button>
+            </div>
+            <div id="present-content"></div>
+        </div>
+
         <div id="ui-notification" class="notification"></div>
     </div>
 
@@ -300,7 +380,10 @@
     let labelMode      = false;
     let labelAnimFrame = null;
     const _labelEls    = new Map();
-    let _debugRpc     = false; // toggled by `debug on/off` in the terminal
+    let _debugRpc      = false; // toggled by `debug on/off` in the terminal
+    let _dreamPollTimer = null;
+    let _dreamJobId     = null;
+    let _dreamSrc       = null;
 
     // ── Emotion colour palette ─────────────────────────────────────────────
     // Warm/comfortable → positive; cold/red → negative
@@ -345,6 +428,8 @@
         const senseKey = (senseFromId || senseFromAlias || [])[1];
         if (senseKey && SENSE_COLORS[senseKey]) return SENSE_COLORS[senseKey];
         if (SENSE_COLORS[label]) return SENSE_COLORS[label];
+        // Ghost overlay nodes (dream proposals and sim neighbours)
+        if (n.group === 'ghost') return n.color || 'rgba(255,0,255,0.55)';
         // Signpost: after emotion/sense so those identities win
         if (n.group === 'signpost') return n.color || '#88bbff';
         // Server-supplied colour (backend encodes emotion/sense aura for linked atoms)
@@ -519,7 +604,8 @@
             const knownIds = new Set(cosmosData.nodes.map(n => n.id));
             for (const sp of (diveData.signposts || [])) {
                 if (!knownIds.has(sp.key)) {
-                    spNodes.push({ id: sp.key, name: sp.alias || sp.key.substring(0,8),
+                    spNodes.push({ id: sp.key, alias: sp.alias || '', preview: sp.preview || '',
+                                   name: displayLabel({ alias: sp.alias, preview: sp.preview, key: sp.key }),
                                    group: 'signpost', val: 8, color: '#88bbff' });
                     knownIds.add(sp.key);
                 }
@@ -537,7 +623,7 @@
             currentFocalId = cosmosData.focal?.key || focalId || null;
             // Refresh node colours so focal node turns white and neighbours get emotion hues
             if (graph3d) graph3d.nodeColor(nodeColor).nodeVal(n => n.id === currentFocalId ? (n.val || 10) * 2 : n.val || 10);
-            const focusLabel = cosmosData.focal?.alias || nodeShortLabel(cosmosData.focal) || 'Void';
+            const focusLabel = displayLabel(cosmosData.focal) || 'Void';
             document.getElementById('tel-focus').textContent = `@${focusLabel}`;
             document.getElementById('tel-nodes').textContent = cosmosData.nodes.length + spNodes.length;
             document.getElementById('tel-links').textContent = cosmosData.links.length + spLinks.length;
@@ -602,7 +688,7 @@
             }
             streamEl.innerHTML = wake.map(b => {
                 const date  = new Date(b.created_at * 1000).toLocaleTimeString();
-                const focal = b.focal_alias || (b.focal_key ? b.focal_key.substring(0, 8) : 'Unknown');
+                const focal = displayLabel({ alias: b.focal_alias, preview: b.focal_preview, key: b.focal_key }) || 'Unknown';
                 return `
                     <div class="wake-item">
                         <div class="wake-meta">[${date}] LOC:${escHtml(focal)} | AX:${b.axis || 'ALL'}</div>
@@ -615,17 +701,39 @@
 
     // ── 3D Graph Engine ────────────────────────────────────────────────────
 
-    // Extract a short human-readable label from a node object
-    function nodeShortLabel(node) {
-        if (!node) return '';
-        if (node.alias) return node.alias;
-        const name = node.preview || node.name || '';
-        // e.g. "Concept: attachment. ..." → "attachment"
-        //      "Word: en: psychology. ..." → "psychology"
-        const m = name.match(/^(?:[^:]+:\s*)+([^.]+)/);
-        if (m) return m[1].trim().substring(0, 20);
-        return (node.key || node.id || '').substring(0, 8);
+    // ── Human-readable labels — never show a raw content-address ────────────
+    // A machine key (bare hash, or set:concept:<64-hex>) we must not show a human.
+    function isHashy(s) {
+        if (!s) return false;
+        s = String(s);
+        return /[0-9a-f]{16,}/i.test(s) || /^[0-9a-f]{8,}$/i.test(s);
     }
+    // Turn a content preview into a short readable label:
+    //   "Concept: attachment. The state…" → "attachment"
+    //   "Word: en: psychology. …"         → "psychology"
+    //   "Apple"                            → "Apple"
+    function readablePreview(raw) {
+        if (!raw) return '';
+        let s = String(raw).split('.')[0];                    // first clause only
+        s = s.replace(/^(?:[A-Za-z][A-Za-z ]*:\s*)+/, '');    // drop "Concept: ", "Word: en: "
+        s = s.trim();
+        return s.length > 24 ? s.slice(0, 24) + '…' : s;
+    }
+    // The single label resolver for any node/atom shape. Order: real alias →
+    // readable content → (last resort) a shortened key. A hash-like alias is
+    // skipped in favour of the content so the pilot always sees words.
+    function displayLabel(node) {
+        if (!node) return '';
+        const alias = node.alias || '';
+        if (alias && !isHashy(alias)) return alias;
+        const rp = readablePreview(node.preview || node.name || '');
+        if (rp && !isHashy(rp)) return rp;
+        if (alias) return alias.length > 22 ? alias.slice(0, 22) + '…' : alias;
+        const key = String(node.key || node.id || '');
+        return key ? key.slice(0, 8) : '';
+    }
+    // Back-compat alias for existing call sites.
+    function nodeShortLabel(node) { return displayLabel(node); }
 
     function toggleLabels() {
         labelMode = !labelMode;
@@ -649,7 +757,7 @@
         for (const node of nodes) {
             const div = document.createElement('div');
             div.style.cssText = `position:absolute;top:0;left:0;color:${nodeColor(node)};font-size:0.7rem;font-family:'Courier New',monospace;background:rgba(0,0,0,0.55);padding:1px 4px;border-radius:2px;pointer-events:none;white-space:nowrap;`;
-            div.textContent = node.alias || nodeShortLabel(node);
+            div.textContent = displayLabel(node);
             overlay.appendChild(div);
             _labelEls.set(node.id, div);
         }
@@ -671,17 +779,26 @@
     function initGraph3D() {
         graph3d = ForceGraph3D()(document.getElementById('graph-3d'))
             .graphData({ nodes: [], links: [] })
-            .nodeLabel('name')
+            .nodeLabel(n => displayLabel(n))
             .nodeVal(n => n.id === currentFocalId ? (n.val || 10) * 2 : n.val || 10)
             .nodeColor(nodeColor)
-            .linkColor(l => l.type === 'resonance' ? 'rgba(255,153,0,0.4)' : 'rgba(0,255,204,0.2)')
-            .linkWidth(l => l.type === 'resonance' ? 0.5 : 1.2)
-            .linkDirectionalParticles(2)
+            .linkColor(l => {
+                if (l.type === 'ghost')     return 'rgba(255,0,255,0.4)';
+                if (l.type === 'ghost-sim') return 'rgba(0,200,255,0.4)';
+                if (l.type === 'resonance') return 'rgba(255,153,0,0.4)';
+                return 'rgba(0,255,204,0.2)';
+            })
+            .linkWidth(l => {
+                if (l.type === 'ghost' || l.type === 'ghost-sim') return 0.8;
+                if (l.type === 'resonance') return 0.5;
+                return 1.2;
+            })
+            .linkDirectionalParticles(l => (l.type === 'ghost' || l.type === 'ghost-sim') ? 0 : 2)
             .linkDirectionalParticleSpeed(0.006)
             .backgroundColor('rgba(0,0,0,0)')
             .onNodeClick(async node => {
                 document.getElementById('helm-target').value = node.id;
-                await engageWarp(node.alias || nodeShortLabel(node));
+                await engageWarp(displayLabel(node));
             });
     }
 
@@ -702,100 +819,12 @@
     document.getElementById('password').addEventListener('keypress', e => { if (e.key === 'Enter') login(); });
 
     // ── CLI Command Router ─────────────────────────────────────────────────
-    const CMD_SPECS = {
-        'w':         { method: 'kernel.memory.write',          args: ['text'] },
-        'def':       { method: 'kernel.memory.define',         args: ['name'] },
-        'r':         { method: 'kernel.memory.read',           args: ['id'] },
-        'rm':        { method: 'kernel.memory.drop',           args: ['id'] },
-        'ln':        { method: 'kernel.memory.link',           args: ['src','dst','rel'] },
-        'ln.ls':     { method: 'link.list',                    args: ['id'] },
-        'ln.+':      { method: 'link.reinforce',               args: ['src','dst','rel'] },
-        'meta':      { method: 'meta.set',                     args: ['id','key','value'] },
-        'exp':       { method: 'explore',                      args: ['id','depth'] },
-        'al':        { method: 'kernel.identity.alias',        args: ['id','name'] },
-        'al.ls':     { method: 'kernel.identity.alias.list',   args: [] },
-        'al.find':   { method: 'kernel.identity.alias.find',   args: ['pattern'] },
-        'look':      { method: 'dive.look',                    args: ['id'] },
-        'd':         { method: 'dive.look',                    args: ['id'] },
-        'out':       { method: 'dive.out',                     args: ['id'] },
-        's.add':     { method: 'set.add',                      args: ['name','id'] },
-        's.rm':      { method: 'set.rm',                       args: ['name','id'] },
-        's.ls':      { method: 'set.ls',                       args: ['name'] },
-        's.clear':   { method: 'set.clear',                    args: ['name'] },
-        's.op':      { method: 'set.op',                       args: ['op','result','a','b'] },
-        'n.new':     { method: 'note.new',                     args: ['title'] },
-        'n.ls':      { method: 'note.ls',                      args: [] },
-        'n.open':    { method: 'note.open',                    args: ['note_id'] },
-        'n.add':     { method: 'note.add',                     args: ['text'] },
-        'n.sec':     { method: 'note.section',                 args: ['title'] },
-        'n.chap':    { method: 'note.section',                 args: ['title','role'] },
-        'n.para':    { method: 'note.paragraph',               args: ['category'] },
-        'n.toc':     { method: 'note.toc',                     args: [] },
-        'n.read':    { method: 'note.read',                    args: [] },
-        'n.rm':      { method: 'note.rm',                      args: [] },
-        'log.new':   { method: 'log.new',                      args: ['name'] },
-        'log.cp':    { method: 'log.checkpoint',               args: ['note'] },
-        'log.ann':   { method: 'log.annotate',                 args: ['text'] },
-        'log.replay':{ method: 'log.replay',                   args: [] },
-        'log.read':  { method: 'log.read',                     args: [] },
-        'log.rm':    { method: 'log.rm',                       args: [] },
-        'wb.new':    { method: 'wb.new',                       args: ['name'] },
-        'wb.pin':    { method: 'wb.pin',                       args: ['concept'] },
-        'wb.unpin':  { method: 'wb.unpin',                     args: ['concept'] },
-        'wb.focus':  { method: 'wb.focus',                     args: ['name'] },
-        'wb.ls':     { method: 'wb.ls',                        args: [] },
-        'wb.show':   { method: 'wb.show',                      args: [] },
-        'wb.rm':     { method: 'wb.rm',                        args: ['name'] },
-        'cp.new':    { method: 'cockpit.new',                  args: ['name'] },
-        'cp.ls':     { method: 'cockpit.ls',                   args: [] },
-        'cp.open':   { method: 'cockpit.open',                 args: ['cockpit_id'] },
-        'cp.lock':   { method: 'cockpit.lock',                 args: ['target'] },
-        'cp.tune':   { method: 'cockpit.tune',                 args: ['axis','scope'] },
-        'cp.beacon': { method: 'cockpit.beacon',               args: ['note'] },
-        'cp.wake':   { method: 'cockpit.wake',                 args: [] },
-        'cp.status': { method: 'cockpit.status',               args: [] },
-        'cp.rm':     { method: 'cockpit.rm',                   args: [] },
-        'fn.new':    { method: 'fieldnote.new',                args: ['title','project','region','season'] },
-        'fn.ls':     { method: 'fieldnote.ls',                 args: [] },
-        'fn.open':   { method: 'fieldnote.open',               args: ['fieldnote_id'] },
-        'fn.add':    { method: 'fieldnote.add',                args: ['text'] },
-        'fn.read':   { method: 'fieldnote.read',               args: [] },
-        'fn.rm':     { method: 'fieldnote.rm',                 args: [] },
-        'sv.new':    { method: 'survey.new',                   args: ['title','description'] },
-        'sv.open':   { method: 'survey.open',                  args: ['survey_id'] },
-        'sv.ls':     { method: 'survey.ls',                    args: [] },
-        'sv.q':      { method: 'survey.q.add',                 args: ['text','qtype'] },
-        'sv.opt':    { method: 'survey.opt.add',               args: ['question_id','label','value'] },
-        'sv.who':    { method: 'survey.res.add',               args: ['respondent_id'] },
-        'sv.ans':    { method: 'survey.ans',                   args: ['question_id','respondent_atom','answer'] },
-        'sv.list':   { method: 'survey.list',                  args: [] },
-        'sv.rm':     { method: 'survey.rm',                    args: [] },
-        'associate': { method: 'kernel.associate',             args: ['id','axis','scope','format'] },
-        'assoc':     { method: 'kernel.associate',             args: ['id','axis','scope','format'] },
-        'job.ls':    { method: 'job.ls',                       args: [] },
-        'dream':     { method: 'jataka.dream',                 args: [] },
-        'fetch':     { method: 'contexa.fetch',                args: ['query'] },
-        'ping':      { method: 'sys.ping',                     args: [] },
-        'cog':       { method: 'sys.cogito',                   args: [] },
-        'hist':      { method: 'sys.history',                  args: [] },
-        'ls':        { method: 'sys.ls',                       args: ['limit'] },
-        'passwd':    { method: 'sys.passwd',                   args: [] },
-    };
-
-    function buildRpc(raw) {
-        const parts = raw.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g);
-        if (!parts?.length) return null;
-        const cmd  = parts[0].toLowerCase();
-        const args = parts.slice(1).map(a => a.replace(/^["']|["']$/g, ''));
-        const spec = CMD_SPECS[cmd];
-        if (!spec) return null;
-        const params = {};
-        spec.args.forEach((name, i) => {
-            if (i < args.length) params[name] = (i === spec.args.length - 1) ? args.slice(i).join(' ') : args[i];
-        });
-        return { method: spec.method, params };
-    }
-
+    // The terminal is a thin front for the REAL Akasha CLI. It does NOT parse
+    // commands itself — the raw line is sent to `sys.cli_exec`, which runs it
+    // through the same server-side CommandRouter the stdio shell uses. That is
+    // the single source of truth for command syntax (key=value, positional,
+    // special handlers, every concept model) — so this terminal can never drift
+    // from the CLI, and there is no second command table to maintain.
     let cliHistory = [], cliHistIdx = -1;
     async function submitCli() {
         const inp = document.getElementById('cli-input');
@@ -805,18 +834,22 @@
 
         const out = document.getElementById('cli-output');
         out.innerHTML += `<div class="cli-line-in">&gt; ${escHtml(raw)}</div>`;
+        // Client-only built-ins (never reach the server)
         if (raw === 'help') {
-            const cmds = Object.keys(CMD_SPECS).join('  ');
-            out.innerHTML += `<div class="cli-line-out">Available: ${escHtml(cmds)}</div>`;
-            out.innerHTML += `<div class="cli-line-out">Built-in: debug on | debug off | cls | help</div>`;
+            out.innerHTML += `<div class="cli-line-out">This is the full Akasha CLI. Type any command — the same syntax as the desktop shell:</div>`;
+            out.innerHTML += `<div class="cli-line-out">  writes: w "text" · def "name" · al $it name · ln src dst rel · s.add name id</div>`;
+            out.innerHTML += `<div class="cli-line-out">  explore: dive &lt;id&gt; · tree &lt;id&gt; depth=3 · view &lt;id&gt; · exp ns=emo</div>`;
+            out.innerHTML += `<div class="cli-line-out">  meaning: sim &lt;id&gt; · node.sim &lt;id&gt; · emotion.find emo=awe · gap.scan · dream &lt;id&gt;</div>`;
+            out.innerHTML += `<div class="cli-line-out">  key=value arguments and every concept model work exactly as in the CLI. See the GUIDE (?) for the full reference.</div>`;
+            out.innerHTML += `<div class="cli-line-out">Client built-ins: debug on | debug off | cls | help</div>`;
             out.scrollTop = out.scrollHeight; return;
         }
         if (raw === 'cls' || raw === 'clear') { out.innerHTML = ''; return; }
         if (raw === 'debug on')  { _debugRpc = true;  out.innerHTML += `<div class="cli-line-out">[DEBUG] RPC verbose logging ON</div>`;  out.scrollTop = out.scrollHeight; return; }
         if (raw === 'debug off') { _debugRpc = false; out.innerHTML += `<div class="cli-line-out">[DEBUG] RPC verbose logging OFF</div>`; out.scrollTop = out.scrollHeight; return; }
-        const parsed = buildRpc(raw);
+        // Everything else: hand the raw line to the server-side CLI parser (single source of truth)
         try {
-            const res = parsed ? await rpc(parsed.method, parsed.params) : await rpc(raw.split(' ')[0], {});
+            const res = await rpc('sys.cli_exec', { command: raw });
             out.innerHTML += `<div class="cli-line-out">${escHtml(JSON.stringify(res, null, 2))}</div>`;
         } catch(err) { out.innerHTML += `<div class="cli-line-err">[!] ${escHtml(err.message)}</div>`; }
         out.scrollTop = out.scrollHeight;
@@ -853,6 +886,286 @@
                 </div>
             `).join('');
         } catch(e) { container.innerHTML = `<div class="cli-line-err">${escHtml(e.message)}</div>`; }
+    }
+
+    // ── Ghost Overlay Helpers ──────────────────────────────────────────────
+    function closeDream() {
+        document.getElementById('dream-overlay').classList.remove('active');
+        if (_dreamPollTimer) { clearTimeout(_dreamPollTimer); _dreamPollTimer = null; }
+    }
+
+    function closePresent() {
+        document.getElementById('present-overlay').classList.remove('active');
+    }
+
+    function clearOverlay() {
+        closeDream();
+        closePresent();
+        document.getElementById('emo-profile-bar').style.display = 'none';
+        if (!graph3d) return;
+        const gd = graph3d.graphData();
+        graph3d.graphData({
+            nodes: gd.nodes.filter(n => n.group !== 'ghost'),
+            links: gd.links.filter(l => l.type !== 'ghost' && l.type !== 'ghost-sim'),
+        });
+    }
+
+    // ── Dream Instrument ───────────────────────────────────────────────────
+    async function dreamInstrument() {
+        if (!currentFocalId) { showNotify('No focal node — WARP to an atom first'); return; }
+        const overlay  = document.getElementById('dream-overlay');
+        const statusEl = document.getElementById('dream-status');
+        const listEl   = document.getElementById('dream-candidates');
+        overlay.classList.add('active');
+        statusEl.className = 'dream-status dreaming';
+        statusEl.textContent = 'Dreaming…';
+        listEl.innerHTML = '';
+        // Clear previous dream ghosts
+        const gd = graph3d.graphData();
+        graph3d.graphData({
+            nodes: gd.nodes.filter(n => n.group !== 'ghost'),
+            links: gd.links.filter(l => l.type !== 'ghost'),
+        });
+        try {
+            const res = await rpc('jataka.dream', { id: currentFocalId });
+            if (res.status === 'dreaming' && res.job_id) {
+                _dreamJobId = res.job_id;
+                _dreamSrc   = currentFocalId;
+                _pollDream();
+            } else if (res.candidates && res.candidates.length) {
+                _dreamSrc = currentFocalId;
+                _renderDreamCandidates(res.candidates);
+            } else if (res.status === 'ready') {
+                statusEl.className = 'dream-status';
+                statusEl.textContent = 'No bridge candidates found.';
+            } else {
+                statusEl.className = 'dream-status';
+                statusEl.textContent = JSON.stringify(res).substring(0, 80);
+            }
+        } catch(e) {
+            statusEl.className = 'dream-status';
+            statusEl.textContent = `Error: ${e.message?.substring(0, 60)}`;
+        }
+    }
+
+    function _pollDream() {
+        _dreamPollTimer = setTimeout(async () => {
+            if (!_dreamJobId) return;
+            try {
+                const res = await rpc('job.stat', { job_id: _dreamJobId });
+                if (res.status === 'DONE' || res.step_done === res.step_count) {
+                    _dreamJobId = null;
+                    const r2 = await rpc('jataka.dream', { id: _dreamSrc });
+                    if (r2.candidates?.length) {
+                        _renderDreamCandidates(r2.candidates);
+                    } else {
+                        const statusEl = document.getElementById('dream-status');
+                        statusEl.className = 'dream-status';
+                        statusEl.textContent = 'No bridge candidates found.';
+                    }
+                } else if (res.status === 'FAILED') {
+                    const statusEl = document.getElementById('dream-status');
+                    statusEl.className = 'dream-status';
+                    statusEl.textContent = 'Dream job failed.';
+                } else {
+                    _pollDream();
+                }
+            } catch(e) {
+                // job.stat might not be available; try dreaming directly
+                try {
+                    const r2 = await rpc('jataka.dream', { id: _dreamSrc });
+                    if (r2.candidates?.length) {
+                        _dreamJobId = null;
+                        _renderDreamCandidates(r2.candidates);
+                    } else if (r2.status === 'dreaming') {
+                        _pollDream();
+                    }
+                } catch(e2) {
+                    const statusEl = document.getElementById('dream-status');
+                    statusEl.className = 'dream-status';
+                    statusEl.textContent = 'Poll error — check Jobs tab.';
+                }
+            }
+        }, 2500);
+    }
+
+    function _renderDreamCandidates(candidates) {
+        const statusEl = document.getElementById('dream-status');
+        const listEl   = document.getElementById('dream-candidates');
+        statusEl.className = 'dream-status';
+        if (!candidates.length) {
+            statusEl.textContent = 'No bridge candidates found.';
+            return;
+        }
+        statusEl.textContent = `${candidates.length} bridge candidate${candidates.length !== 1 ? 's' : ''} found`;
+
+        // Inject ghost nodes/links
+        const gd = graph3d.graphData();
+        const existingIds = new Set(gd.nodes.map(n => n.id));
+        const newGhostNodes = [], newGhostLinks = [];
+        for (const c of candidates) {
+            const dstId = c.dst || c.key || c.id;
+            if (!dstId) continue;
+            if (!existingIds.has(dstId)) {
+                newGhostNodes.push({ id: dstId, alias: c.alias || '', preview: c.preview || '',
+                                     name: displayLabel({ alias: c.alias, preview: c.preview, key: dstId }),
+                                     group: 'ghost', val: 8, color: 'rgba(255,0,255,0.55)' });
+                existingIds.add(dstId);
+            }
+            newGhostLinks.push({ source: _dreamSrc, target: dstId, rel: 'tent:dream', type: 'ghost' });
+        }
+        graph3d.graphData({ nodes: [...gd.nodes, ...newGhostNodes], links: [...gd.links, ...newGhostLinks] });
+        if (labelMode) applyLabelMode();
+
+        listEl.innerHTML = candidates.map(c => {
+            const dstId = c.dst || c.key || c.id || '';
+            const label = displayLabel({ alias: c.alias, preview: c.preview, key: dstId });
+            const score = c.score != null ? (c.score * 100).toFixed(0) + '%' : '';
+            const safeSrc = (_dreamSrc || '').replace(/'/g, "\\'");
+            const safeDst = dstId.replace(/'/g, "\\'");
+            return `<div class="dream-candidate">
+                <span class="dream-label" title="${escHtml(dstId)}">${escHtml(label)}</span>
+                <span class="dream-score">${escHtml(score)}</span>
+                <button class="btn-dream-action btn-dream-confirm" onclick="dreamConfirm('${safeSrc}','${safeDst}',this.closest('.dream-candidate'))">✓</button>
+                <button class="btn-dream-action btn-dream-forget"  onclick="dreamForget('${safeSrc}','${safeDst}',this.closest('.dream-candidate'))">✗</button>
+            </div>`;
+        }).join('');
+    }
+
+    async function dreamConfirm(src, dst, rowEl) {
+        try {
+            await rpc('dream.confirm', { src, dst });
+            rowEl?.remove();
+            // Upgrade ghost link to real signpost link
+            const gd = graph3d.graphData();
+            graph3d.graphData({
+                nodes: gd.nodes,
+                links: gd.links.map(l => {
+                    const s = String(l.source?.id ?? l.source);
+                    const t = String(l.target?.id ?? l.target);
+                    return (l.type === 'ghost' && s === src && t === dst)
+                        ? { ...l, type: 'signpost', rel: 'calc:dream_bridge' }
+                        : l;
+                }),
+            });
+            showNotify(`Bridge confirmed: ${dst.substring(0, 18)}`);
+            if (!document.querySelector('.dream-candidate')) closeDream();
+        } catch(e) { showNotify(`Confirm failed: ${e.message}`); }
+    }
+
+    async function dreamForget(src, dst, rowEl) {
+        try {
+            await rpc('dream.forget', { src, dst });
+            rowEl?.remove();
+            const gd = graph3d.graphData();
+            const dstNode = gd.nodes.find(n => n.id === dst);
+            const otherLinks = gd.links.filter(l => {
+                const s = String(l.source?.id ?? l.source);
+                const t = String(l.target?.id ?? l.target);
+                return !(l.type === 'ghost' && s === src && t === dst);
+            });
+            const dstStillNeeded = otherLinks.some(l =>
+                String(l.source?.id ?? l.source) === dst || String(l.target?.id ?? l.target) === dst
+            );
+            graph3d.graphData({
+                nodes: gd.nodes.filter(n => n.id !== dst || n.group !== 'ghost' || dstStillNeeded),
+                links: otherLinks,
+            });
+            if (!document.querySelector('.dream-candidate')) closeDream();
+        } catch(e) { showNotify(`Forget failed: ${e.message}`); }
+    }
+
+    // ── Sim Instrument (semantic neighbours) ──────────────────────────────
+    async function simInstrument() {
+        if (!currentFocalId) { showNotify('No focal node — WARP first'); return; }
+        showNotify('Scanning semantic neighbours…');
+        try {
+            const res = await rpc('sim', { id: currentFocalId, limit: 8 });
+            const hits = res.results || res.atoms || [];
+            if (!hits.length) { showNotify('No semantic neighbours found'); return; }
+            _overlayNodes(hits, currentFocalId, 'rgba(0,200,255,0.5)', 'ghost-sim');
+            showNotify(`${hits.length} semantic neighbours overlaid`);
+        } catch(e) { showNotify(`Sim error: ${e.message?.substring(0, 50)}`); }
+    }
+
+    // ── Node.Sim Instrument (structural neighbours) ────────────────────────
+    async function nodeSimInstrument() {
+        if (!currentFocalId) { showNotify('No focal node — WARP first'); return; }
+        showNotify('Scanning structural neighbours…');
+        try {
+            const res = await rpc('node.sim', { id: currentFocalId, limit: 8 });
+            const hits = res.results || res.atoms || [];
+            if (!hits.length) { showNotify('No structural neighbours found'); return; }
+            _overlayNodes(hits, currentFocalId, 'rgba(255,200,0,0.5)', 'ghost-sim');
+            showNotify(`${hits.length} structural neighbours overlaid`);
+        } catch(e) { showNotify(`Node.sim error: ${e.message?.substring(0, 50)}`); }
+    }
+
+    function _overlayNodes(hits, srcId, color, linkType) {
+        const gd = graph3d.graphData();
+        const existingIds = new Set(gd.nodes.map(n => n.id));
+        const newNodes = [], newLinks = [];
+        for (const h of hits) {
+            const hId = h.key || h.id;
+            if (!hId || hId === srcId) continue;
+            if (!existingIds.has(hId)) {
+                newNodes.push({ id: hId, alias: h.alias || '', preview: h.preview || h.content || '',
+                                name: displayLabel({ alias: h.alias, preview: h.preview || h.content, key: hId }),
+                                group: 'ghost', val: 7, color });
+                existingIds.add(hId);
+            }
+            newLinks.push({ source: srcId, target: hId, rel: linkType, type: 'ghost-sim' });
+        }
+        graph3d.graphData({ nodes: [...gd.nodes, ...newNodes], links: [...gd.links, ...newLinks] });
+        if (labelMode) applyLabelMode();
+    }
+
+    // ── Emotion Instrument ─────────────────────────────────────────────────
+    async function emotionInstrument() {
+        if (!currentFocalId) { showNotify('No focal node'); return; }
+        showNotify('Reading emotion profile…');
+        try {
+            const res = await rpc('emotion.profile', { id: currentFocalId });
+            const vec = res.vector || res.emotion_vector || {};
+            const entries = Object.entries(vec).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+            const barEl = document.getElementById('emo-profile-bar');
+            if (!entries.length) { barEl.style.display = 'none'; showNotify('No emotion links found'); return; }
+            barEl.style.display = 'flex';
+            barEl.innerHTML = entries.slice(0, 5).map(([emo, val]) => {
+                const color = EMO_COLORS[emo] || '#aaa';
+                const pct   = Math.round(val * 100);
+                return `<div class="emo-bar-row">
+                    <span class="emo-bar-label">${escHtml(emo)}</span>
+                    <div class="emo-bar-track"><div class="emo-bar-fill" style="width:${pct}%;background:${color};"></div></div>
+                    <span style="color:${color};font-size:0.68rem;min-width:28px;">${pct}%</span>
+                </div>`;
+            }).join('');
+        } catch(e) { showNotify(`Emotion error: ${e.message?.substring(0, 50)}`); }
+    }
+
+    // ── Present Instrument ─────────────────────────────────────────────────
+    async function presentInstrument() {
+        if (!currentFocalId) { showNotify('No focal node'); return; }
+        showNotify('Generating narrative…');
+        try {
+            const res = await rpc('jataka.present', { focus: currentFocalId, as: 'narrative' });
+            const text = res.text || res.narrative || res.content || JSON.stringify(res, null, 2);
+            document.getElementById('present-content').textContent = text;
+            document.getElementById('present-overlay').classList.add('active');
+        } catch(e) { showNotify(`Present error: ${e.message?.substring(0, 50)}`); }
+    }
+
+    // ── Ingest Instrument ──────────────────────────────────────────────────
+    async function ingestInstrument() {
+        const url = prompt('Enter URL to fetch and ingest into the graph:');
+        if (!url?.trim()) return;
+        showNotify('Ingesting…');
+        try {
+            const res = await rpc('contexa.fetch', { query: url.trim() });
+            const count = res.atom_count ?? res.atoms?.length ?? '?';
+            showNotify(`Ingested: ${count} atoms`);
+            await scanEnvironment();
+        } catch(e) { showNotify(`Ingest error: ${e.message?.substring(0, 50)}`); }
     }
 
     function showGuide()  { document.getElementById('guide-modal').classList.add('visible'); }
@@ -954,6 +1267,24 @@
         <tr><td>CANCELLED</td><td>Manually stopped</td></tr>
       </tbody>
     </table>
+
+    <hr class="cg-sep">
+
+    <div class="cg-h2">Meaning Instruments</div>
+    <div class="cg-p">The Meaning Instruments panel (magenta border, bottom-right of the cockpit deck) surfaces the semantic layer. All instruments operate on the current focal node.</div>
+    <table class="cg-table">
+      <thead><tr><th>Instrument</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td>⊕ DREAM BRIDGES</td><td>Flagship: submits an async "sleep-on-it" job. When complete, ghost bridges (magenta) appear between the focal node and near-in-meaning / far-in-graph candidates. Click ✓ to confirm a bridge (writes a real link), ✗ to dismiss. Human approval is mandatory.</td></tr>
+        <tr><td>SIM</td><td>Semantic neighbours — overlays atoms that mean similar things (cyan ghost links). Based on distributional embedding similarity.</td></tr>
+        <tr><td>NODE.SIM</td><td>Structural neighbours — overlays atoms that are connected the same way (yellow ghost links). Based on random-walk structural embedding.</td></tr>
+        <tr><td>EMO</td><td>Emotion profile — shows a bar chart of the focal atom's emotion links in the Instruments panel.</td></tr>
+        <tr><td>PRESENT</td><td>Narrative — calls the Jataka narrator to produce a prose summary of the focal atom and its context. Appears in a floating overlay.</td></tr>
+        <tr><td>INGEST</td><td>Fetches a URL and ingests it into the graph, then re-scans the environment.</td></tr>
+        <tr><td>CLEAR</td><td>Removes all ghost overlay nodes and links; closes Dream and Narrative overlays.</td></tr>
+      </tbody>
+    </table>
+    <div class="cg-p" style="margin-top:8px; color:#557;">Note: TIME and STORY axes are marked [exp] — these filters are not fully wired in the current release and are provided for exploration only.</div>
 
     <div class="cg-foot">
       <button class="cg-close" onclick="closeGuide()">CLOSE</button>

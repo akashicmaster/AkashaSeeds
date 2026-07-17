@@ -182,7 +182,7 @@ class ProjectionConcept(BaseConcept):
         self.concept_id = root_id
         self.set_name = f"set:concept:{self.concept_id}"
         # sets first
-        self.cortex.create_set(self.set_name)
+        self.ensure_concept_set()
         self.cortex.create_set(self._pset())
         for sub in ("axes", "projections", "voids", "threads", "tags"):
             self.cortex.create_set(self._pset(sub))

@@ -1,0 +1,50 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Akasha archives — Apache config for shared / rental hosting (CGI route)
+#
+# Goal: publish the public thesaurus portal where you cannot run a persistent
+# httpd or bind a port — only CGI is available.
+#
+# Layout assumed (adjust paths to your account):
+#   ~/akasha/                     ← the uploaded repository
+#   ~/akasha/archives/            ← the web DOCUMENT ROOT (this file goes here,
+#                                    renamed to `.htaccess`)
+#   ~/akasha/services/cgi/akasha.cgi  ← the RPC entry (chmod 755)
+#
+# The archives landing page and its sub-apps (library/, word/, field/) are
+# already inside archives/, so pointing the doc root at archives/ serves them
+# directly. Only the JSON-RPC calls (/rpc and /api/rpc) are handed to CGI.
+#
+# BEFORE first use, run the one-time ontology preload over SSH:
+#     cd ~/akasha && python akasha.py --stdio ping
+# (loads the base ontology + writes the restart sentinel; later requests warm.)
+# ─────────────────────────────────────────────────────────────────────────────
+
+Options +ExecCGI +FollowSymLinks
+AddHandler cgi-script .cgi
+
+RewriteEngine On
+
+# The front-end fetches both /rpc and /api/rpc (POST). Route both to the CGI
+# entry. Use an absolute filesystem path if the script is outside the doc root.
+RewriteRule ^(api/)?rpc/?$   /cgi-bin/akasha.cgi   [L]
+
+# If your host has no /cgi-bin alias, point at the file directly instead, e.g.:
+#   RewriteRule ^(api/)?rpc/?$   ../services/cgi/akasha.cgi   [L]
+# (path is relative to the doc root; ExecCGI must be permitted there.)
+
+# Default document for the portal root.
+DirectoryIndex index.html
+
+# ── Optional hardening ───────────────────────────────────────────────────────
+# Never serve the cell database, logs, or the ontology source over HTTP.
+<FilesMatch "\.(db|db-wal|db-shm|log|ak|csl|py)$">
+    Require all denied
+</FilesMatch>
+
+# Long-cache the static assets (they are content-addressed / rarely change).
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/html "access plus 5 minutes"
+    ExpiresByType text/css  "access plus 7 days"
+    ExpiresByType application/javascript "access plus 7 days"
+</IfModule>

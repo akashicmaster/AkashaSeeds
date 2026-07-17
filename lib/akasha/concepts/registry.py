@@ -44,9 +44,17 @@ def _err(rid: Any, code: int, message: str) -> dict:
 
 
 def _filter_params(op: Callable, data: Dict[str, Any]) -> Dict[str, Any]:
-    """Return only the kwargs accepted by op's signature."""
+    """Return only the kwargs accepted by op's signature.
+
+    If the op declares **kwargs (a VAR_KEYWORD parameter), pass every param
+    through — the op sorts them itself (e.g. recipe.food collecting an open set of
+    USDA nutrient fields). `data` has already been stripped of framework keys
+    (session_token / client_id) upstream, so nothing sensitive leaks into **kwargs.
+    """
     try:
         sig = inspect.signature(op)
+        if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+            return dict(data)
         valid = set(sig.parameters) - {"self"}
         return {k: v for k, v in data.items() if k in valid}
     except (TypeError, ValueError):
@@ -76,6 +84,7 @@ class ConceptRegistry:
         # "action", "args", and "desc" keys.
         self._method_actions:   Dict[str, str]  = {}   # method → IAM action
         self._command_specs:    Dict[str, dict] = {}   # CLI cmd → {method, args, desc}
+        self._command_groups:   Dict[str, str]  = {}   # CLI cmd → concept group (prefix)
         self._concept_labels:   Dict[str, str]  = {}   # prefix → label string
         self._concept_prefixes: Dict[str, str]  = {}   # "prefix." → "prefix"
 
@@ -119,6 +128,10 @@ class ConceptRegistry:
             if desc:
                 cmd = cli_key if cli_key else full
                 self._command_specs[cmd] = {"method": full, "args": args, "desc": desc}
+                # Record the command's concept group so help can group a CLI alias
+                # (e.g. "reference") that does not start with the "prefix." — the
+                # router's prefix-startswith grouping cannot infer that on its own.
+                self._command_groups[cmd] = prefix
 
     def discover(self, concepts_dir: str,
                  module_prefix: str = "lib.akasha.concepts") -> int:
@@ -170,6 +183,11 @@ class ConceptRegistry:
     def get_command_specs(self) -> Dict[str, dict]:
         """Return auto-derived CLI command specs (from annotated specs)."""
         return dict(self._command_specs)
+
+    def get_command_groups(self) -> Dict[str, str]:
+        """Return auto-derived CLI-command → concept-group mapping (handles CLI aliases
+        that do not start with the 'prefix.', e.g. 'reference' → 'thesaurus')."""
+        return dict(self._command_groups)
 
     def get_concept_labels(self) -> Dict[str, str]:
         """Return auto-derived prefix→label mapping (from CONCEPT_LABEL)."""

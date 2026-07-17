@@ -129,7 +129,7 @@ class PresentationConcept(BaseConcept):
         self.concept_id = pres_id
         self.set_name   = f"set:concept:{self.concept_id}"
 
-        self.cortex.create_set(self.set_name)
+        self.ensure_concept_set()
         self._register_to_package(pres_id, subset_suffix=None, concept_word="presentation")
 
         for suffix in (None, "decks", "frames", "regions", "nodes"):

@@ -175,7 +175,7 @@ class SynthesisConcept(BaseConcept):
         self.set_name = f"set:concept:{self.concept_id}"
 
         # [FIX] Create concept catalog set before any registration that writes to it
-        self.cortex.create_set(self.set_name)
+        self.ensure_concept_set()
         self._create_sets()
 
         # [FIX] Ensure INDEX_SET exists before adding root (also created inside _create_sets,

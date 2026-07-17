@@ -409,6 +409,90 @@ it joins.
 - **PL6 model→client** — `io.export inline=true` (→ ResponseSink) returns the serialised
   content in the result instead of a file: the client 'receive' path, mirror of the upload.
 
+### `explore_eval.py` — exploration commands over the meaning layer
+
+```
+python test/explore_eval.py
+```
+
+The meaning layer was built but the navigation commands barely tapped it; these hooks wire
+exploration to it. Each phase drives a command end-to-end through the kernel.
+
+- **X1 sim** — `semantic.search id=<atom>` (aliases `sim` / `similar`) anchors on an existing
+  atom's own meaning ("find atoms like THIS"), excluding the anchor — not a text query.
+- **X2 view** — `view` / `cosmos <id>` returns the consciousness payload (signposts / resonance
+  / focus with `cosmos_nd` + aura) standalone, without diving or changing focus.
+- **X3 emotion.find** — the reverse of `emotion.profile`: the atoms that *feel* a given emotion
+  (`emo=awe`), by incoming links, scope-filtered.
+- **X4 node.learn** — learns structural node embeddings from the typed-link graph
+  (`NodeWalkLearner`, previously dead code); persisted to the vault. Admin, numpy-gated.
+- **X5 node.sim** — `node.sim id=` ranks atoms *structurally* similar to an atom ("connected
+  the same way"), complementing content similarity. A two-cluster graph confirms same-cluster
+  members rank nearest.
+
+Also upgraded (covered by `semantic_eval` / dive): `_find_resonance` now weights by real
+`semantic_vector` cosine (nearest-in-meaning first) instead of a hardcoded 1.0, so `look`/
+`dive`'s resonance is genuinely semantic.
+
+### `dream_eval.py` — async incubation + affinity-gap + human confirm
+
+```
+python test/dream_eval.py
+```
+
+`dream` is redesigned as the **asynchronous bridge-proposer**, distinct from the other
+explorers: `assoc` fills 1-hop high-confidence gaps; `sim`/`node.sim` rank what is already
+near; `dream` finds atoms **near in meaning but far in the explicit graph** (the *affinity
+gap* — connections the graph is missing) and stages them as tentative (`tent:`) links for a
+**human** to confirm. It runs as a LOW-priority background **JCL job** ("sleep on it"): the
+first call returns `dreaming…`, a later call returns the candidates. Scoring is conservative
+by default (rewards multi-signal agreement + graph distance), tunable via `boldness` (→ single
+strong signal) and `reach` (→ graph-distance weight).
+
+- **D1 submit** — `dream id=` returns `status="dreaming"` + a background `job_id`.
+- **D2 ready** — after the job completes, `dream id=` returns `status="ready"` with candidates
+  (each staged as a `tent:` link).
+- **D3 human** — the job NEVER links on its own: while ready-but-unconfirmed the focus has
+  `tent:` links and zero real `calc:hidden_affinity` links. Approval is mandatory (no agent
+  auto-approval — the theme is resonance with the human's own recalled insight).
+- **D4 confirm** — `dream.confirm dst=` promotes a `tent:` link to a real `calc:hidden_affinity`.
+- **D5 gap** — an atom similar to the focus but ALREADY linked is not proposed (only NEW ones).
+- **D6 forget** — `dream.forget` drops the remaining staged candidates.
+
+Kernel hooks: `dream id= [boldness=] [reach=] [again=yes]` (async), `dream.confirm dst= [src=]`,
+`dream.forget [dst=] [all=yes]` (human-only). Background step: `dream.run` (JCL-dispatched).
+
+---
+
+### `contexa_jataka_eval.py` — the client session's I/O sides (survey round-trip)
+
+```
+python test/contexa_jataka_eval.py
+```
+
+Contexa is the client's **INPUT** side on the I/O pipe; Jataka is the **OUTPUT** side.
+Consciousness is the **substrate** both flow through (auto-weave on input, `generate_view` on
+output), never a pipe endpoint. The driving case is a survey round-trip: build a questionnaire,
+`contexa.ingest` the collected answers (web / CSV-from-paper / a future chatbot all land as one
+`Stream`), then `jataka.present` three ways.
+
+- **C1 ingest** — `contexa.ingest survey= text= map=` reads a responses CSV into the survey
+  graph, one response per (respondent, question) cell (4 respondents × 2 questions = 8).
+- **C2 binding** — each response is macro-bound: `ctx:answers` → its question, `ctx:from` → its
+  respondent (Contexa's context layer over the survey model's structural tri-links).
+- **J1 table** — `jataka.present as=table` aggregates per (question, answer) with counts.
+- **J2 scatter** — `jataka.present as=scatter` positions the response atoms by `cosmos_nd`
+  (the Consciousness substrate supplies the coordinates) as 2-D points.
+- **J3 narrative** — `jataka.present as=narrative` renders prose from `generate_view`;
+  LLM-optional, so with no LLM it returns a non-empty structural narration (the degradation floor).
+- **X substrate** — a presentation reads *through* `generate_view` and writes nothing: the
+  atom count is unchanged before/after (Consciousness is read-through, not a pipe endpoint).
+
+Kernel hooks: `contexa.ingest survey= (path=|text=) [format=] [respondent_col=] [map=col:qid]`
+(write), `jataka.present (survey=|set=|focus=) as=table|scatter|narrative [format=]` (read).
+Note: the survey model now content-addresses a response by respondent+question, so identical
+answers from different respondents stay distinct atoms (a latent dedup bug, fixed here).
+
 ---
 
 ## Command reference (quick lookup)
@@ -435,13 +519,21 @@ it joins.
 | `tree <id> [depth]` | Link-traversal tree |
 | `exp ns=<ns>` | Explore by namespace prefix |
 | `look / d <id>` | Dive into an atom's meaning space |
-| `assoc <id>` | Gap detection — missing semantic links |
+| `view / cosmos <id>` | Consciousness view (signposts / resonance / cosmos_nd / aura) standalone |
+| `assoc <id>` | Gap detection — missing semantic links (1-hop, high-confidence) |
+| `dream id=` · `dream.confirm dst=` · `dream.forget` | Async incubation: propose near-in-meaning/far-in-graph bridges, human confirms |
+| `search / semantic.search query=` | Rank atoms by cosine to a text query |
+| `sim / semantic.search id=<atom>` | Atoms semantically like THIS atom (anchored) |
+| `node.learn` · `node.sim id=` | Learn structural (node-walk) embeddings · structurally-similar atoms |
+| `emotion.profile id=` · `emotion.find emo=` | Emotion vector of an atom · atoms that feel an emotion |
 | `image.profile path=\|url=` | Classify an image (LiteRT) → labels as atoms/links |
 | `io.allow dir=` | Permit a local directory for file import/index/export |
 | `io.import path=\|text= [table=]` | Import a file/upload (CSV/JSON→table, MD/TXT→indexed atom) |
 | `io.index dir= [exts=]` | Index every supported file under a permitted directory |
 | `io.project src= [model=table]` | Project an in-graph source into a concept model (via lens) |
 | `io.export (table=\|set=) path=\|inline=true` | Export to a file, or return content inline (client receive) |
+| `contexa.ingest survey= (path=\|text=) [map=col:qid]` | INPUT side: read collected survey responses into the graph with ctx-binding |
+| `jataka.present (survey=\|set=\|focus=) as=table\|scatter\|narrative` | OUTPUT side: present a selection through generate_view (LLM-optional narrative) |
 | `hist` | Recent atom stream |
 | `n.new "title"` | Create a note |
 | `n.add "text"` | Append a chunk to the active note |

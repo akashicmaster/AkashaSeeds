@@ -111,7 +111,7 @@ class FieldNoteConcept(BaseConcept):
         self.concept_id = root_id
         self.set_name   = f"set:concept:{self.concept_id}"
 
-        self.cortex.create_set(self.set_name)
+        self.ensure_concept_set()
         self.cortex.create_set(self._content_set())
         self.register_concept_node(root_id)
 

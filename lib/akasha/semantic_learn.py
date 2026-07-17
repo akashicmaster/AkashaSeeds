@@ -285,3 +285,37 @@ def get_shared_model(nucleus) -> Optional[OntologyLearner]:
         m = OntologyLearner.from_dict(d) if d else None
         _SHARED["model"] = m if (m and m.trained) else None
     return _SHARED["model"]
+
+
+# ── structural (node-walk) model — persisted separately from the content model ──────────
+_SHARED_NODE = {"loaded": False, "model": None}
+
+
+def store_node_model(nucleus, nwl: "NodeWalkLearner") -> bool:
+    """Persist a trained NodeWalkLearner (its inner factorised node-vector table) to the
+    vault and refresh the process cache. The vocab IS the set of node keys."""
+    if not nwl.trained:
+        return False
+    nucleus.vault_store("semantic", "node_model", nwl.learner.to_dict())
+    _SHARED_NODE["loaded"] = True
+    _SHARED_NODE["model"] = nwl
+    return True
+
+
+def get_node_model(nucleus) -> Optional["NodeWalkLearner"]:
+    """Return the structural node model (loading from the vault once), or None."""
+    if not _SHARED_NODE["loaded"]:
+        _SHARED_NODE["loaded"] = True
+        d = None
+        try:
+            d = nucleus.vault_retrieve("semantic", "node_model")
+        except Exception:
+            d = None
+        m = None
+        if d:
+            inner = OntologyLearner.from_dict(d)
+            if inner and inner.trained:
+                m = NodeWalkLearner()
+                m.learner = inner
+        _SHARED_NODE["model"] = m
+    return _SHARED_NODE["model"]

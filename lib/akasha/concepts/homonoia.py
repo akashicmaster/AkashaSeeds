@@ -106,7 +106,7 @@ class HomonioaConcept(BaseConcept):
         return author_id, scopes
 
     def _create_sets(self) -> None:
-        self.cortex.create_set(self.set_name)
+        self.ensure_concept_set()
         self.cortex.create_set(self._city_set())
         for s in _SUBSETS:
             self.cortex.create_set(self._city_set(s))

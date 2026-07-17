@@ -136,7 +136,7 @@ class CorrespondenceConcept(BaseConcept, ProvenanceMixin):
         return author_id, scopes
 
     def _create_sets(self) -> None:
-        self.cortex.create_set(self.set_name)
+        self.ensure_concept_set()
         self.cortex.create_set(self._corr_set())
         for suffix in self.SUBSETS:
             self.cortex.create_set(self._corr_set(suffix))

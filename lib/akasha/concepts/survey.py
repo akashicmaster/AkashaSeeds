@@ -161,7 +161,7 @@ class SurveyConcept(BaseConcept):
         self.set_name   = f"set:concept:{self.concept_id}"
 
         # Concept catalog set — root is NOT added here; only concept-word atoms go in
-        self.cortex.create_set(self.set_name)
+        self.ensure_concept_set()
 
         # Root → survey-scope + derive from concept-word "survey"
         self._register_to_package(root_id, subset_suffix=None, concept_word="survey")
@@ -289,8 +289,13 @@ class SurveyConcept(BaseConcept):
         self._require_concept()
         author_id, scopes = self._author_and_scopes()
 
+        # Atoms are content-addressed, but a response is inherently tied to its (respondent,
+        # question): two respondents giving the SAME answer are DISTINCT responses and must not
+        # collapse to one atom. So the content encodes respondent+question; the raw answer lives
+        # in meta['answer'] for aggregation. (Without this, identical answers silently dedupe and
+        # a single shared response atom accumulates every respondent's ctx:from — corrupt data.)
         resp_id = self.cortex.put_chunk(
-            content=str(answer),
+            content=f"[response {respondent_atom[:8]}→{question_id[:8]}] {answer}",
             meta={
                 "type":            "survey_response",
                 "question_id":     question_id,

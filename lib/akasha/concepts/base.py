@@ -112,6 +112,66 @@ class BaseConcept:
         self.cortex.add_to_set(self.set_name, key)
         if subset_suffix:
             self.cortex.add_to_set(f"{self.set_name}:{subset_suffix}", key)
+        # Universal readability hook: the catalog set exists now (add_to_set auto-creates it),
+        # so give it a human-readable alias. Idempotent + collision-safe; covers models that
+        # build the set implicitly (via add_to_set) rather than an explicit ensure_concept_set().
+        self.alias_concept_set()
+
+    def alias_concept_set(self, name: Optional[str] = None) -> Optional[str]:
+        """Give this concept's catalog set (`set:concept:<hash>`) a human-readable alias.
+
+        **Human readability is the concept model's first priority.** When a client warps to a
+        concept the focus is this hash-keyed set, whose only "name" is the hash — so the Cosmos
+        FOCAL LOCK / wake / node labels / hover read as `set:concept:a48c51e1…` unless the
+        front-end guesses from content. Registering `concept:<slug(name)>` on the set key makes
+        every surface resolve to a real alias without guessing.
+
+        When `name` is omitted it is derived from the concept root's meta (`name` / `title`) or,
+        failing that, its content head (stripping decoration like `[ Survey: Foo ]` → `Foo`), so
+        callers usually need no argument.
+
+        Collision-safe (first-wins — never steals an alias already bound to another key) and
+        side-effect-free: it writes a raw alias row via `core.put_alias`, deliberately NOT the
+        `set_alias` proto-word / collection-derivation machinery (a set is not an atom). Returns
+        the alias registered, or None. Idempotent — safe to call on every open/new."""
+        if not self.set_name:
+            return None
+        if not name and self.concept_id:
+            try:
+                meta = self.cortex.get_meta(self.concept_id) or {}
+            except Exception:
+                meta = {}
+            name = meta.get("name") or meta.get("title")
+            if not name:
+                content = self.cortex.get_chunk(self.concept_id) or ""
+                m = re.search(r"\[\s*[^:\]]+:\s*(.+?)\s*\]", content)   # "[ Survey: Foo ]" → Foo
+                name = (m.group(1) if m else content).strip().split("\n", 1)[0]
+        if not name:
+            return None
+        core = getattr(self.cortex, "core", None)
+        if core is None:
+            return None
+        slug = re.sub(r"[^a-z0-9]+", "_", str(name).lower()).strip("_")
+        if not slug:
+            return None
+        alias = f"concept:{slug}"
+        try:
+            existing = core.get_key_by_alias(alias)
+            if existing and existing != self.set_name:
+                return None                      # first-wins: leave the incumbent alone
+            core.put_alias(self.set_name, alias)
+            return alias
+        except Exception:
+            return None
+
+    def ensure_concept_set(self) -> None:
+        """Create this concept's catalog set AND give it a human-readable alias in one step —
+        a drop-in replacement for `self.cortex.create_set(self.set_name)` in a model's op_new,
+        so readability is applied uniformly at creation (human readability is the concept
+        model's first priority). The root atom must already exist (alias derives from its meta)."""
+        if self.set_name:
+            self.cortex.create_set(self.set_name)
+            self.alias_concept_set()
 
     # =========================================================================
     # 🧬 PRIMITIVE CORE: STRUCTURAL CHUNK GENERATOR (Universal Operand)

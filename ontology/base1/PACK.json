@@ -1,0 +1,8 @@
+{
+  "label": "基本1 — 言葉と感情、そして食卓",
+  "description": "Words, feelings and the everyday table — the germinating seed of meaning. Vocabulary (WordNet), emotion & sense, kinship/love bonds, and everyday food so concepts like love and apple grow richly. Loads first; quick-start & cookbook-0 run on this alone.",
+  "theme": "基本1 — 言葉と感情、そして食卓",
+  "license": "MIT (software and editorial content); WordNet 3.1 (word_core_*.ak — see LICENSE.md)",
+  "source": "internal + Princeton University WordNet 3.1",
+  "version": "1.0"
+}

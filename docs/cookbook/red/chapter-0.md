@@ -286,11 +286,11 @@ Compound emotions (combinations of primary emotions):
 | `emo:despair` | sadness + fear | Complete loss of hope |
 | `emo:contempt` | anger + disgust | Contempt, looking down on |
 
-**`ontology/base/emo.ak` — Extended Emotion Vocabulary**
+**`ontology/base1/emo.ak` — Extended Emotion Vocabulary**
 
 Fine-grained emotional states not present in the DNA are added here. Examples: `emo:anxiety`, `emo:calmness`, `emo:aesthetic` (aesthetic appreciation), `emo:craving`, `emo:entrancement`.
 
-**`ontology/base/sense.ak` and `ontology/base/dna.ak` — Sensory Experience**
+**`ontology/base1/sense.ak` and `ontology/base1/dna.ak` — Sensory Experience**
 
 Atoms representing the five senses and sensory experiences are defined here.
 
@@ -358,7 +358,7 @@ Logical relations are used in the graph's inference layer (advanced usage). For 
 
 ### @ rel — Domain-Specific Relations Used by the Ontology
 
-Domain-specific relation types are defined in the `.ak` files in `ontology/base/`. They are written with the `@` prefix.
+Domain-specific relation types are defined in the `.ak` files in `ontology/base1–3/` (the base packs). They are written with the `@` prefix.
 
 ```
 ln vitamins    immunity     @supports      # vitamins support immunity
@@ -428,10 +428,10 @@ Terms such as `emo:awe`, `ref:before`, `sys:part_of`, and `set_op:intersection` 
 | `lib/akasha/dna.py` | `geo:` / `chrono:` | Spatiotemporal coordinate links |
 | `lib/akasha/dna.py` | `set_op:` | union / intersection / difference / complement / membership / subset |
 | `lib/akasha/ref_primitives.py` | `ref:` | Demonstratives, referents, logical connectives, quantifiers, ordering relations |
-| `ontology/base/emo.ak` | `emo:` | Extended emotions (anxiety / calmness / aesthetic, etc.) |
-| `ontology/base/sense.ak` | `sense:` | Sensory experience (warmth / brightness / smell_rain, etc.) |
-| `ontology/base/dna.ak` | `dna:` | Colour, sound, scent, texture |
-| Each `.ak` file in `ontology/base/` | `@` | Domain-specific relations (supports / prevents / enables, etc.) |
+| `ontology/base1/emo.ak` | `emo:` | Extended emotions (anxiety / calmness / aesthetic, etc.) |
+| `ontology/base1/sense.ak` | `sense:` | Sensory experience (warmth / brightness / smell_rain, etc.) |
+| `ontology/base1/dna.ak` | `dna:` | Colour, sound, scent, texture |
+| Each `.ak` file in `ontology/base1–3/` (the base packs) | `@` | Domain-specific relations (supports / prevents / enables, etc.) |
 
 ```
 exp ns=ref          # ref: namespace — demonstratives, quantifiers, logical connectives

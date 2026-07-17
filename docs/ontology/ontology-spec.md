@@ -274,7 +274,7 @@ The DNA includes placeholder definitions for alternative philosophical lenses. T
 ## 4. Layer 2 — Acquired Ontology: Startup Files
 
 **Source:** `ontology/` directory — package layout governed by `ontology/REGISTRY.json` v2  
-**Loaded:** The `base` package (autoload=true in REGISTRY.json) loads automatically on first startup. All other packages (art, film, tech, world, vocab, …) have autoload=false and are not loaded automatically.  
+**Loaded:** The `base1`, `base2`, `base3` packs (autoload=true in REGISTRY.json) load automatically on first startup, in order — base1 first so quick-start works at once, base2/base3 streaming in behind it. All other packages (art, film, tech, world, vocab, …) have autoload=false and are not loaded automatically.  
 **Scope:** `sys:universal` (visible to all users)  
 **Mutable:** Yes — add files to the appropriate package directory and they load on next first-boot (or after `onto.reload`)
 
@@ -337,8 +337,8 @@ On subsequent logins, sentinels are detected and loading is skipped. Use `onto.r
 **Startup output (first login, illustrative — actual files are in package directories):**
 ```
   [ont] Loading acquired ontology…
-        ontology/base/emo.ak         (74 steps)
-        ontology/base/word_core_01.ak (142 steps)
+        ontology/base1/emo.ak         (74 steps)
+        ontology/base1/word_core_01.ak (142 steps)
         …
   [ont] Ready — N steps across M files.
   [ont] Loading CSL ontology scripts…
@@ -566,9 +566,9 @@ Package loading is driven by `ontology/REGISTRY.json` v2, not by a recursive dir
 
 **`curations/`** is at the project root (outside `ontology/`). After the `ont:csl:loaded` sentinel is set, the boot sequence automatically loads all `.csl` files from `curations/`. This triggers on every boot where the `ont:curation:loaded` sentinel is absent — i.e., on first install and after `onto.reload` / `onto.reset`.
 
-### 7.2 Base Package (`ontology/base/`)
+### 7.2 Base Package (`ontology/base1–3/` (the base packs))
 
-The `base` package is the only package loaded automatically at startup. It contains the core vocabulary and cross-domain concepts, with approximately 9 700 atoms across 54 `.ak` files. Representative files:
+The `base1`/`base2`/`base3` packs load automatically at startup (progressively, in order). Together they hold the core vocabulary, everyday life-world, and specialist/knowledge canopy — roughly 16k atoms across ~186 `.ak` files (base1 ≈ words, feelings and the everyday table; base2 ≈ the life-world; base3 ≈ the sciences and the knowledge map). Representative files:
 
 **`emo.ak`** — Extended emotion vocabulary  
 Defines compound emotion concepts with `emo:*` aliases, extending the 8 primary emotions hard-coded in DNA: `emo:admiration`, `emo:adoration`, `emo:aesthetic`, `emo:amusement`, `emo:anxiety`, `emo:awkwardness`, and more.
@@ -594,7 +594,7 @@ Optional packages must be activated by setting `"autoload": true` in `ontology/R
 | `biology`, `geology`, `medicine`, `nutrition`, `music`, `law`, `literature` | Domain-specific content |
 | `domain`, `archaeology`, `people`, `resources`, `space`, `war`, `weather`, `wine` | Specialised domains |
 
-### 7.4 Sky Dreamers Ontology (`ontology/base/sky.ak`)
+### 7.4 Sky Dreamers Ontology (`ontology/base2/sky.ak`)
 
 **`sky.ak`** — Sky Dreamers: human figures and events in flight history  
 Namespace: `sky:` with sub-namespaces `sky:myth:`, `sky:pioneer:`, `sky:event:`, `sky:enigma:`, `sky:artifact:`.

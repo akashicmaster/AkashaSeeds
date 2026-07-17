@@ -134,7 +134,7 @@ class MapConcept(BaseConcept, TemporalMixin):
         return author_id, scopes
 
     def _create_sets(self) -> None:
-        self.cortex.create_set(self.set_name)
+        self.ensure_concept_set()
         self.cortex.create_set(self._map_set())
         for suffix in self.SUBSETS:
             self.cortex.create_set(self._map_set(suffix))

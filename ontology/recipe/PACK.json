@@ -1,0 +1,7 @@
+{
+  "label": "Recipe pantry — canonical cooking-method and constraint vocab",
+  "description": "The shared building blocks the recipe concept model resolves against: cooking methods (method:simmer, method:fry, …) and dietary constraints/allergens (constraint:peanut, …), each a described atom with a stable alias. Recipes themselves are authored in curations/recipe_demo.csl (they carry runtime state, so they are CSL, not flat .ak); this pack gives their methods and constraints a real, described home instead of auto-stubs. Load, then: recipe suggest season=winter have=daikon avoid=peanut.",
+  "license": "MIT",
+  "source": "internal (illustrative)",
+  "version": "1.0"
+}

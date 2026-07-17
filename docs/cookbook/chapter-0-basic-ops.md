@@ -286,11 +286,11 @@ Compound emotions (combinations of primary emotions):
 | `emo:despair` | sadness + fear | Complete loss of hope |
 | `emo:contempt` | anger + disgust | Contempt, looking down on |
 
-**`ontology/base/emo.ak` — Extended Emotion Vocabulary**
+**`ontology/base1/emo.ak` — Extended Emotion Vocabulary**
 
 Fine-grained emotional states not present in the DNA are added here. Examples: `emo:anxiety`, `emo:calmness`, `emo:aesthetic` (aesthetic appreciation), `emo:craving`, `emo:entrancement`.
 
-**`ontology/base/sense.ak` and `ontology/base/dna.ak` — Sensory Experience**
+**`ontology/base1/sense.ak` and `ontology/base1/dna.ak` — Sensory Experience**
 
 Atoms representing the five senses and sensory experiences are defined here.
 
@@ -358,7 +358,7 @@ Logical relations are used in the graph's inference layer (advanced usage). For 
 
 ### @ rel — Domain-Specific Relations Used by the Ontology
 
-Domain-specific relation types are defined in the `.ak` files in `ontology/base/`. They are written with the `@` prefix.
+Domain-specific relation types are defined in the `.ak` files in `ontology/base1–3/` (the base packs). They are written with the `@` prefix.
 
 ```
 ln vitamins    immunity     @supports      # vitamins support immunity
@@ -428,10 +428,10 @@ Terms such as `emo:awe`, `ref:before`, `sys:part_of`, and `set_op:intersection` 
 | `lib/akasha/dna.py` | `geo:` / `chrono:` | Spatiotemporal coordinate links |
 | `lib/akasha/dna.py` | `set_op:` | union / intersection / difference / complement / membership / subset |
 | `lib/akasha/ref_primitives.py` | `ref:` | Demonstratives, referents, logical connectives, quantifiers, ordering relations |
-| `ontology/base/emo.ak` | `emo:` | Extended emotions (anxiety / calmness / aesthetic, etc.) |
-| `ontology/base/sense.ak` | `sense:` | Sensory experience (warmth / brightness / smell_rain, etc.) |
-| `ontology/base/dna.ak` | `dna:` | Colour, sound, scent, texture |
-| Each `.ak` file in `ontology/base/` | `@` | Domain-specific relations (supports / prevents / enables, etc.) |
+| `ontology/base1/emo.ak` | `emo:` | Extended emotions (anxiety / calmness / aesthetic, etc.) |
+| `ontology/base1/sense.ak` | `sense:` | Sensory experience (warmth / brightness / smell_rain, etc.) |
+| `ontology/base1/dna.ak` | `dna:` | Colour, sound, scent, texture |
+| Each `.ak` file in `ontology/base1–3/` (the base packs) | `@` | Domain-specific relations (supports / prevents / enables, etc.) |
 
 ```
 exp ns=ref          # ref: namespace — demonstratives, quantifiers, logical connectives
@@ -674,6 +674,77 @@ exp ns=emo                       # list Atoms in the emotion namespace
 exp ns=geo                       # the geography namespace
 al.find emo:%                    # all aliases starting with "emo:"
 ```
+
+### Meaning-Layer Search — Beyond Explicit Links
+
+`dive` and `tree` follow links that already exist. Akasha also maintains a **meaning layer** —
+a semantic fingerprint on every text Atom, learned from its words and its place in the graph.
+These commands search *that*, so they can surface relatives you never explicitly linked. All are
+read-only.
+
+**`sim` — Atoms that mean the same thing.** Anchored on an Atom's *own* content ("find more like
+THIS"), not a typed phrase. The anchor is always excluded from its own results.
+
+```
+sim nile                         # rivers / places semantically near the Nile
+sim nile limit=20                # widen the result list (default 10)
+search query="great river"       # free-text variant — search by a phrase instead of an Atom
+```
+
+**`node.sim` — Atoms connected the same way.** Structural similarity ("wired into the graph the
+same way"), independent of meaning. `sim` and `node.sim` deliberately disagree — use `sim` for
+topic, `node.sim` for structural role.
+
+```
+node.sim nile
+```
+
+> **Implicit behaviour.** `node.sim` needs a structural model. Boot builds one automatically; on a
+> brand-new Cell with few links, run `node.learn` (admin) once to train it, or `node.sim` simply
+> returns nothing until enough structure exists.
+
+**`view` — the meaning of one Atom, in place.** Shows signposts (direct links), resonance
+(semantically-near Atoms two hops out), and the Atom's cosmos position + aura colour — **without**
+diving or moving your focus. The read-only "tell me about this one".
+
+```
+view nile                        # or: cosmos nile
+```
+
+**`emotion.find` — Atoms that *feel* an emotion.** The reverse of `emotion.profile`. Emotions are
+ontology Atoms (`emo:awe`, `emo:fear`, …).
+
+```
+emotion.find emo=awe             # Atoms that link to awe
+emotion.profile nile             # the emotion vector of a single Atom
+```
+
+**`gap.scan` — what to enrich next.** Surfaces **important-but-thin** concepts: Atoms that are
+referenced a lot (many things point at them) but are themselves under-linked. That mismatch is the
+signal for where your ontology is hollow — the entry point of the self-expanding-ontology loop
+(scan → fetch/weave → richer graph → scan again).
+
+```
+gap.scan                         # top under-curated concepts
+gap.scan limit=50                # widen the report
+```
+
+**`dream` — the affinity gap (sleep on it).** Where `sim`/`node.sim` rank what is *already* near,
+`dream` hunts Atoms **near in meaning but far in the explicit graph** — the links you notice only
+after sleeping on a problem. It runs as a background job, so you call it twice, and it never draws
+a real link on its own.
+
+```
+dream icarus                     # 1st call: submits the job → "incubating…"
+dream icarus                     # later: → status=ready, with numbered bridge candidates
+dream.confirm dst=lilienthal     # promote one bridge to a real link (or type its number)
+dream.forget all=yes             # discard the rest
+```
+
+> **Human-in-the-loop by design.** A dreamed bridge is staged as a *tentative* link. Confirming it
+> is your call, never the machine's — the whole point is whether the proposed connection resonates
+> with your own recall. Conservative by default; `boldness=` and `reach=` open it up (see the
+> Quick Reference). These same instruments drive the Dream panel in the Cosmos web viewport.
 
 ---
 
