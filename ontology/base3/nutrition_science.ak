@@ -1,4 +1,4 @@
-# Akasha ontology — nutrition science (新栄養学).
+# Akasha ontology — nutrition science.
 # From classical nutrients to the new frontiers — nutrigenomics, the microbiome,
 # functional foods, chrononutrition — bridging nutrient:/diet:/tcm: with research
 # method and food science. Base pack.
@@ -66,5 +66,5 @@ def "nutrisci:satiety" "The feeling of fullness that ends eating."
 ln nutrisci:satiety nutrisci thesaurus:related
 def "nutrisci:metabolomics" "Profiling the small-molecule metabolites that reflect diet and metabolism."
 ln nutrisci:metabolomics nutrisci thesaurus:related
-# ── food-as-medicine bridges (医食同源) ──
+# ── food-as-medicine bridges ──
 ln nutrisci:food_as_medicine diet:mediterranean thesaurus:related

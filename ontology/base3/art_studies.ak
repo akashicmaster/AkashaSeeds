@@ -1,4 +1,4 @@
-# Akasha ontology — art studies (芸術学).
+# Akasha ontology — art studies.
 # art:/music:/perf: hold works and forms; this adds the SCHOLARLY study — history,
 # aesthetics, theory, criticism. Bridged to art:/music:/mus:/dh:/foodstud:. Base pack.
 

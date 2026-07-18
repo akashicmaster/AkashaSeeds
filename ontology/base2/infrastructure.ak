@@ -1,4 +1,4 @@
-# Akasha ontology — social infrastructure (生活インフラ) + broadcasting.
+# Akasha ontology — social infrastructure + broadcasting.
 # The technical layers exist (energy:/net:/ce:) but the everyday utility
 # SERVICE to the household was missing and disconnected. infra:* utilities
 # link three ways: to the home connection/appliance, to admin/gov provision,
@@ -6,7 +6,7 @@
 # community). Base pack.
 
 def "concept:utility" "A lifeline utility service delivered to households."
-# ── utilities (ライフライン) → home / meter / tech / gov ──
+# ── utilities → home / meter / tech / gov ──
 def "infra:water_supply" "Water supply (上水道) — lifeline utility."
 ln infra:water_supply concept:utility thesaurus:related
 ln infra:water_supply home:faucet infra:delivered_via
@@ -92,7 +92,7 @@ ln home:kitchen_sink infra:water_supply infra:powered_by
 ln home:faucet infra:water_supply infra:delivered_via
 ln appliance:air_conditioner infra:electricity_supply infra:powered_by
 
-# ── broadcasting (放送) ──
+# ── broadcasting ──
 def "broadcast" "Transmission of audio/video to the public."
 def "broadcast_type:television" "TV broadcasting"
 def "broadcast_type:radio" "radio broadcasting"

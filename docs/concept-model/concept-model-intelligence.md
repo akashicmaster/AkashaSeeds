@@ -290,7 +290,7 @@ akasha/user $ ft.trace fact_id=h8i9...rs08
 }
 ```
 
-*→ Back to [concept-model-spec.md](concept-model-spec.md) · [README](../README.md)*
+*→ Back to [concept-model-spec.md](concept-model-spec.md) · [README](../../README.md)*
 
 ---
 

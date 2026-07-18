@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300..700;1,6..72,300..600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
 /* ───────────────────────────────────────────────────────────────────────────
-   Akashic Kitchen — a "なんちゃって" (mock) web GUI for the recipe JSON-RPC API.
+   Akashic Kitchen — a "mock" (mock) web GUI for the recipe JSON-RPC API.
 
    PURPOSE. A single self-contained HTML file that exercises the real recipe API
    (docs/api/recipe-jsonrpc-v1.md) end-to-end, so it can serve as the STARTING
@@ -202,24 +202,24 @@ input.q { width: 72px; } input.u { width: 62px; }
   <div class="grow"></div>
   <span id="plan-badge" class="plan-badge" style="display:none"></span>
   <span id="who" class="who"></span>
-  <button class="btn ghost sm" id="suggest-btn" onclick="openSuggest()" style="display:none">提案</button>
-  <button class="btn ghost sm" id="account-btn" onclick="openAccount()" style="display:none">アカウント</button>
-  <button class="btn muted sm" id="logout-btn" onclick="logout()" style="display:none">ログアウト</button>
+  <button class="btn ghost sm" id="suggest-btn" onclick="openSuggest()" style="display:none">Suggest</button>
+  <button class="btn ghost sm" id="account-btn" onclick="openAccount()" style="display:none">Account</button>
+  <button class="btn muted sm" id="logout-btn" onclick="logout()" style="display:none">Log out</button>
 </header>
 
 <!-- ── main two-column layout ──────────────────────────────────────────── -->
 <main id="app" style="display:none">
   <section id="list-col">
     <div class="col-head">
-      <h2>レシピ</h2><div class="grow"></div>
-      <button class="btn sm" onclick="openNew()">＋ 新規</button>
+      <h2>Recipes</h2><div class="grow"></div>
+      <button class="btn sm" onclick="openNew()">+ New</button>
     </div>
-    <div class="scroll" id="list-scroll"><div class="empty">読み込み中…</div></div>
+    <div class="scroll" id="list-scroll"><div class="empty">Loading…</div></div>
   </section>
 
   <section id="detail-col">
     <div class="scroll" id="detail-scroll">
-      <div class="empty">← レシピを選ぶか、新規作成してください。</div>
+      <div class="empty">← Select a recipe or create a new one.</div>
     </div>
   </section>
 </main>
@@ -228,22 +228,22 @@ input.q { width: 72px; } input.u { width: 62px; }
 <div class="overlay" id="auth-overlay">
   <div class="panel">
     <h2>Akashic Kitchen</h2>
-    <div class="sub">レシピ API のサンプルクライアント</div>
+    <div class="sub">Sample client for the recipe API</div>
     <div class="tabs">
-      <div class="t on" id="tab-login" onclick="authTab('login')">ログイン</div>
-      <div class="t" id="tab-reg" onclick="authTab('reg')">新規登録</div>
+      <div class="t on" id="tab-login" onclick="authTab('login')">Log in</div>
+      <div class="t" id="tab-reg" onclick="authTab('reg')">Register</div>
     </div>
-    <label>ユーザーID</label>
+    <label>User ID</label>
     <input class="f" id="au-user" autocomplete="username" placeholder="alice">
-    <label>パスフレーズ</label>
-    <input class="f" id="au-pass" type="password" autocomplete="current-password" placeholder="8文字以上">
+    <label>Passphrase</label>
+    <input class="f" id="au-pass" type="password" autocomplete="current-password" placeholder="8+ characters">
     <div class="msg" id="au-msg"></div>
     <div class="actions">
-      <button class="btn herb" id="au-go" onclick="authSubmit()">ログイン</button>
+      <button class="btn herb" id="au-go" onclick="authSubmit()">Log in</button>
     </div>
     <div class="hint" style="margin-top:12px">
-      パスフレーズは HTTPS 上でのみ送ってください（本番）。このサンプルは
-      <code>/api/rpc</code> に対して動きます。
+      Send the passphrase only over HTTPS (in production). This sample runs
+      against <code>/api/rpc</code>.
     </div>
   </div>
 </div>
@@ -251,20 +251,20 @@ input.q { width: 72px; } input.u { width: 62px; }
 <!-- ── new-recipe modal ────────────────────────────────────────────────── -->
 <div class="overlay hidden" id="new-overlay">
   <div class="panel">
-    <h2>新しいレシピ</h2>
-    <div class="sub">recipe.new — タイトルと軸タグ（任意）</div>
-    <label>タイトル</label>
-    <input class="f" id="nw-title" placeholder="冬の大根スープ">
-    <label>季節 / 系統 / コース（任意・カンマ区切り可）</label>
+    <h2>New recipe</h2>
+    <div class="sub">recipe.new — title and axis tags (optional)</div>
+    <label>Title</label>
+    <input class="f" id="nw-title" placeholder="Winter daikon soup">
+    <label>Season / cuisine / course (optional, comma-separated)</label>
     <div style="display:flex; gap:8px">
-      <input class="f" id="nw-season" placeholder="季節 winter">
-      <input class="f" id="nw-ethnic" placeholder="系統 japanese">
-      <input class="f" id="nw-course" placeholder="コース soup">
+      <input class="f" id="nw-season" placeholder="season winter">
+      <input class="f" id="nw-ethnic" placeholder="cuisine japanese">
+      <input class="f" id="nw-course" placeholder="course soup">
     </div>
     <div class="msg" id="nw-msg"></div>
     <div class="actions">
-      <button class="btn muted" onclick="closeModal('new-overlay')">やめる</button>
-      <button class="btn herb" onclick="createRecipe()">作成</button>
+      <button class="btn muted" onclick="closeModal('new-overlay')">Cancel</button>
+      <button class="btn herb" onclick="createRecipe()">Create</button>
     </div>
   </div>
 </div>
@@ -272,20 +272,20 @@ input.q { width: 72px; } input.u { width: 62px; }
 <!-- ── suggest modal ───────────────────────────────────────────────────── -->
 <div class="overlay hidden" id="suggest-overlay">
   <div class="panel">
-    <h2>レシピ提案</h2>
-    <div class="sub">recipe.suggest — 軸の交差でランキング（avoid はハードフィルタ）</div>
-    <label>季節 / 系統</label>
+    <h2>Recipe suggestions</h2>
+    <div class="sub">recipe.suggest — ranked by axis intersection (avoid is a hard filter)</div>
+    <label>Season / cuisine</label>
     <div style="display:flex; gap:8px">
       <input class="f" id="sg-season" placeholder="winter">
       <input class="f" id="sg-ethnic" placeholder="japanese">
     </div>
-    <label>手持ち食材 have（カンマ区切り）</label>
+    <label>ingredients you have (comma-separated)</label>
     <input class="f" id="sg-have" placeholder="daikon,pork">
-    <label>避けたい avoid（アレルゲン等）</label>
+    <label>avoid (allergens etc.)</label>
     <input class="f" id="sg-avoid" placeholder="peanut">
     <div class="actions">
-      <button class="btn muted" onclick="closeModal('suggest-overlay')">閉じる</button>
-      <button class="btn herb" onclick="runSuggest()">提案</button>
+      <button class="btn muted" onclick="closeModal('suggest-overlay')">Close</button>
+      <button class="btn herb" onclick="runSuggest()">Suggest</button>
     </div>
     <div id="sg-out" style="margin-top:16px"></div>
   </div>
@@ -294,14 +294,14 @@ input.q { width: 72px; } input.u { width: 62px; }
 <!-- ── account modal (plan + delete) ───────────────────────────────────── -->
 <div class="overlay hidden" id="account-overlay">
   <div class="panel">
-    <h2>アカウント</h2>
+    <h2>Account</h2>
     <div class="sub" id="ac-sub">recipe.plan / auth.account.delete</div>
     <div id="ac-plan"></div>
     <hr style="border:none;border-top:1px solid var(--rule);margin:18px 0">
-    <div class="hint">アカウント削除は取り消せません（自分のレシピ・個人食材・計測を全消去）。</div>
+    <div class="hint">Account deletion cannot be undone (it erases all your recipes, personal ingredients and measurements).</div>
     <div class="actions">
-      <button class="btn muted" onclick="closeModal('account-overlay')">閉じる</button>
-      <button class="btn" style="background:var(--tom);border-color:var(--tom)" onclick="deleteAccount()">アカウント削除</button>
+      <button class="btn muted" onclick="closeModal('account-overlay')">Close</button>
+      <button class="btn" style="background:var(--tom);border-color:var(--tom)" onclick="deleteAccount()">Delete account</button>
     </div>
     <div class="msg" id="ac-msg"></div>
   </div>
@@ -356,7 +356,7 @@ function authTab(mode) {
   AUTH_MODE = mode;
   document.getElementById('tab-login').classList.toggle('on', mode === 'login');
   document.getElementById('tab-reg').classList.toggle('on', mode === 'reg');
-  document.getElementById('au-go').textContent = mode === 'login' ? 'ログイン' : '登録して開始';
+  document.getElementById('au-go').textContent = mode === 'login' ? 'Log in' : 'Register and start';
   document.getElementById('au-pass').autocomplete = mode === 'login' ? 'current-password' : 'new-password';
   document.getElementById('au-msg').textContent = '';
 }
@@ -365,7 +365,7 @@ async function authSubmit() {
   const user = document.getElementById('au-user').value.trim();
   const pass = document.getElementById('au-pass').value;
   const msg  = document.getElementById('au-msg');
-  if (!user || !pass) { msg.textContent = 'ID とパスフレーズを入力してください。'; return; }
+  if (!user || !pass) { msg.textContent = 'Please enter an ID and passphrase.'; return; }
   msg.textContent = '…';
   try {
     let r;
@@ -396,12 +396,12 @@ function logout() {
 }
 
 async function deleteAccount() {
-  if (!confirm('本当にアカウントを削除しますか？取り消せません。')) return;
+  if (!confirm('Really delete your account? This cannot be undone.')) return;
   const msg = document.getElementById('ac-msg');
   try {
     // auth.account.delete — self-service, own account only; confirm is REQUIRED.
     await rpc('auth.account.delete', { confirm: 'true' });
-    toast('アカウントを削除しました');
+    toast('Account deleted');
     logout();
     closeModal('account-overlay');
   } catch (e) { msg.textContent = e.message; }
@@ -429,10 +429,10 @@ async function loadPlan() {
   const b = document.getElementById('plan-badge');
   b.style.display = '';
   b.className = 'plan-badge ' + (PLAN.tier === 'paid' ? 'paid' : 'free');
-  if (!PLAN.tiering) { b.textContent = 'OSS · 無制限'; }
-  else if (PLAN.tier === 'paid') { b.textContent = 'PAID · 無制限'; }
+  if (!PLAN.tiering) { b.textContent = 'OSS · unlimited'; }
+  else if (PLAN.tier === 'paid') { b.textContent = 'PAID · unlimited'; }
   else {
-    b.textContent = `FREE · ${PLAN.recipes_used}/${PLAN.recipe_quota} 品`;
+    b.textContent = `FREE · ${PLAN.recipes_used}/${PLAN.recipe_quota} recipes`;
   }
 }
 
@@ -450,7 +450,7 @@ let CURSOR = null;      // opaque next-page cursor (null = first page / no more)
 
 async function loadRecipes(more = false) {
   const scroll = document.getElementById('list-scroll');
-  if (!more) { LIST = []; CURSOR = null; scroll.innerHTML = '<div class="empty">読み込み中…</div>'; }
+  if (!more) { LIST = []; CURSOR = null; scroll.innerHTML = '<div class="empty">Loading…</div>'; }
   const r = await rpc('recipe.ls', more && CURSOR ? { cursor: CURSOR } : {});
   LIST = LIST.concat(r.recipes || []);
   CURSOR = r.has_more ? r.next_cursor : null;
@@ -459,18 +459,18 @@ async function loadRecipes(more = false) {
 
 function renderList(total) {
   const scroll = document.getElementById('list-scroll');
-  if (!LIST.length) { scroll.innerHTML = '<div class="empty">まだレシピがありません。<br>「＋ 新規」から。</div>'; return; }
+  if (!LIST.length) { scroll.innerHTML = '<div class="empty">No recipes yet.<br>Start from “+ New”.</div>'; return; }
   const cards = LIST.map(r => {
     const axes = Object.entries(r.axes || {})
       .flatMap(([k, vs]) => (vs || []).map(v => `<span class="tag">${esc(v)}</span>`)).join('');
     const on = r.recipe_id === (CURRENT && CURRENT.recipe_id) ? ' active' : '';
     return `<div class="rcard${on}" onclick="openRecipe('${r.recipe_id}')">
-      <div class="t">${esc(r.title || '(無題)')}</div>
+      <div class="t">${esc(r.title || '(untitled)')}</div>
       <div class="ax">${axes}</div></div>`;
   }).join('');
   const more = CURSOR
     ? `<div class="load-more"><button class="btn muted sm" onclick="loadRecipes(true)">
-         さらに読み込む（${LIST.length}/${total}）</button></div>` : '';
+         Load more（${LIST.length}/${total}）</button></div>` : '';
   scroll.innerHTML = cards + more;
 }
 
@@ -482,7 +482,7 @@ let CURRENT = null;     // the last recipe.view result (holds .revision, ingredi
 
 async function openRecipe(id) {
   const d = document.getElementById('detail-scroll');
-  d.innerHTML = '<div class="empty">読み込み中…</div>';
+  d.innerHTML = '<div class="empty">Loading…</div>';
   CURRENT = await rpc('recipe.view', { recipe: id });
   renderList(LIST.length);      // refresh active highlight
   renderDetail();
@@ -499,7 +499,7 @@ function renderDetail() {
       <span>${esc(i.name)}</span>
       <span class="id">${esc((i.ingredient_id || '').slice(0, 8))}</span>
       <button class="btn ghost sm row-x" onclick="removeItem('ingredient','${i.ingredient_id || i.key}')">×</button>
-    </div>`).join('') || '<div class="hint">まだ食材がありません。</div>';
+    </div>`).join('') || '<div class="hint">No ingredients yet.</div>';
 
   const steps = (c.steps || []).map((s, n) => `
     <div class="step-row">
@@ -507,42 +507,42 @@ function renderDetail() {
       <span style="flex:1">${esc(s.text)}</span>
       <span class="id">${esc((s.step_id || '').slice(0, 8))}</span>
       <button class="btn ghost sm" onclick="removeItem('step','${s.step_id || s.key}')">×</button>
-    </div>`).join('') || '<div class="hint">まだ手順がありません。</div>';
+    </div>`).join('') || '<div class="hint">No steps yet.</div>';
 
   document.getElementById('detail-scroll').innerHTML = `
     <div class="pad">
       <h1 class="recipe-title">${esc(c.title)}</h1>
       <div class="meta-row">
-        ${axes || '<span class="hint">軸タグなし</span>'}
+        ${axes || '<span class="hint">no axis tags</span>'}
         &nbsp;·&nbsp; rev ${c.revision} &nbsp;·&nbsp;
         <span class="id">${esc(c.recipe_id.slice(0, 10))}</span>
-        <button class="btn ghost sm" style="float:right" onclick="removeRecipe()">レシピ削除</button>
+        <button class="btn ghost sm" style="float:right" onclick="removeRecipe()">Delete recipe</button>
       </div>
 
       <div class="section">
-        <h3>食材（ingredients）</h3>
+        <h3>Ingredients</h3>
         ${ings}
         <div class="add-inline">
-          <input class="f" id="ai-name" placeholder="食材名 daikon">
+          <input class="f" id="ai-name" placeholder="ingredient name daikon">
           <input class="f q" id="ai-qty" placeholder="300">
           <input class="f u" id="ai-unit" placeholder="g">
-          <button class="btn herb sm" onclick="addIngredient()">＋ 食材</button>
+          <button class="btn herb sm" onclick="addIngredient()">+ Ingredient</button>
         </div>
       </div>
 
       <div class="section">
-        <h3>手順（steps）</h3>
+        <h3>Steps</h3>
         ${steps}
         <div class="add-inline">
-          <input class="f" id="as-text" style="flex:1" placeholder="大根を輪切りにする">
-          <input class="f" id="as-dur" style="width:70px" placeholder="分 25">
-          <button class="btn herb sm" onclick="addStep()">＋ 手順</button>
+          <input class="f" id="as-text" style="flex:1" placeholder="Slice the daikon into rounds">
+          <input class="f" id="as-dur" style="width:70px" placeholder="min 25">
+          <button class="btn herb sm" onclick="addStep()">+ Step</button>
         </div>
       </div>
 
       <div class="section">
-        <h3>栄養（nutrition）— 有料機能</h3>
-        <div id="nutri-box"><button class="btn muted sm" onclick="loadNutrition()">計算する</button></div>
+        <h3>Nutrition — paid feature</h3>
+        <div id="nutri-box"><button class="btn muted sm" onclick="loadNutrition()">Calculate</button></div>
       </div>
     </div>`;
 }
@@ -555,7 +555,7 @@ function renderDetail() {
 async function createRecipe() {
   const title = document.getElementById('nw-title').value.trim();
   const msg = document.getElementById('nw-msg');
-  if (!title) { msg.textContent = 'タイトルを入力してください。'; return; }
+  if (!title) { msg.textContent = 'Please enter a title.'; return; }
   const fields = { title };
   const s = v => document.getElementById(v).value.trim();
   if (s('nw-season')) fields.season = s('nw-season');
@@ -567,11 +567,11 @@ async function createRecipe() {
     await loadPlan();                 // usage went up — refresh the quota badge
     await loadRecipes();
     await openRecipe(r.recipe_id);
-    toast('作成しました');
+    toast('Created');
   } catch (e) {
     // Over the free quota → -32002 with a `quota_reached:` message → upsell.
     msg.textContent = e.code === -32002 && /quota_reached/.test(e.message)
-      ? `無料枠（${PLAN?.recipe_quota} 品）に達しました。アップグレードで無制限に。`
+      ? `You’ve reached the free tier (${PLAN?.recipe_quota} recipes). Upgrade for unlimited.`
       : e.message;
   }
 }
@@ -610,17 +610,17 @@ async function write(method, fields) {
     await openRecipe(CURRENT.recipe_id);     // re-view → new revision
   } catch (e) {
     if (e.code === -32002 && /conflict/.test(e.message)) {
-      toast('別の端末で更新されました。再読み込みします。');
+      toast('Updated on another device. Reloading.');
       await openRecipe(CURRENT.recipe_id);
     } else { toast(e.message); }
   }
 }
 
 async function removeRecipe() {
-  if (!confirm('このレシピを削除しますか？')) return;
+  if (!confirm('Delete this recipe?')) return;
   await rpc('recipe.remove', { recipe: CURRENT.recipe_id });
   CURRENT = null;
-  document.getElementById('detail-scroll').innerHTML = '<div class="empty">削除しました。</div>';
+  document.getElementById('detail-scroll').innerHTML = '<div class="empty">Deleted.</div>';
   await loadPlan(); await loadRecipes();
 }
 
@@ -630,12 +630,12 @@ async function removeRecipe() {
    ═══════════════════════════════════════════════════════════════════════════ */
 async function loadNutrition() {
   const box = document.getElementById('nutri-box');
-  box.innerHTML = '<div class="hint">計算中…</div>';
+  box.innerHTML = '<div class="hint">Calculating…</div>';
   const n = await rpc('recipe.nutrition', { recipe: CURRENT.recipe_id });
   if (n.locked) {                 // upgrade_required
     box.innerHTML = `<div class="locked-card">
-      <div class="big">🔒 栄養・原価計算は有料機能です</div>
-      <div>アップグレードで栄養計算・原価計算・並行工程・HACCP が使えます。</div>
+      <div class="big">🔒 Nutrition and cost calculation are paid features</div>
+      <div>Upgrade to unlock nutrition, cost, parallel steps and HACCP.</div>
     </div>`;
     return;
   }
@@ -643,9 +643,9 @@ async function loadNutrition() {
   const cells = Object.entries(t).map(([k, v]) =>
     `<div class="nutri-cell"><div class="v">${round(v)}</div><div class="k">${esc(k)}</div></div>`).join('');
   const notes = [];
-  if (n.unmeasured?.length) notes.push(`計量外: ${n.unmeasured.join(', ')}`);
-  if (n.no_data?.length) notes.push(`データなし: ${n.no_data.join(', ')}`);
-  box.innerHTML = `<div class="nutri-grid">${cells || '<div class="hint">データがありません。</div>'}</div>`
+  if (n.unmeasured?.length) notes.push(`Unmeasured: ${n.unmeasured.join(', ')}`);
+  if (n.no_data?.length) notes.push(`No data: ${n.no_data.join(', ')}`);
+  box.innerHTML = `<div class="nutri-grid">${cells || '<div class="hint">No data.</div>'}</div>`
     + (notes.length ? `<div class="hint" style="margin-top:8px">${notes.join(' · ')}</div>` : '');
 }
 
@@ -660,13 +660,13 @@ async function runSuggest() {
   if (s('sg-have')) f.have = s('sg-have');
   if (s('sg-avoid')) f.avoid = s('sg-avoid');
   const out = document.getElementById('sg-out');
-  out.innerHTML = '<div class="hint">検索中…</div>';
+  out.innerHTML = '<div class="hint">Searching…</div>';
   const r = await rpc('recipe.suggest', f);
-  if (!r.suggestions?.length) { out.innerHTML = '<div class="hint">該当なし。</div>'; return; }
+  if (!r.suggestions?.length) { out.innerHTML = '<div class="hint">No matches.</div>'; return; }
   out.innerHTML = r.suggestions.map(s => `
     <div class="rcard" onclick="closeModal('suggest-overlay');openRecipe('${s.recipe_id}')">
       <div class="t">${esc(s.title)}</div>
-      <div class="hint">一致 ${esc(s.coverage)} · スコア ${s.score}</div>
+      <div class="hint">match ${esc(s.coverage)} · score ${s.score}</div>
     </div>`).join('');
 }
 
@@ -677,13 +677,13 @@ async function openAccount() {
   await loadPlan();
   const p = PLAN || {};
   const html = !p.tiering
-    ? '<div class="hint">このサーバーは課金オフ（OSS・無制限）です。</div>'
+    ? '<div class="hint">This server has billing off (OSS · unlimited).</div>'
     : `<div class="nutri-grid">
         <div class="nutri-cell"><div class="v">${p.tier}</div><div class="k">tier</div></div>
         <div class="nutri-cell"><div class="v">${p.recipes_used ?? '–'}</div><div class="k">used</div></div>
         <div class="nutri-cell"><div class="v">${p.tier === 'paid' ? '∞' : p.recipe_quota}</div><div class="k">quota</div></div>
        </div>` + (p.tier !== 'paid'
-        ? '<div class="hint" style="margin-top:8px">アップグレードは App Store / Play の課金 → 課金サービスが auth.plan.set で反映（クライアントは自分で変更不可）。</div>'
+        ? '<div class="hint" style="margin-top:8px">Upgrades go through App Store / Play billing → the billing service applies them via auth.plan.set (clients cannot change it themselves).</div>'
         : '');
   document.getElementById('ac-plan').innerHTML = html;
   document.getElementById('ac-msg').textContent = '';

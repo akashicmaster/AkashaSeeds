@@ -1,4 +1,4 @@
-# Akasha ontology — clinical psychology & counseling (臨床心理・カウンセリング).
+# Akasha ontology — clinical psychology & counseling.
 # Bridged to occupation:therapist/school_counselor, social:mentor_of, place:clinic,
 # emo:* (the affect layer) and med:. Base pack.
 
@@ -35,7 +35,7 @@ def "psych:developmental_psychology" "How mind and behaviour change across the l
 ln psych:developmental_psychology psych thesaurus:related
 ln psych:developmental_psychology kin:child_of thesaurus:related
 ln psych:developmental_psychology school:student thesaurus:related
-# ── counseling & psychotherapy (カウンセリング・心理療法) ──
+# ── counseling & psychotherapy ──
 def "counsel" "Counseling — a helping relationship supporting change and coping (カウンセリング)."
 ln counsel psych thesaurus:related
 ln counsel social:mentor_of thesaurus:related

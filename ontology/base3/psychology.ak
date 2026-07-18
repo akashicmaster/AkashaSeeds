@@ -1,4 +1,4 @@
-# Akasha ontology — psychology (心理学), the general discipline.
+# Akasha ontology — psychology, the general discipline.
 # The broad science of mind and behaviour, cross-linked to its clinical branch
 # (psych:/counsel:), the affect layer (emo:), machine learning (ai:), and
 # education (edupsy:). Base pack.

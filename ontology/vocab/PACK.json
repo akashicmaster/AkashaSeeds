@@ -1,5 +1,5 @@
 {
-  "label": "語彙拡張パッケージ",
+  "label": "Vocabulary Expansion Pack",
   "description": "Extended vocabulary building on word_core base. Adds specialized, cultural, and domain-adjacent terms.",
   "license": "WordNet 3.1 (word_ext_*.ak — see LICENSE.md)",
   "source": "Princeton University WordNet 3.1 (https://wordnet.princeton.edu/license-and-commercial-use)",

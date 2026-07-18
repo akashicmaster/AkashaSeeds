@@ -227,17 +227,7 @@ ln quote:gandhi_satyagraha courage calc:associated_with
 ln quote:gandhi_satyagraha quote:ahimsa calc:associated_with
 ln quote:gandhi_satyagraha quote:thoreau_civil_disobedience calc:associated_with
 
-def "quote:churchill_planning" "Plans are useless, but planning is indispensable. - Winston Churchill"
-ln quote:churchill_planning systematic sys:refers_to
-ln quote:churchill_planning action sys:refers_to
-ln quote:churchill_planning future sys:refers_to
-ln quote:churchill_planning mental calc:associated_with
 
-def "quote:abelson_programs" "Programs must be written for people to read, and only incidentally for machines to execute. - Harold Abelson"
-ln quote:abelson_programs human sys:refers_to
-ln quote:abelson_programs machine sys:refers_to
-ln quote:abelson_programs primary calc:associated_with
-ln quote:abelson_programs secondary calc:associated_with
 
 def "quote:eightfold_path" "The Buddha's Eightfold Path is the practical ethic of release — right view, intention, speech, action, livelihood, effort, mindfulness, and concentration."
 ln quote:eightfold_path right_conduct sys:refers_to

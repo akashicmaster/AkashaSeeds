@@ -47,7 +47,7 @@ ln foodsci:food_rheology research thesaurus:related
 def "foodsci:mouthfeel" "The tactile sensation of food in the mouth."
 ln foodsci:mouthfeel foodsci thesaurus:related
 ln foodsci:mouthfeel tasting:viscosity thesaurus:related
-# ── molecular gastronomy (分子調理) ──
+# ── molecular gastronomy ──
 def "foodsci:molecular_gastronomy" "The scientific study of cooking transformations, and its avant-garde cuisine (分子ガストロノミー)."
 ln foodsci:molecular_gastronomy foodsci thesaurus:related
 ln foodsci:molecular_gastronomy technique thesaurus:related
@@ -64,7 +64,7 @@ def "foodsci:transglutaminase" "'Meat glue' enzyme that bonds proteins into new 
 ln foodsci:transglutaminase foodsci thesaurus:related
 def "foodsci:liquid_nitrogen_cooking" "Flash-freezing for instant ices and shattering textures."
 ln foodsci:liquid_nitrogen_cooking foodsci thesaurus:related
-# ── food microbiology (食品微生物) ──
+# ── food microbiology ──
 def "foodsci:food_microbiology" "The study of microbes in food — spoilage, safety and fermentation."
 ln foodsci:food_microbiology foodsci thesaurus:related
 def "foodsci:fermentation_science" "The controlled microbial transformation of food (味噌, cheese, bread, kimchi)."
@@ -81,7 +81,7 @@ ln foodsci:koji foodsci thesaurus:related
 ln foodsci:koji cuisine:japanese thesaurus:related
 def "foodsci:spoilage" "Undesirable microbial or chemical deterioration of food."
 ln foodsci:spoilage foodsci thesaurus:related
-# ── food safety (食品安全) — HACCP unifies the scattered defs ──
+# ── food safety — HACCP unifies the scattered defs ──
 def "foodsafe" "Food safety — preventing hazards from farm to fork."
 def "foodsafe:haccp" "Hazard Analysis and Critical Control Points — the preventive system of identifying and controlling food hazards."
 ln foodsafe:haccp foodsafe thesaurus:related
@@ -121,7 +121,7 @@ ln foodsafe:allergen_control foodsafe thesaurus:related
 ln foodsafe:allergen_control constraint:treenut thesaurus:related
 def "foodsafe:iso22000" "An international food-safety management standard."
 ln foodsafe:iso22000 foodsafe thesaurus:related
-# ── precision & low-temperature cooking (低温調理) ──
+# ── precision & low-temperature cooking ──
 def "foodprecis" "Precision cooking — controlling time and temperature exactly."
 def "foodprecis:low_temperature_cooking" "Cooking at gentle, precisely held temperatures for even doneness and tenderness (低温調理)."
 ln foodprecis:low_temperature_cooking foodprecis thesaurus:related

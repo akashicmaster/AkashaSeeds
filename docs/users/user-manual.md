@@ -592,7 +592,7 @@ akasha/user $ r f3a1...9c42
 > Use `al.rm` to clean up temporary or typo-generated aliases. Use `rm` to delete the atom itself.
 
 > **CSL equivalents:** `alias name="..." id="..."` · `alias.list` · `alias.find name="..."`  
-> **→** [`docs/csl-manual.md §4.3`](csl-manual.md#43-giving-atoms-names-aliases)
+> **→** [`docs/csl-manual.md §4.3`](csl-manual.md#43-aliases--permanent-names-for-atoms)
 
 ---
 
@@ -1304,7 +1304,7 @@ akasha/user $ csl.run   script="..."   # execute
 Recommended order: check → dry → run.
 
 > **→ Full CSL Manual:** [`docs/csl-manual.md`](csl-manual.md)  
-> **→ Implementation spec:** [`docs/csl-spec.md`](csl-spec.md)
+> **→ Implementation spec:** [`docs/developer/csl-spec.md`](../developer/csl-spec.md)
 
 ---
 

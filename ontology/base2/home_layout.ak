@@ -1,4 +1,4 @@
-# Akasha ontology — 間取り (madori): floor plan / room layout.
+# Akasha ontology — floor plan (madori): floor plan / room layout.
 # Arranges the home:* rooms into a dwelling — by zone, adjacency, and which
 # rooms each dwelling type contains. Built on home_spaces.ak. Base pack.
 
@@ -62,7 +62,7 @@ ln home:driveway home:garage home:adjacent_to
 ln home:bedroom home:closet home:adjacent_to
 ln home:closet home:bedroom home:adjacent_to
 
-# ── dwelling types → rooms (間取りの型) ──
+# ── dwelling types → rooms ──
 def "home:dwelling:studio" "1R/1K — a single room with kitchenette."
 ln home:dwelling:studio home:layout thesaurus:related
 ln home:dwelling:studio home:entrance home:has_room

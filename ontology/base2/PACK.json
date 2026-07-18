@@ -1,7 +1,7 @@
 {
-  "label": "基本2 — 暮らしの世界",
+  "label": "Basics 2 — The World of Everyday Life",
   "description": "The human world grows: home & household, family life, community & civic institutions, work & occupation, fashion, geography and daily-life infrastructure.",
-  "theme": "基本2 — 暮らしの世界",
+  "theme": "Basics 2 — The World of Everyday Life",
   "license": "MIT (software and editorial content); WordNet 3.1 (word_core_*.ak — see LICENSE.md)",
   "source": "internal + Princeton University WordNet 3.1",
   "version": "1.0"

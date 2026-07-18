@@ -1,4 +1,4 @@
-# Akasha ontology — economics: microeconomics & macroeconomics (経済学).
+# Akasha ontology — economics: microeconomics & macroeconomics.
 # Classified by econ_field (micro/macro). Bridged to fin:/fx:/gov:tax/geo:gdp/
 # admin:country/person:field:economics. Base pack.
 
@@ -7,7 +7,7 @@ def "econ_field:micro" "Microeconomics — individual agents and markets."
 def "econ_field:macro" "Macroeconomics — the economy as a whole."
 ln econ person:field:economics thesaurus:related
 
-# ── microeconomics (ミクロ経済学) ──
+# ── microeconomics ──
 def "econ:scarcity" "Limited resources against unlimited wants — the root economic problem (希少性)."
 ln econ:scarcity econ thesaurus:related
 ln econ:scarcity econ_field:micro econ:field
@@ -75,7 +75,7 @@ ln econ:game_theory econ_field:micro econ:field
 def "econ:behavioral_economics" "How real, biased human psychology shapes economic choices."
 ln econ:behavioral_economics econ thesaurus:related
 ln econ:behavioral_economics econ_field:micro econ:field
-# ── macroeconomics (マクロ経済学) ──
+# ── macroeconomics ──
 def "econ:gdp" "Gross domestic product — the total value of goods and services produced (国内総生産)."
 ln econ:gdp econ thesaurus:related
 ln econ:gdp econ_field:macro econ:field

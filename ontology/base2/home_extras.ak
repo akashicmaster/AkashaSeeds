@@ -25,7 +25,7 @@ ln activity:play home concept:related
 def "activity:exercise" "運動 — exercise & fitness."
 ln activity:exercise home concept:related
 
-# ── appliances (電話・ドアホン・ミシン・加湿/除湿) ──
+# ── appliances ──
 def "appliance:telephone" "Telephone (電話)."
 ln appliance:telephone appliance thesaurus:related
 ln appliance:telephone home:hallway home:located_in
@@ -60,7 +60,7 @@ def "toy_type:plush" "soft toys"
 def "toy_type:game" "games & puzzles"
 def "toy_type:active" "active/outdoor toys"
 def "toy_type:creative" "creative toys"
-# ── toys (おもちゃ) → play ──
+# ── toys → play ──
 def "toy:building_blocks" "Building blocks."
 ln toy:building_blocks toy_type:building thesaurus:related
 ln toy:building_blocks home:childrens_room home:located_in
@@ -143,7 +143,7 @@ ln toy:toy_blocks_creative activity:play home:used_for
 ln toy:toy_blocks_creative obj:durable obj_durability
 
 def "craft" "An art or handicraft supply."
-# ── craft & art (画材・裁縫) ──
+# ── craft & art ──
 def "craft:crayon" "Crayon (クレヨン)."
 ln craft:crayon craft thesaurus:related
 ln craft:crayon activity:art home:used_for

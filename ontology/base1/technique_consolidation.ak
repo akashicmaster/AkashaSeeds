@@ -39,7 +39,7 @@ def "heat_source:pit" "underground pit."
 def "heat_source:infrared" "infrared/salamander."
 def "heat_source:induction" "induction."
 
-# ── heat source (炭/薪/ガス…) — the meaningful axis for fire cooking ──
+# ── heat source — the meaningful axis for fire cooking ──
 ln technique:grilling heat_source:charcoal technique:heat_source
 ln technique:grilling heat_source:wood technique:heat_source
 ln technique:grilling heat_source:gas technique:heat_source

@@ -699,9 +699,12 @@ topic, `node.sim` for structural role.
 node.sim nile
 ```
 
-> **Implicit behaviour.** `node.sim` needs a structural model. Boot builds one automatically; on a
-> brand-new Cell with few links, run `node.learn` (admin) once to train it, or `node.sim` simply
-> returns nothing until enough structure exists.
+> **Prerequisite.** `node.sim` needs a structural model, and — unlike the content model behind
+> `sim`/`search` (which the boot daemon trains automatically) — the structural model is **not**
+> built at boot. An admin must run **`node.learn` once** (it is numpy-gated: on a Cell without
+> numpy the structural model is unavailable and `node.sim` returns `-32002 no structural model —
+> run node.learn first`). After `node.learn`, re-run it whenever the graph has grown substantially.
+> `sim`/`search` need no such step.
 
 **`view` — the meaning of one Atom, in place.** Shows signposts (direct links), resonance
 (semantically-near Atoms two hops out), and the Atom's cosmos position + aura colour — **without**

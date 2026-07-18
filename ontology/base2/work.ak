@@ -5,7 +5,7 @@
 # status: (rank ladder), org: (theory), place:. Base pack.
 
 def "work" "The activity and experience of holding a job."
-# ── workplace (職場) ──
+# ── workplace ──
 def "place_type:workplace" "workplaces"
 ln place_type:workplace place_type thesaurus:related
 def "place:office" "Office (オフィス) — オフィス — white-collar workplace."
@@ -20,7 +20,7 @@ def "place:coworking_space" "Coworking space — Shared work space."
 ln place:coworking_space place_type:workplace civic:function
 ln place:home_office home:study thesaurus:related
 
-# ── org units (所属) ──
+# ── org units ──
 def "work:department" "Department (部署)."
 ln work:department work thesaurus:related
 ln work:department social:member_of work:belong_via
@@ -39,7 +39,7 @@ def "work:section" "Section."
 ln work:section work thesaurus:related
 ln work:section social:member_of work:belong_via
 
-# ── employment terms (雇用・給与) ──
+# ── employment terms ──
 def "work:employment_type" "The basis of employment."
 def "work:employ:full_time" "Full time employment."
 ln work:employ:full_time work:employment_type thesaurus:related
@@ -79,7 +79,7 @@ ln work:overtime work:working_hours thesaurus:related
 ln work:salary occupation thesaurus:related
 ln work:minimum_wage gov:function:taxation gov:regulated_by
 
-# ── daily work events (職場で起きること) ──
+# ── daily work events ──
 def "work:commute" "Commute (通勤)."
 ln work:commute work thesaurus:related
 ln work:commute emo:anticipation calc:associated_with
@@ -123,7 +123,7 @@ ln work:meeting social:colleague_of thesaurus:related
 ln work:nomikai social:colleague_of thesaurus:related
 ln work:commute transport thesaurus:related
 
-# ── career events (人事) ──
+# ── career events ──
 def "work:hiring" "Hiring (採用)."
 ln work:hiring work thesaurus:related
 def "work:promotion" "Promotion (昇進)."
@@ -166,7 +166,7 @@ ln work:performance_review org:role_clarity thesaurus:related
 ln work:hiring org:onboarding thesaurus:related
 ln work:retirement gov:benefit:pension thesaurus:related
 
-# ── work experience & wellbeing (人としての働き方) ──
+# ── work experience & wellbeing ──
 def "work:workload" "Workload."
 ln work:workload work thesaurus:related
 ln work:workload emo:anxiety calc:associated_with

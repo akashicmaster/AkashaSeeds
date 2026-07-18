@@ -631,7 +631,7 @@ Through the collection atom, all events, frames, and psyches related to a specif
 
 ---
 
-*→ Back to [concept-model-spec.md](../concept-model/concept-model-spec.md) · [README](../README.md)*
+*→ Back to [concept-model-spec.md](../concept-model/concept-model-spec.md) · [README](../../README.md)*
 
 ---
 

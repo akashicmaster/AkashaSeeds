@@ -1,4 +1,4 @@
-# Akasha ontology — 食養 (dietary therapy) frame + traditions.
+# Akasha ontology — food therapy (dietary therapy) frame + traditions.
 # DESCRIPTIVE cultural knowledge: how each tradition classifies foods, NOT
 # medical advice or claims of efficacy. provenance: traditional.
 

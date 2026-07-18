@@ -1,8 +1,8 @@
-# Akasha ontology — meat flesh colour (赤身/白身肉) + aging (熟成). Base pack.
+# Akasha ontology — meat flesh colour + aging. Base pack.
 # Reuse the flesh_type white/red axis for meat, and add an aging axis with the
 # methods and the meats/cuts commonly subjected to them.
 
-# ── flesh colour (赤身/白身) ──
+# ── flesh colour ──
 ln ingred:meat:beef flesh_type:red bio:flesh_type
 ln ingred:meat:lamb flesh_type:red bio:flesh_type
 ln ingred:meat:venison flesh_type:red bio:flesh_type
@@ -32,7 +32,7 @@ def "aging:dry_aged" "Dry aging — open cold aging that concentrates flavour an
 def "aging:wet_aged" "Wet aging — vacuum-sealed aging in its own juices."
 def "aging:hung" "Hanging / game aging (venison, wildfowl)."
 
-# ── aging (熟成) ──
+# ── aging ──
 ln ingred:meat:beef aging:dry_aged culinary:aging
 ln ingred:meat:ribeye aging:dry_aged culinary:aging
 ln ingred:meat:sirloin aging:dry_aged culinary:aging

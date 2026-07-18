@@ -1,4 +1,4 @@
-# Akasha ontology — computer & information science, the theory (情報科学).
+# Akasha ontology — computer & information science, the theory.
 # Deepens prog:/data:/ai: with the theoretical core. Bridged to math:/net:/cyb:.
 # Base pack.
 

@@ -48,7 +48,7 @@ def "socwork:empowerment" "Building people's capacity to control their own lives
 ln socwork:empowerment socwork thesaurus:related
 def "socwork:advocacy" "Speaking and acting for others' rights and needs."
 ln socwork:advocacy socwork thesaurus:related
-# ── rehabilitation (リハビリテーション) ──
+# ── rehabilitation ──
 def "rehab" "Rehabilitation — restoring function and participation after illness or injury (リハビリ)."
 ln rehab med:medicine thesaurus:related
 ln rehab occupation:therapist thesaurus:related
@@ -81,7 +81,7 @@ def "rehab:adl_training" "Practising activities of daily living toward independe
 ln rehab:adl_training rehab thesaurus:related
 ln rehab:adl_training care:activities_of_daily_living thesaurus:related
 ln rehab:adl_training nursing:patient_care thesaurus:related
-# ── special education & disability (特別支援・障害) ──
+# ── special education & disability ──
 def "special" "Special needs education & disability support (特別支援教育・障害)."
 ln special pedagogy:special_education thesaurus:related
 ln special school:school_counselor thesaurus:related

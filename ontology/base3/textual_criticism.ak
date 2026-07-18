@@ -1,4 +1,4 @@
-# Akasha ontology — textual criticism + detailed text analysis (本文批判・テキスト分析).
+# Akasha ontology — textual criticism + detailed text analysis.
 # How scholars establish a text from witnesses, and the computational methods
 # that read texts at scale. Bridges DH, TEI, ai:, and the manuscript sources.
 # Base pack.

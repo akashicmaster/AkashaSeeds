@@ -3,7 +3,7 @@
 # information surfaces (calendar/message board). Tagged by room, durability,
 # and decor_type. Built on home_spaces / room_contents. Base pack.
 
-# ── door / screen fixtures (建具) ──
+# ── door / screen fixtures ──
 def "home:door" "Door — fixture."
 ln home:door home_type:fixture thesaurus:related
 ln home:door home:hallway home:located_in
@@ -14,7 +14,7 @@ def "home:skylight" "Skylight — fixture."
 ln home:skylight home_type:fixture thesaurus:related
 ln home:skylight home:hallway home:located_in
 
-# ── furniture (鏡台・玄関まわり) ──
+# ── furniture ──
 def "furniture:dressing_table" "Dressing table (鏡台)."
 ln furniture:dressing_table home:bedroom home:located_in
 ln furniture:dressing_table obj:durable obj_durability

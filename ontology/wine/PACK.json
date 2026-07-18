@@ -1,6 +1,6 @@
 {
-  "label": "Wine, Cheese & Gastronomy",
-  "description": "World wine regions (AOC, DOC, DO, AVA etc.), grape varieties (Hornbostel-style taxonomy by color and region), world cheeses by country and type (PDO/AOC, milk type, texture), tasting terminology (terroir, appellation, vintage, tannin, finish, brettanomyces), and pairing principles (mariage, accord, regional pairing, acid-cuts-fat).\n\nImport scripts: Wikidata wine appellations + châteaux/estates, Wikidata cheese types by country.\n\nAtom IDs: wine:region:*, wine:varietal:*, wine:style:*, wine:appellation:*, wine:chateau:*, cheese:*, tasting:*, pairing:*",
+  "label": "Drinks, Cheese & Tasting Pack",
+  "description": "Drinks & tasting from the eater's side (A-tier): wine varietals & regions, world cheeses, craft beer, whisky, spirits, sake and liqueurs, plus gastronomy/tasting/pairing vocabulary. Bridged to the food-science production layer (fermentation, distillation).",
   "license": "Public domain (terminology) + CC BY-SA 4.0 (Wikidata)",
   "source": "https://www.wikidata.org/ | https://www.wine-institute.org/ | https://ec.europa.eu/agriculture/quality/door/",
   "size_hint": "~380 static + hundreds from import scripts",

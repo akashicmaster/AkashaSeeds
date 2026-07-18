@@ -1,4 +1,4 @@
-# Akasha ontology — linguistics (言語学).
+# Akasha ontology — linguistics.
 # lang: held only language codes; this adds the DISCIPLINE. Bridged to textanal:/
 # dh:/oral:/ms:/devpsy:/cs:/math:logic. Base pack.
 

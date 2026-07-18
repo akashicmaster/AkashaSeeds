@@ -1,4 +1,4 @@
-# Akasha ontology — 薬膳 TCM food actions (效能). Descriptive; provenance: traditional.
+# Akasha ontology — yakuzen (medicinal cuisine) TCM food actions. Descriptive; provenance: traditional.
 
 def "tcm:action:tonify_qi" "補気 — tonify qi."
 ln tcm:action:tonify_qi tradition:tcm thesaurus:related

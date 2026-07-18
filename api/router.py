@@ -627,6 +627,15 @@ class CommandRouter:
         return {k: sorted(v) for k, v in ns.items()}
 
     @classmethod
+    def is_command(cls, token: str) -> bool:
+        """True if `token` is the head of a recognised global command / alias. A subcommand
+        mode uses this to let real commands pass through (`tree`, `s.ls`, `lens`, `sim` …)
+        instead of scoping them to the mode."""
+        cls._ensure_augmented()
+        t = (token or "").strip().lower()
+        return bool(t) and (t in cls.COMMAND_SPECS or t in cls._method_aliases)
+
+    @classmethod
     def list_concepts(cls) -> "list[str]":
         cls._ensure_augmented()
         seen: set = set()

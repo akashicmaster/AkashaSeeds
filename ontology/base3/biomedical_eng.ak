@@ -1,4 +1,4 @@
-# Akasha ontology — biomedical / medical engineering (医療工学・生体医工学).
+# Akasha ontology — biomedical / medical engineering.
 # Where engineering meets medicine — devices, imaging, prosthetics, biosignals,
 # and brain-computer interfaces. Bridged to med:/rehab:/neuro:/electron:. Base pack.
 

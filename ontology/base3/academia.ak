@@ -4,7 +4,7 @@
 # status:. Base pack.
 
 def "academia" "The world of research and scholarship."
-# ── academic career ladder (学術キャリア) ──
+# ── academic career ladder ──
 def "acad:outranks" "Senior academic position to."
 def "acad:emeritus_professor" "Emeritus professor — academic position."
 ln acad:emeritus_professor academia thesaurus:related
@@ -53,7 +53,7 @@ def "acad:supervisor" "Supervisor — academic role."
 ln acad:supervisor academia thesaurus:related
 ln acad:supervisor social:mentor_of thesaurus:related
 
-# ── academic institutions (機関) ──
+# ── academic institutions ──
 def "place:research_institute" "Research institute (研究所) — academic place."
 ln place:research_institute place_type:education civic:function
 def "place:laboratory" "Laboratory (研究室) — academic place."
@@ -71,9 +71,9 @@ ln place:think_tank place_type:civic civic:function
 ln place:laboratory school:university thesaurus:related
 ln place:graduate_school school:university thesaurus:related
 
-# ── research methodology (研究方法論) ──
+# ── research methodology ──
 def "research" "The systematic pursuit of knowledge."
-# process (順序)
+# process
 def "research:research_question" "Research question (研究課題)."
 ln research:research_question research thesaurus:related
 ln research:research_question research:literature_review chrono:before
@@ -150,7 +150,7 @@ ln research:induction research thesaurus:related
 ln research:deduction research thesaurus:related
 ln research:induction research:deduction sys:antonym
 
-# ── teaching & lectures (教育・講義) ──
+# ── teaching & lectures ──
 def "teaching:lecture" "Lecture (講義)."
 ln teaching:lecture academia thesaurus:related
 ln teaching:lecture social:teacher_of thesaurus:related
@@ -190,7 +190,7 @@ ln teaching:assignment social:teacher_of thesaurus:related
 ln teaching:lecture place:university thesaurus:related
 ln teaching:thesis_supervision acad:advisor thesaurus:related
 
-# ── research administration & grants (研究事務) ──
+# ── research administration & grants ──
 def "acad_admin:research_grant" "Research grant (研究助成) — 研究助成金."
 ln acad_admin:research_grant academia thesaurus:related
 def "acad_admin:funding_agency" "Funding agency — a body that funds research."

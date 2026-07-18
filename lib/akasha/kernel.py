@@ -394,6 +394,22 @@ def _is_external(raw_meta) -> bool:
         return False
 
 
+def _readable(ctx, key: str) -> str:
+    """A human-facing label for an atom key: its namespaced alias (`geo:athens`) if any,
+    else a bareword alias, else a short key prefix. Result rows (sim/search/emotion.find)
+    carry this as `name` so the shell shows names, not raw hashes."""
+    try:
+        aliases = ctx.get_aliases_by_key(key) or []
+    except Exception:
+        aliases = []
+    named = [a for a in aliases if ":" in a]
+    if named:
+        return named[0]
+    if aliases:
+        return aliases[0]
+    return str(key)[:12]
+
+
 def _fmt_ts(ts) -> Optional[str]:
     """Unix timestamp → 'HH:MM:SS' (today) or 'YYYY-MM-DD HH:MM:SS' (older)."""
     if ts is None:
@@ -731,6 +747,20 @@ class KernelDispatcher:
                 except Exception:
                     return set()
 
+            def _read_load_all():
+                # Service tiers (thesaurus/enterprise) ship config/ontology_packs.json
+                # with "load_all": true — the standing instruction to auto-load EVERY
+                # registered pack sequentially (in REGISTRY order), including specialist
+                # B/C packs added after the seed was built. The seeds tier omits the
+                # flag, so its optional packs stay opt-in (onto.pack.enable).
+                import json as _json
+                cfg = os.path.join(_project_dir, "config", "ontology_packs.json")
+                try:
+                    with open(cfg, "r") as _f:
+                        return bool(_json.load(_f).get("load_all", False))
+                except Exception:
+                    return False
+
             # ── Filesystem-based pack sentinel helpers ─────────────────────────
             # These files are the authoritative "was pack X fully loaded?" record.
             # Independent of SQLite WAL behaviour — a plain file on disk survives
@@ -803,7 +833,10 @@ class KernelDispatcher:
                 all_atom_defs: List[dict] = []   # [{alias, text}] for weave phase
 
                 if atoms_done:
-                    logger.info("[Kernel] Pack '%s': atoms sentinel found — collecting links only…", pack_name)
+                    # Atoms already written. Links/aliases/sets are handled by the single
+                    # global relations phase after ALL packs (not per-pack) — so here we
+                    # only re-collect atom defs for the (idempotent) weave phase.
+                    logger.info("[Kernel] Pack '%s': atoms sentinel found — collecting defs for weave…", pack_name)
                     for fpath in ak_files:
                         try:
                             with open(fpath, "r", encoding="utf-8") as _f:
@@ -811,9 +844,7 @@ class KernelDispatcher:
                                     s = _parse_ak_line(raw)
                                     if s is None:
                                         continue
-                                    if s["method"] == "kernel.memory.link":
-                                        all_link_steps.append(s)
-                                    elif s["method"] == "kernel.memory.define":
+                                    if s["method"] == "kernel.memory.define":
                                         _p = s["params"]
                                         _desc = _p.get("description", "")
                                         if _desc and not _desc.startswith("Conceptual hub:"):
@@ -822,7 +853,7 @@ class KernelDispatcher:
                                                 "text": _desc,
                                             })
                         except Exception as exc:
-                            logger.warning("[Kernel] Pack '%s' links (recovery) %s: %s",
+                            logger.warning("[Kernel] Pack '%s' defs (recovery) %s: %s",
                                            pack_name, os.path.basename(fpath), exc)
                 else:
                     logger.info("[Kernel] Pack '%s': scanning %d files (phase 1)…",
@@ -837,8 +868,15 @@ class KernelDispatcher:
                                     s = _parse_ak_line(raw)
                                     if s is None:
                                         continue
-                                    if s["method"] == "kernel.memory.link":
-                                        all_link_steps.append(s)
+                                    if s["method"] in ("kernel.memory.link", "alias", "set.add"):
+                                        # Deferred: ln / al / set.add all resolve a target to a
+                                        # nucleus key, so they MUST run after EVERY pack's atoms
+                                        # exist. Run per-pack (before a cross-pack target is
+                                        # defined) they bind to the bare proto-word instead of the
+                                        # real body atom (e.g. base1 linking base2's ingred:fruit:apple
+                                        # attaches to the proto-word "apple"). Collected and run once,
+                                        # in order alias→link→set, in the global relations phase below.
+                                        continue
                                     else:
                                         if s["method"] == "kernel.memory.define":
                                             _p = s["params"]
@@ -985,14 +1023,19 @@ class KernelDispatcher:
 
             # ── Load packs in REGISTRY.json order ─────────────────────────────
             # autoload:true  → always load (base)
-            # autoload:false → load only if pack name is in config/ontology_packs.json["enabled"]
-            _enabled = _read_enabled_packs()
+            # load_all:true  → load EVERY registered pack (thesaurus/service tiers)
+            # autoload:false → otherwise, load only if the pack name is in
+            #                  config/ontology_packs.json["enabled"] (seeds opt-in)
+            _enabled  = _read_enabled_packs()
+            _load_all = _read_load_all()
+            if _load_all:
+                logger.info("[Kernel] load_all is set — auto-loading every registered pack sequentially")
             for _pkg in _read_registry():
                 _pname     = _pkg.get("name", "")
                 _autoload  = _pkg.get("autoload", False)
                 if not _pname or _pname in RESERVED_DIRS:
                     continue
-                if not _autoload and _pname not in _enabled:
+                if not _autoload and not _load_all and _pname not in _enabled:
                     continue
                 _pack_dir = os.path.join(ont_dir, _pname)
                 if not os.path.isdir(_pack_dir):
@@ -1011,6 +1054,101 @@ class KernelDispatcher:
                     _load_ak_pack(_pname, _collect_from_dir(_pack_dir, ".ak"))
                 else:
                     logger.warning("[Kernel] Enabled pack '%s': not found in ontology/", _pname)
+
+            # ── Global relations phase — run ALL al / ln / set.add AFTER every pack's
+            # atoms exist. Every one of these resolves a target to a nucleus key, so run
+            # per-pack (before a cross-pack target is defined) it binds to the bare
+            # proto-word instead of the real body atom — e.g. base1's
+            #   al ingred:fruit:apple apple   /   ln ingred:fruit:apple score:0.25 rec:acidity
+            # attaches to the proto-word "apple" because base2 defines ingred:fruit:apple.
+            # v1.0 ran links as one all-packs job; v1.1's per-pack split reintroduced the
+            # ordering bug. Fix: collect al/ln/set across the active packs and run them as
+            # ONE deferred job in order alias→link→set (so links/sets can resolve by alias),
+            # gated by a content-hash sentinel. All three are idempotent, so a re-run after a
+            # new pack is enabled is safe.
+            try:
+                _active_dirs: List[str] = []
+                for _pkg in _read_registry():
+                    _pn = _pkg.get("name", "")
+                    if not _pn or _pn in RESERVED_DIRS:
+                        continue
+                    if not _pkg.get("autoload", False) and not _load_all and _pn not in _enabled:
+                        continue
+                    _d = os.path.join(ont_dir, _pn)
+                    if os.path.isdir(_d):
+                        _active_dirs.append(_d)
+                _reg_names = {p.get("name") for p in _read_registry()}
+                for _pn in sorted(_enabled - _reg_names):
+                    if _pn in RESERVED_DIRS:
+                        continue
+                    _d = os.path.join(ont_dir, _pn)
+                    if os.path.isdir(_d):
+                        _active_dirs.append(_d)
+
+                _al_steps: List[dict] = []
+                _ln_steps: List[dict] = []
+                _set_steps: List[dict] = []
+                for _d in _active_dirs:
+                    for _fp in _collect_from_dir(_d, ".ak"):
+                        try:
+                            with open(_fp, "r", encoding="utf-8") as _f:
+                                for _raw in _f:
+                                    _s = _parse_ak_line(_raw)
+                                    if not _s:
+                                        continue
+                                    if _s["method"] == "alias":
+                                        _al_steps.append(_s)
+                                    elif _s["method"] == "kernel.memory.link":
+                                        _ln_steps.append(_s)
+                                    elif _s["method"] == "set.add":
+                                        _set_steps.append(_s)
+                        except Exception as _exc:
+                            logger.warning("[Kernel] Global relations scan %s: %s", _fp, _exc)
+
+                # Ordered: aliases first (so ln/set can resolve short names), then links,
+                # then set memberships. Single FIFO job guarantees the order.
+                _rel_steps = _al_steps + _ln_steps + _set_steps
+                if _rel_steps:
+                    _sig = "\n".join(
+                        f"{_s['method']}|{_s['params'].get('id','')}|"
+                        f"{_s['params'].get('name','')}|{_s['params'].get('src','')}|"
+                        f"{_s['params'].get('dst','')}|{_s['params'].get('rel','')}"
+                        for _s in _rel_steps)
+                    _rhash = _hl.sha256(_sig.encode()).hexdigest()[:16]
+                    if _sent_exists("_relations", _rhash):
+                        logger.info("[Kernel] Global relations already applied (sentinel) — skipping")
+                    else:
+                        _rel_text  = "[ont:ak] Global relations (al/ln/set) applied"
+                        _rel_key   = _hl.sha256(_rel_text.encode()).hexdigest()
+                        _rel_alias = f"ont:ak:relations:all:{_rhash}"
+                        logger.info("[Kernel] Global relations phase: %d aliases + %d links + "
+                                    "%d set.add across %d packs…",
+                                    len(_al_steps), len(_ln_steps), len(_set_steps),
+                                    len(_active_dirs))
+                        _job_steps = [JCLStep(method=_s["method"], params=_s.get("params", {}))
+                                      for _s in _rel_steps]
+                        _job_steps.append(JCLStep(method="write",
+                                                  params={"text": _rel_text, "scope": "universal"}))
+                        _job_steps.append(JCLStep(method="alias",
+                                                  params={"id": _rel_key, "name": _rel_alias}))
+                        self.harmonia.submit_job(JCLJob(
+                            owner="admin", label="ont.ak.relations:all",
+                            steps=_job_steps, fail_fast=False,
+                        ))
+                        _rel_wait = max(3600, len(_rel_steps))
+                        _r_start = _time.time()
+                        while _time.time() - _r_start < _rel_wait:
+                            _time.sleep(5)
+                            if admin_session.local_cortex.get_aliases_by_pattern(_rel_alias):
+                                _write_sent("_relations", _rhash)
+                                logger.info("[Kernel] Global relations phase done in %.1fs",
+                                            _time.time() - _r_start)
+                                break
+                        else:
+                            logger.warning("[Kernel] Global relations phase timeout after %.1fs",
+                                           _time.time() - _r_start)
+            except Exception as _exc:
+                logger.warning("[Kernel] Global relations phase error: %s", _exc)
 
             # ── .csl files (concept graph) ─────────────────────────────────────
             _csl_files_probe = _collect(".csl")
@@ -1347,7 +1485,7 @@ class KernelDispatcher:
 
         # ── Single-route write turn ───────────────────────────────────────────
         # A synchronous graph-writing method runs inside ONE Harmonia workspace so
-        # its atom/link bundle (祖語 + w + set + alias — the ~4-6-write critical
+        # its atom/link bundle (proto-word + w + set + alias — the ~4-6-write critical
         # bundle) is atomic and reversible: commit on success, rollback on any error.
         # This is the seam the hard guard enforces — a composite write with no
         # workspace is rejected once ENFORCE is on. Skipped when a workspace is
@@ -4120,9 +4258,11 @@ class KernelDispatcher:
 
         try:
             with open(cfg_path) as f:
-                enabled = set(_json.load(f).get("enabled", []))
+                _cfg = _json.load(f)
+                enabled  = set(_cfg.get("enabled", []))
+                load_all = bool(_cfg.get("load_all", False))
         except Exception:
-            enabled = set()
+            enabled, load_all = set(), False
 
         def _sentinel_loaded(pack_name: str) -> bool:
             return bool(os.path.isdir(_sent_dir) and
@@ -4168,7 +4308,7 @@ class KernelDispatcher:
                 "label":       pmeta.get("label", pname),
                 "description": pmeta.get("description", ""),
                 "autoload":    autoload,
-                "enabled":     autoload or pname in enabled,
+                "enabled":     autoload or load_all or pname in enabled,
                 "loaded":      _sentinel_loaded(pname),
                 "ak_files":    _ak_count(pack_dir),
                 "license":     pmeta.get("license", ""),
@@ -4195,6 +4335,7 @@ class KernelDispatcher:
         return _ok(rid, {
             "packages": packages,
             "enabled":  sorted(enabled),
+            "load_all": load_all,
         })
 
     def _handle_onto_pack_enable(self, rid, data, session, scopes) -> dict:
@@ -4760,7 +4901,7 @@ class KernelDispatcher:
             if s > 0.0:
                 scored.append((s, key))
         scored.sort(key=lambda t: t[0], reverse=True)
-        results = [{"key": k, "score": round(s, 4),
+        results = [{"key": k, "name": _readable(ctx, k), "score": round(s, 4),
                     "preview": (ctx.get_chunk(k) or "")[:80]} for s, k in scored[:limit]]
         return _ok(rid, {"anchor": anchor, "results": results, "count": len(results),
                          "mode": "structural"})
@@ -4825,7 +4966,7 @@ class KernelDispatcher:
             if s > 0.0:
                 scored.append((s, key, content))
         scored.sort(key=lambda t: t[0], reverse=True)
-        results = [{"key": k, "score": round(s, 4), "preview": c[:80]}
+        results = [{"key": k, "name": _readable(ctx, k), "score": round(s, 4), "preview": c[:80]}
                    for s, k, c in scored[:limit]]
         out = {"results": results, "count": len(results), "tier": tier}
         if anchor_key:
@@ -7421,7 +7562,8 @@ class KernelDispatcher:
                 continue
             w = link.get("w", 1.0) if isinstance(link, dict) else 1.0
             rel = link.get("rel", "") if isinstance(link, dict) else ""
-            results.append({"key": src, "weight": float(w or 1.0), "rel": rel,
+            results.append({"key": src, "name": _readable(ctx, src),
+                            "weight": float(w or 1.0), "rel": rel,
                             "preview": content[:80]})
         results.sort(key=lambda r: r["weight"], reverse=True)
         return _ok(rid, {"emotion": alias, "results": results[:limit],

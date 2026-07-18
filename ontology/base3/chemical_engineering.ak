@@ -1,4 +1,4 @@
-# Akasha ontology — chemical engineering (化学工学).
+# Akasha ontology — chemical engineering.
 # chem: is rich at the substance/reaction level; this adds the PROCESS level —
 # unit operations, reaction engineering and plant design. Bridged to chem:,
 # energy:, mfg: and foodsci: (bioprocess). Base pack.

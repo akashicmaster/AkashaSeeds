@@ -115,7 +115,7 @@ class TensorEngine:
     #   floor (always) — self-owned signed feature-hashing over word tokens AND
     #                    character n-grams. Documents that share vocabulary / substrings
     #                    get high cosine; works for whitespace languages and CJK alike,
-    #                    with no external library. This is the "それなり" done properly.
+    #                    with no external library. This is the "good-enough" tier done properly.
 
     EMBED_DIM = 96
 

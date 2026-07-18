@@ -1,4 +1,4 @@
-# Akasha ontology — neuroscience (脳科学).
+# Akasha ontology — neuroscience.
 # The biology of mind — deeply tied to psy: (memory/cognition/emotion), emo:,
 # and ai: (artificial neural nets). The hippocampus↔episodic-memory link mirrors
 # Akasha's own design as persistent memory ('hippocampus for LLMs'). Base pack.
@@ -77,7 +77,7 @@ def "neuro:reward_system" "The dopamine circuit that reinforces behaviour."
 ln neuro:reward_system neuro thesaurus:related
 ln neuro:reward_system ai:reinforcement_learning thesaurus:related
 ln neuro:reward_system psy:operant_conditioning thesaurus:related
-# ── memory systems (記憶システム) — the Akasha resonance ──
+# ── memory systems — the Akasha resonance ──
 def "neuro:episodic_memory" "Memory of specific experienced events, in time and place — what Akasha gives an LLM (エピソード記憶)."
 ln neuro:episodic_memory neuro thesaurus:related
 ln neuro:episodic_memory neuro:hippocampus thesaurus:related

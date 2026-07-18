@@ -1,22 +1,22 @@
-# Akasha ontology — cuisine analysis: common thread (通底) vs signature (違い).
-# To survey world cuisines without losing each one's こだわり, mark BOTH the
+# Akasha ontology — cuisine analysis: common thread vs signature.
+# To survey world cuisines without losing each one's distinctive character, mark BOTH the
 # shared substrate (common_thread) and the distinctive flavour base / staple /
 # signature technique (cuisine:signature). Breaking each flavour base into its
-# components makes the shared aromatics (onion/garlic) surface as 通底 and the
-# differentiators (fat, ferment, spice) as 違い. Base pack.
+# components makes the shared aromatics (onion/garlic) surface as common thread and the
+# differentiators (fat, ferment, spice) as signature. Base pack.
 
 def "culinary:common_thread" "通底 — elements shared across most world cuisines (the universal substrate)."
 def "culinary:signature" "違い / こだわり — what distinguishes a cuisine (its flavour base, staple, hallmark technique)."
 def "culinary:flavor_base" "A cuisine's aromatic/flavour foundation."
 
-# ── 通底: universal threads ──
+# ── common thread: universal threads ──
 ln ingred:veg:onion culinary:common_thread culinary:common   # allium aromatic base, near-universal
 ln ingred:veg:garlic culinary:common_thread culinary:common   # allium aromatic base, near-universal
 ln culinary:common_thread technique:grilling culinary:common   # fire/grilling — universal
 ln culinary:common_thread technique:fermentation culinary:common   # preservation — universal
 ln ingred:condiment:salt culinary:common_thread culinary:common
 
-# ── 違い: flavour base per cuisine + components ──
+# ── signature: flavour base per cuisine + components ──
 def "flavor_base:mirepoix" "Mirepoix — onion, carrot, celery softened in butter."
 ln flavor_base:mirepoix culinary:flavor_base thesaurus:related
 ln cuisine:french flavor_base:mirepoix cuisine:signature

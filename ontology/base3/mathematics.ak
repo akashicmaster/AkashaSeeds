@@ -1,4 +1,4 @@
-# Akasha ontology — mathematics (数学).
+# Akasha ontology — mathematics.
 # Nearly greenfield (math: had 4). Branches, core objects and applied fields,
 # bridged to person:field:mathematics, phys:/econ:/ai:/bib:/research:. Base pack.
 

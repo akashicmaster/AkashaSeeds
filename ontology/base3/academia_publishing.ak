@@ -3,7 +3,7 @@
 # Base pack.
 
 def "pub" "A scholarly publication."
-# ── publication types (論文・著作) ──
+# ── publication types ──
 def "pub:paper" "Paper (論文) — a research paper."
 ln pub:paper pub thesaurus:related
 ln pub:paper academia thesaurus:related
@@ -33,7 +33,7 @@ ln pub:conference_paper pub thesaurus:related
 ln pub:conference_paper academia thesaurus:related
 ln pub:thesis phil:thesis thesaurus:related
 
-# ── paper anatomy (論文の構成) ──
+# ── paper anatomy ──
 def "pub:part:abstract" "Abstract (抄録)."
 ln pub:part:abstract pub:paper sys:part_of
 def "pub:part:introduction" "Introduction."
@@ -76,7 +76,7 @@ def "pub:metric:issn" "Issn — a serial identifier."
 ln pub:metric:issn pub thesaurus:related
 ln pub:metric:citation meta:citation thesaurus:related
 
-# ── authorship (著者) ──
+# ── authorship ──
 def "pub:role:author" "Author."
 ln pub:role:author pub thesaurus:related
 def "pub:role:coauthor" "Coauthor (共著者)."
@@ -88,7 +88,7 @@ ln pub:role:first_author pub thesaurus:related
 def "pub:role:senior_author" "Senior author."
 ln pub:role:senior_author pub thesaurus:related
 
-# ── peer review lifecycle (査読プロセス) ──
+# ── peer review lifecycle ──
 def "pub:flow:manuscript" "Manuscript (原稿)."
 ln pub:flow:manuscript pub thesaurus:related
 ln pub:flow:manuscript pub:flow:submission chrono:before
@@ -127,7 +127,7 @@ ln pub:flow:reviewer social:colleague_of thesaurus:related
 ln pub:flow:acceptance emo:satisfaction calc:associated_with
 ln pub:flow:rejection emo:anxiety calc:associated_with
 
-# ── conferences & societies (学会) ──
+# ── conferences & societies ──
 def "conf" "An academic gathering."
 def "conf:academic_conference" "Academic conference (学会大会) — a research conference."
 ln conf:academic_conference conf thesaurus:related

@@ -88,7 +88,7 @@ python3 --version
 ### Launch
 
 ```bash
-python3 akasha_seeds_seeds10.py
+python3 akasha_seeds_seeds11.py
 ```
 
 The script unpacks Akasha into the current directory and starts immediately.
@@ -836,6 +836,69 @@ Chapters are aligned by theme across all three tracks. Start with Red 0 regardle
 ### Quick Reference
 
 [`quick-reference.md`](quick-reference.md) — the complete command reference for the Akasha CLI: every command, every argument, in one place.
+
+---
+
+## Loading Specialist Knowledge Packs
+
+Everything you have done so far used the **base knowledge** — words, feelings, everyday
+things, the sciences, the humanities. On the **Seeds** edition this base is all that loads
+at startup, on purpose: it keeps the first launch quick, and it lets you add only the
+subjects you actually want.
+
+Beyond the base, Akasha ships a shelf of **specialist packs** — world geography and
+history, art, music, literature, law, medicine, wine and drinks, and more. On Seeds they
+are bundled but **switched off** until you ask for them. (The **Thesaurus** edition is
+different: it loads every pack automatically at startup, so on Thesaurus you can skip this
+section — the whole shelf is already on.)
+
+### See the menu
+
+List every pack, with a one-line description and its current state:
+
+```
+akasha/user $ onto.pack.list
+```
+
+Each row shows the pack name, whether it is **autoload** (base, always on), **enabled**
+(switched on), and **loaded** (finished loading), together with how many `.ak` files it
+holds. A filled dot ● means the pack is on; an open dot ○ means it is available but off.
+
+### Load a pack you want
+
+Switch a pack on by name:
+
+```
+akasha/user $ onto.pack.enable name=world
+```
+
+The pack starts loading **in the background** — the prompt returns immediately, and the
+atoms appear as they are woven in. Loading a large pack can take a little while; run
+`onto.pack.list` again (or `onto.status`) to watch it reach **loaded**. Once it is on, its
+atoms behave exactly like the base: search them with `r`, `sim` and `dive`, walk them with
+`tree`, and they stay loaded across restarts.
+
+A few examples:
+
+```
+akasha/user $ onto.pack.enable name=art
+akasha/user $ onto.pack.enable name=music
+akasha/user $ onto.pack.enable name=wine
+```
+
+### Switch a pack off
+
+```
+akasha/user $ onto.pack.disable name=world
+```
+
+This removes the pack from the startup list so it will not load next time. Atoms already
+woven into memory stay until a full `onto.reset` — disabling simply stops it loading again.
+
+> **Note.** Enabling and disabling packs is an owner action (it needs the librarian role).
+> On a single-user Seeds cell you are the owner, so it works out of the box. The packs are
+> also **idempotent**: enabling one that is already on, or that overlaps another, never
+> creates duplicates — Akasha unifies identical atoms automatically.
 
 ---
 

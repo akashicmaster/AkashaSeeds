@@ -1,9 +1,9 @@
-# Akasha ontology — finance & investment (財務・金融・投資).
+# Akasha ontology — finance & investment.
 # Corporate & personal finance, markets, instruments, and investing. Bridged to
 # acct:, place:bank, gov:tax, gov:benefit:pension, work:salary, economics. Base pack.
 
 def "fin" "Finance — the management of money, funding and value over time."
-# ── corporate finance (財務) ──
+# ── corporate finance ──
 def "fin:corporate_finance" "How firms raise, invest and manage capital to create value."
 ln fin:corporate_finance fin thesaurus:related
 def "fin:capital" "The funds (equity + debt) a business uses to operate and grow (資本)."
@@ -26,7 +26,7 @@ ln fin:cash_flow fin thesaurus:related
 def "fin:budgeting" "Planning income and expenditure over a period (予算)."
 ln fin:budgeting fin thesaurus:related
 ln fin:budgeting acct:fiscal_year thesaurus:related
-# ── financial ratios (財務指標) ──
+# ── financial ratios ──
 def "fin:financial_ratio" "A ratio of statement figures used to gauge performance and health."
 ln fin:financial_ratio fin thesaurus:related
 def "fin:roi" "Return on investment — gain relative to cost."
@@ -50,7 +50,7 @@ def "fin:pe_ratio" "Price-to-earnings — share price over EPS, a valuation gaug
 ln fin:pe_ratio fin thesaurus:related
 def "fin:dividend_yield" "Annual dividend as a percentage of share price."
 ln fin:dividend_yield fin thesaurus:related
-# ── markets & instruments (市場・金融商品) ──
+# ── markets & instruments ──
 def "fin:financial_market" "A marketplace for trading financial assets."
 ln fin:financial_market fin thesaurus:related
 def "fin:stock_market" "Where shares of companies are issued and traded (株式市場)."
@@ -94,7 +94,7 @@ ln fin:valuation fin thesaurus:related
 ln fin:valuation acct:balance_sheet thesaurus:related
 def "fin:market_capitalization" "Share price times shares outstanding — a company's market value."
 ln fin:market_capitalization fin thesaurus:related
-# ── banking & personal finance (銀行・家計) ──
+# ── banking & personal finance ──
 def "fin:savings_account" "A bank account that holds money and earns interest."
 ln fin:savings_account fin thesaurus:related
 ln fin:savings_account place:bank thesaurus:related
@@ -124,7 +124,7 @@ def "fin:personal_budget" "A household plan for income and spending (家計)."
 ln fin:personal_budget fin thesaurus:related
 ln fin:personal_budget work:salary thesaurus:related
 ln fin:personal_budget concept:daily_necessities thesaurus:related
-# ── investment (投資) ──
+# ── investment ──
 def "invest" "Investment — committing capital now for future return."
 def "invest:investment" "Committing money to an asset expecting future income or gain."
 ln invest:investment invest thesaurus:related

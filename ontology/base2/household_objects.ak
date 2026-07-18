@@ -1,7 +1,7 @@
 # Akasha ontology — household objects: furniture, stationery, supplies, tools.
 # Each tagged by location (home:*), durability (consumable/durable) and, for
 # tools, the activity it serves. Consumables feed concept:daily_necessities.
-# DIY/yard activities and the home center (ホームセンター) tie it together. Base pack.
+# DIY/yard activities and the home center tie it together. Base pack.
 
 def "obj_durability" "Whether an object is used up (consumable) or lasts (durable)."
 def "obj:consumable" "consumable good."
@@ -47,7 +47,7 @@ def "furniture:coffee_table" "Coffee table."
 ln furniture:coffee_table home:living_room home:located_in
 ln furniture:coffee_table obj:durable obj_durability
 
-# ── stationery (文房具) ──
+# ── stationery ──
 def "stationery:pen" "Pen."
 ln stationery:pen home:study home:located_in
 ln stationery:pen obj:durable obj_durability
@@ -88,7 +88,7 @@ def "stationery:clip" "Clip."
 ln stationery:clip home:study home:located_in
 ln stationery:clip obj:durable obj_durability
 
-# ── supplies / consumables (備品・消耗品) → daily necessities ──
+# ── supplies / consumables → daily necessities ──
 def "supply:toilet_paper" "Toilet paper (トイレットペーパー)."
 ln supply:toilet_paper home:toilet home:located_in
 ln supply:toilet_paper obj:consumable obj_durability
@@ -216,7 +216,7 @@ ln activity:lawn_mowing home concept:related
 def "activity:cleaning" "Household cleaning."
 ln activity:cleaning home concept:related
 
-# ── home center (ホームセンター) ──
+# ── home center ──
 def "place:home_center" "Home center (ホームセンター) — DIY, garden and household goods store."
 def "place:hardware_store" "Hardware store — tools, fixings and building supplies."
 ln place:home_center place_type:commerce civic:function

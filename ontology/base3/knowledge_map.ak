@@ -2,7 +2,7 @@
 # A capstone META layer. Part 1 classifies the domains built across this work
 # into the branches of knowledge. Part 2 defines the UNIFYING concepts that recur
 # across domains (system, network, evolution, information…), each bridging to the
-# many fields where it manifests — the transversal 俯瞰 (consilience). Base pack.
+# many fields where it manifests — the transversal overview (consilience). Base pack.
 
 def "knowledge" "The organised map of human knowledge and its domains (知の体系)."
 def "knowledge:branch:natural_science" "自然科学 — the study of nature."
@@ -76,7 +76,7 @@ ln knowledge:cognitive_science ling thesaurus:related
 ln knowledge:cognitive_science phil:field:philosophy_of_mind thesaurus:related
 ln knowledge:cognitive_science ai:embedding thesaurus:related
 
-# ══ PART 2: cross-cutting unifying concepts (分野横断の統一概念) ══
+# ══ PART 2: cross-cutting unifying concepts ══
 def "crosscut" "A concept that recurs across many domains — the threads that unify knowledge (通底概念)."
 def "crosscut:system" "A set of interacting parts forming a whole."
 ln crosscut:system crosscut thesaurus:related
@@ -209,7 +209,7 @@ ln crosscut:scarcity resource:resource_depletion crosscut:manifests_in
 ln crosscut:scarcity ecol:carrying_capacity crosscut:manifests_in
 ln crosscut:scarcity foodsec:food_security crosscut:manifests_in
 
-# ── ways of knowing (認識の方法) ──
+# ── ways of knowing ──
 def "knowledge:method:empirical" "knowing from observation and data."
 ln knowledge:method:empirical knowledge thesaurus:related
 def "knowledge:method:theoretical" "knowing by building models and theory."

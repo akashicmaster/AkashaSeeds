@@ -1,4 +1,4 @@
-# Akasha ontology — regulated closed seasons (禁漁 / 禁猟).
+# Akasha ontology — regulated closed seasons.
 # A legal closure that constrains WILD availability. Dates are jurisdiction-
 # specific and region-relative, so they are NOT materialised per food — only
 # the fact that a species is subject to a closure is recorded. Farmed/cultured
@@ -12,7 +12,7 @@ ln regulation:hunting_ban regulation:closed_season thesaurus:related
 # the closure constrains the wild catch, not farmed stock
 ln regulation:closed_season source:wild thesaurus:related
 
-# ── subject to a fishing ban (禁漁) ──
+# ── subject to a fishing ban ──
 ln ingred:seafood:eel regulation:fishing_ban regulation:subject_to
 ln ingred:seafood:sturgeon regulation:fishing_ban regulation:subject_to
 ln ingred:seafood:sea_urchin regulation:fishing_ban regulation:subject_to
@@ -20,7 +20,7 @@ ln ingred:seafood:salmon regulation:fishing_ban regulation:subject_to
 ln ingred:seafood:tuna regulation:fishing_ban regulation:subject_to
 ln ingred:seafood:trout regulation:fishing_ban regulation:subject_to
 
-# ── subject to a hunting ban (禁猟) — open season typically autumn/winter ──
+# ── subject to a hunting ban — open season typically autumn/winter ──
 ln ingred:meat:venison regulation:hunting_ban regulation:subject_to
 ln ingred:meat:venison season:autumn in_season   # typical open (huntable) season
 ln ingred:meat:venison season:winter in_season

@@ -1,4 +1,4 @@
-# Akasha ontology — philosophy, organised into branches (哲学).
+# Akasha ontology — philosophy, organised into branches.
 # phil: is rich in concepts; this adds the BRANCH structure and key positions,
 # linking existing phil: concepts and bridging socio:/law:/psy:/math:logic. Base pack.
 

@@ -1,4 +1,4 @@
-# Akasha ontology — 薬膳 constitution/symptom recommendation view.
+# Akasha ontology — yakuzen (medicinal cuisine) constitution/symptom recommendation view.
 # A constitution or symptom RECOMMENDS a food nature/action; foods carrying
 # that nature/action (tcm:nature / tcm:action links) are the recommendations —
 # so constitution → recommends → foods is one graph traversal. Descriptive.

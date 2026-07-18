@@ -65,13 +65,24 @@ class ModeController:
         except Exception:
             return []
 
+    def is_command_mode(self, mode: str) -> bool:
+        """A command mode (dive) is entered by dispatching a target-accepting command, so
+        `<mode> <anything>` always builds — it must let real commands pass through rather
+        than swallow them (unlike a concept namespace, where `<mode> <non-op>` fails to
+        build and falls through on its own)."""
+        return mode in self._COMMAND_MODES
+
     # ── in-mode resolution (the one rule) ──────────────────────────────────────
-    def candidates(self, mode: str, raw: str) -> List[str]:
+    def candidates(self, mode: str, raw: str, is_command=None) -> List[str]:
         """Ordered command strings the REPL should try for input `raw` inside `[mode]`:
 
           1. nav_hint + a bare number → `<mode>.<navop> signpost=N`  (dive signposts)
-          2. otherwise → `<mode> <raw>` (namespace-scoped, i.e. <mode>.<op>) …
-          3. … then `raw` itself (global fallback — help / status / w / r still work).
+          2. in a COMMAND mode, if `raw`'s head is a real global command (per the optional
+             `is_command` predicate) → `raw` FIRST (pass through), then the scoped form.
+             This is why `tree Spain` / `s.ls` / `lens src=…` still work inside `[dive]`:
+             `dive <anything>` always builds, so scoping-first would swallow them.
+          3. otherwise → `<mode> <raw>` (namespace-scoped, i.e. <mode>.<op>) then `raw`
+             (a bare word navigates; global fallback keeps help / status / w / r working).
 
         The REPL builds each in order and uses the first that resolves.
         """
@@ -80,4 +91,6 @@ class ModeController:
         nav = self._nav_hint.get(mode)
         if nav and head.isdigit():
             return [f"{mode}.{nav} signpost={head}"]
+        if self.is_command_mode(mode) and is_command is not None and is_command(head):
+            return [raw, f"{mode} {raw}"]
         return [f"{mode} {raw}", raw]

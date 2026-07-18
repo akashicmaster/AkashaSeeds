@@ -409,6 +409,13 @@ class LensConcept(BaseConcept):
         if not src:
             raise ValueError("'src' is required.")
 
+        # Invalidate any prior scan's stored result UP FRONT: a fresh scan supersedes it,
+        # and — crucially — a scan that then FAILS (no nodes / scanner error) must not leave
+        # the previous scan's nodes behind for lens.flatten/cast to silently pick up.
+        self.session.set_context("lens_profile",    None)
+        self.session.set_context("lens_nodes",      None)
+        self.session.set_context("lens_candidates", None)
+
         scanner = self._scanner()
         profile, nodes = scanner.scan(src, follow=follow, depth=depth)
 

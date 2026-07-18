@@ -1,4 +1,4 @@
-# Akasha ontology — mechanical, electrical & electronic engineering (機械・電気・電子工学).
+# Akasha ontology — mechanical, electrical & electronic engineering.
 # The core design disciplines, bridged to phys:/mat:/mfg:/robotics:/energy:/iot:.
 # Base pack.
 
@@ -61,7 +61,7 @@ ln mecheng:cnc mecheng thesaurus:related
 def "mecheng:cad" "Computer-aided design of parts and assemblies (CAD)."
 ln mecheng:cad mecheng thesaurus:related
 ln mecheng:cad dh:3d_modeling thesaurus:related
-# ── electrical engineering (電気工学) ──
+# ── electrical engineering ──
 def "eleceng" "Electrical engineering — the study of electricity, power and electromagnetism (電気工学)."
 def "eleceng:circuit" "A closed path for electric current (回路)."
 ln eleceng:circuit eleceng thesaurus:related
@@ -98,7 +98,7 @@ ln eleceng:power_system infra:electricity_supply thesaurus:related
 def "eleceng:control_system" "A system regulating behaviour toward a set point (制御系)."
 ln eleceng:control_system eleceng thesaurus:related
 ln eleceng:control_system electron:microcontroller thesaurus:related
-# ── electronics (電子工学) ──
+# ── electronics ──
 def "electron" "Electronics — circuits using semiconductors to process signals (電子工学)."
 def "electron:semiconductor" "A material whose conductivity can be controlled — the basis of chips (半導体)."
 ln electron:semiconductor electron thesaurus:related

@@ -6,11 +6,6 @@ ln quote:abduh_reform reform sys:refers_to
 ln quote:abduh_reform reason sys:refers_to
 ln quote:abduh_reform virtue calc:associated_with
 
-def "quote:abelson_programs" "Programs must be written for people to read, and only incidentally for machines to execute. - Harold Abelson"
-ln quote:abelson_programs human sys:refers_to
-ln quote:abelson_programs machine sys:refers_to
-ln quote:abelson_programs primary calc:associated_with
-ln quote:abelson_programs secondary calc:associated_with
 
 def "quote:acton_power" "Power tends to corrupt, and absolute power corrupts absolutely. - Lord Acton"
 ln quote:acton_power power sys:refers_to
@@ -368,11 +363,6 @@ ln quote:chomei_river reclusion calc:associated_with
 ln quote:chomei_river quote:heraclitus_river sys:same_as
 ln quote:chomei_river emo:nostalgia has_emotion
 
-def "quote:churchill_planning" "Plans are useless, but planning is indispensable. - Winston Churchill"
-ln quote:churchill_planning systematic sys:refers_to
-ln quote:churchill_planning action sys:refers_to
-ln quote:churchill_planning future sys:refers_to
-ln quote:churchill_planning mental calc:associated_with
 
 def "quote:cicero_not_ourselves" "We are not born for ourselves alone. - Cicero, On Duties"
 ln quote:cicero_not_ourselves duty sys:refers_to
@@ -1076,24 +1066,8 @@ ln quote:kenko_idleness impermanence sys:refers_to
 ln quote:kenko_idleness beauty sys:refers_to
 ln quote:kenko_idleness wit calc:associated_with
 
-def "quote:kernighan_bad_code" "Don't comment bad code - rewrite it. - Brian Kernighan"
-ln quote:kernighan_bad_code bad sys:refers_to
-ln quote:kernighan_bad_code erase sys:refers_to
-ln quote:kernighan_bad_code create sys:refers_to
-ln quote:kernighan_bad_code repair calc:associated_with
 
-def "quote:kernighan_complexity" "Controlling complexity is the essence of computer programming. - Brian Kernighan"
-ln quote:kernighan_complexity complex sys:refers_to
-ln quote:kernighan_complexity order sys:refers_to
-ln quote:kernighan_complexity master_skill calc:associated_with
-ln quote:kernighan_complexity discipline calc:associated_with
 
-def "quote:kernighan_debugging" "Debugging is twice as hard as writing the code in the first place. Therefore, if you write the code as cleverly as possible, you are, by definition, not smart enough to debug it. - Brian Kernighan"
-ln quote:kernighan_debugging repair sys:refers_to
-ln quote:kernighan_debugging difficult sys:refers_to
-ln quote:kernighan_debugging wise sys:refers_to
-ln quote:kernighan_debugging foolish calc:associated_with
-ln quote:kernighan_debugging finite calc:associated_with
 
 def "quote:khayyam_moving_finger" "The Moving Finger writes; and, having writ, moves on. - Omar Khayyam, Rubaiyat (trans. FitzGerald)"
 ln quote:khayyam_moving_finger fate sys:refers_to
@@ -1112,11 +1086,6 @@ ln quote:kierkegaard_purity individuality sys:refers_to
 ln quote:kierkegaard_purity choice sys:refers_to
 ln quote:kierkegaard_purity authenticity calc:associated_with
 
-def "quote:king_scariest" "The scariest moment is always just before you start. - Stephen King"
-ln quote:king_scariest fear sys:refers_to
-ln quote:king_scariest always sys:refers_to
-ln quote:king_scariest before sys:refers_to
-ln quote:king_scariest begin sys:refers_to
 
 def "quote:knuth_art" "Programming is the art of telling another human being what one wants the computer to do. - Donald Knuth"
 ln quote:knuth_art speak sys:refers_to

@@ -1,4 +1,4 @@
-# Akasha ontology — historical cartography & oral tradition (古地図学・口承).
+# Akasha ontology — historical cartography & oral tradition.
 # Old maps as sources, and the transmission of unwritten tradition. Bridged to
 # geo:, myth:/tale:/quote:, and DH. Base pack.
 

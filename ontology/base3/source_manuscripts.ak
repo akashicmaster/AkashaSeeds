@@ -1,4 +1,4 @@
-# Akasha ontology — manuscripts, codicology & palaeography (写本・書誌学・古書体学).
+# Akasha ontology — manuscripts, codicology & palaeography.
 # Primary-source scholarship on the handwritten book. Specialist vocabulary,
 # bridged to GLAM (lib:/mus:), DH (dh:), and TEI. Base pack.
 
@@ -29,7 +29,7 @@ def "ms:fragment" "A detached leaf or portion of a lost manuscript."
 ln ms:fragment ms thesaurus:related
 def "ms:autograph" "A manuscript in the author's own hand (自筆本)."
 ln ms:autograph ms thesaurus:related
-# ── codicology (書誌学) ──
+# ── codicology ──
 def "ms:quire" "A gathering of folded leaves, the building block of the codex (折丁)."
 ln ms:quire ms thesaurus:related
 def "ms:bifolium" "A single sheet folded to make two conjoint leaves."
@@ -75,7 +75,7 @@ def "ms:vellum" "Fine parchment, typically calfskin."
 ln ms:vellum ms thesaurus:related
 def "ms:iron_gall_ink" "The standard black-brown medieval ink of gall, iron and gum."
 ln ms:iron_gall_ink ms thesaurus:related
-# ── palaeography (古書体学) ──
+# ── palaeography ──
 def "ms:script" "A style of writing shared by many hands (書体); a 'hand' is one scribe's realisation."
 ln ms:script ms thesaurus:related
 def "ms:majuscule" "Capital-form script contained between two lines."

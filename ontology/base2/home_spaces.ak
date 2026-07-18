@@ -1,6 +1,6 @@
 # Akasha ontology — home spaces (rooms, exterior) and fixtures.
 # The spatial frame that household objects live in. home_type axis: room /
-# exterior / fixture. (間取り/madori can later link rooms into a layout.) Base pack.
+# exterior / fixture. Base pack.
 
 def "home" "A dwelling and its spaces."
 def "home_type:room" "interior room"

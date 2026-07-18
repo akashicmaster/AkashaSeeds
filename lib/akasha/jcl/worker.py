@@ -42,7 +42,7 @@ logger = logging.getLogger("Akasha.JCL.Worker")
 _MAX_JOBS_RETAINED = 2000  # oldest jobs are evicted after this cap
 
 # Interruptible jobs commit + check for a higher-priority overtaker every N steps.
-# Smaller = finer yield/discard granularity (owner: "捨ての粒度は小さい方が良い") at the
+# Smaller = finer yield/discard granularity (owner: "finer discard granularity is better") at the
 # cost of one workspace open/commit per group; this balances responsiveness vs churn.
 _GROUP_SIZE = 16
 

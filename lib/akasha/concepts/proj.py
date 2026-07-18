@@ -139,7 +139,7 @@ class ProjectionConcept(BaseConcept):
             raise RuntimeError(f"{label} not accessible: {atom_id[:12]}")
 
     def _get_or_create_tag(self, word: str) -> str:
-        """tag = concept-word atom（vocab・二名前空間で set:concept 側）。"""
+        """tag = concept-word atom (vocab; the set:concept side of the two namespaces)."""
         alias = f"{_CONCEPT_WORD_ALIAS_PREFIX}{word}"
         existing = self.cortex.resolve_alias(alias)
         if existing:
@@ -234,7 +234,7 @@ class ProjectionConcept(BaseConcept):
         author, _ = self._auth()
         axis_id = self._get_or_create_tag(word)
         self.cortex.add_to_set(self._pset("axes"), axis_id)
-        self.register_concept_node(axis_id)                      # set:concept 側（vocab）
+        self.register_concept_node(axis_id)                      # set:concept side (vocab)
         self.cortex.put_link(self.concept_id, axis_id, "proj:has_axis", author=author)
         if ref_id:
             self._require_access(ref_id, "Ontology atom")

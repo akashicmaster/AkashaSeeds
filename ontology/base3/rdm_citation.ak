@@ -4,7 +4,7 @@
 # Base pack.
 
 def "rdm" "Research data management."
-# ── data management (研究データ管理) ──
+# ── data management ──
 def "rdm:dataset" "Dataset — a body of research data."
 ln rdm:dataset rdm thesaurus:related
 def "rdm:raw_data" "Raw data — unprocessed data."
@@ -55,7 +55,7 @@ ln rdm:fair:reusable rdm:fair sys:part_of
 ln rdm:fair rdm thesaurus:related
 ln rdm:provenance rdm:data_curation thesaurus:related
 
-# ── citation network (引用ネットワーク) — directed typed-link graph ──
+# ── citation network — directed typed-link graph ──
 def "cite" "Scholarly citation and its network."
 def "cite:cites" "A cites B — a work references another (directed edge)."
 def "cite:cited_by" "A is cited by B — the inverse edge."

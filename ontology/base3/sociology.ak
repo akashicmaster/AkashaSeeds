@@ -1,4 +1,4 @@
-# Akasha ontology — sociology: a bird's-eye framing of the social (社会学的俯瞰).
+# Akasha ontology — sociology: a bird's-eye framing of the social.
 # The theory layer over everything social already built — kin:/social:/community/
 # group:/civ:/work:/status:/admin:/econ:/school:. Each concept bridges down to the
 # concrete pieces it names, so the overview and the detail connect. Base pack.
@@ -145,7 +145,7 @@ ln socio:globalization fx:foreign_exchange thesaurus:related
 ln socio:globalization foodstud:columbian_exchange thesaurus:related
 def "socio:modernization" "The shift toward industrial, rational, differentiated society."
 ln socio:modernization socio thesaurus:related
-# ── civil society & deliberation (意見集約の俯瞰) ──
+# ── civil society & deliberation ──
 def "socio:civil_society" "The realm of voluntary association between family, market and state (市民社会)."
 ln socio:civil_society socio thesaurus:related
 ln socio:civil_society group:neighborhood_association thesaurus:related

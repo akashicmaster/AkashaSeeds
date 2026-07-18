@@ -87,15 +87,20 @@ def main():
     record("M5 concept resolve", ok, f"{c_op} / {c_gl}")
 
     # M6 — every candidate the controller emits must really resolve in the router
-    #      (the first that resolves wins — exactly what run_cli._build does).
+    #      (the first that resolves wins — exactly what run_cli._build does, passing
+    #      is_command so a command mode lets real commands pass through).
     def resolves(mode, raw):
-        for cand in m.candidates(mode, raw):
+        for cand in m.candidates(mode, raw, is_command=R.is_command):
             if R.build_rpc_request(cand, "akt:tok") is not None:
                 return cand
         return None
     checks = {
         ("dive", "5"): "dive.look signpost=5",
-        ("dive", "love"): "dive love",
+        ("dive", "love"): "dive love",                 # bare word → navigate
+        ("dive", "tree Spain"): "tree Spain",          # real command → pass through (regression)
+        ("dive", "s.ls set:x"): "s.ls set:x",          # single-token command → pass through
+        ("dive", "lens src=set:x"): "lens src=set:x",  # not swallowed into a dive on "lens"
+        ("dive", "sim rome"): "sim rome",
         ("thesaurus", "reference"): "thesaurus reference",
         ("thesaurus", "concept id=word:love"): "thesaurus concept id=word:love",
         ("thesaurus", "status"): "status",

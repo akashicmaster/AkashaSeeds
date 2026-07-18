@@ -1,9 +1,9 @@
-# Akasha ontology — earth science, atmospheric science & oceanography (地球・大気・海洋科学).
+# Akasha ontology — earth science, atmospheric science & oceanography.
 # Complements the big geo: (mostly places) and weather: with the disciplines and
 # processes. Bridged to geo:/weather:/astro:/ce:/resource:/ecol:. Base pack.
 
 def "earthsci" "Earth science — the study of the planet's systems (地球科学)."
-# ── geology & solid earth (地質) ──
+# ── geology & solid earth ──
 def "earthsci:geology" "The study of the solid earth, its rocks and history (地質学)."
 ln earthsci:geology earthsci thesaurus:related
 def "earthsci:plate_tectonics" "The theory of moving lithospheric plates (プレートテクトニクス)."
@@ -35,7 +35,7 @@ def "earthsci:erosion" "The wearing away of rock and soil by wind and water (侵
 ln earthsci:erosion earthsci thesaurus:related
 ln earthsci:erosion agron:soil_erosion thesaurus:related
 ln earthsci:erosion ce:river_engineering thesaurus:related
-# ── atmosphere & climate (大気・気候) ──
+# ── atmosphere & climate ──
 def "earthsci:meteorology" "The science of weather (気象学)."
 ln earthsci:meteorology earthsci thesaurus:related
 ln earthsci:meteorology weather:phenomenon thesaurus:related
@@ -64,7 +64,7 @@ ln earthsci:el_nino earthsci:ocean_current thesaurus:related
 ln earthsci:el_nino weather:climate thesaurus:related
 def "earthsci:atmospheric_circulation" "The large-scale movement of air distributing heat."
 ln earthsci:atmospheric_circulation earthsci thesaurus:related
-# ── oceanography & hydrology (海洋・水文) ──
+# ── oceanography & hydrology ──
 def "earthsci:oceanography" "The science of the oceans (海洋学)."
 ln earthsci:oceanography earthsci thesaurus:related
 def "earthsci:ocean_current" "Large-scale flows of seawater moving heat and nutrients (海流)."

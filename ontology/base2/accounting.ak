@@ -1,9 +1,9 @@
-# Akasha ontology — accounting & bookkeeping (会計・簿記).
+# Akasha ontology — accounting & bookkeeping.
 # Greenfield domain. Bridged to occupation:accountant/auditor, place:bank,
 # gov:tax and person:field:economics. Base pack.
 
 def "acct" "Accounting — recording, classifying and reporting financial activity."
-# ── bookkeeping fundamentals (簿記) ──
+# ── bookkeeping fundamentals ──
 def "acct:double_entry" "Every transaction recorded twice — a debit and an equal credit — so the books always balance (複式簿記)."
 ln acct:double_entry acct thesaurus:related
 def "acct:debit" "The left side of an entry; increases assets/expenses, decreases liabilities/equity."
@@ -28,7 +28,7 @@ ln acct:chart_of_accounts acct thesaurus:related
 def "acct:reconciliation" "Checking one record against another (e.g. books vs bank statement) to agree them."
 ln acct:reconciliation acct thesaurus:related
 ln acct:reconciliation place:bank thesaurus:related
-# ── the accounting equation (貸借) ──
+# ── the accounting equation ──
 def "acct:accounting_equation" "Assets = Liabilities + Equity — the identity the balance sheet always upholds."
 ln acct:accounting_equation acct thesaurus:related
 def "acct:asset" "A resource owned that has value (cash, stock, equipment, receivables) (資産)."
@@ -70,7 +70,7 @@ def "acct:provision" "An amount set aside for a probable future liability."
 ln acct:provision acct thesaurus:related
 def "acct:going_concern" "The assumption that the business will continue operating."
 ln acct:going_concern acct thesaurus:related
-# ── financial statements (財務諸表) ──
+# ── financial statements ──
 def "acct:financial_statements" "The formal reports summarising a business's finances (財務諸表)."
 ln acct:financial_statements acct thesaurus:related
 def "acct:balance_sheet" "A snapshot of assets, liabilities and equity at a point in time (貸借対照表/BS)."

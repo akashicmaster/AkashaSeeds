@@ -1,10 +1,10 @@
-# Akasha ontology — astrophysics & cosmology (天体物理学・宇宙論).
+# Akasha ontology — astrophysics & cosmology.
 # astro: is rich in instances (constellations, moons, planets); this adds the
 # physical concepts and processes. Bridged to astro:/phys:/math:/earthsci:. Base pack.
 
 def "astrophys" "Astrophysics — the physics of stars, galaxies and the cosmos (天体物理学)."
 ln astrophys astro:galaxy thesaurus:related
-# ── cosmology (宇宙論) ──
+# ── cosmology ──
 def "astrophys:cosmology" "The study of the universe's origin, structure and fate (宇宙論)."
 ln astrophys:cosmology astrophys thesaurus:related
 def "astrophys:big_bang" "The hot dense beginning from which the universe expanded (ビッグバン)."
@@ -26,7 +26,7 @@ def "astrophys:gravity" "The attraction between masses shaping cosmic structure 
 ln astrophys:gravity astrophys thesaurus:related
 ln astrophys:gravity mecheng:statics thesaurus:related
 ln astrophys:gravity earthsci:tide thesaurus:related
-# ── stars & objects (恒星・天体) ──
+# ── stars & objects ──
 def "astrophys:stellar_evolution" "The life cycle of a star from cloud to remnant (恒星進化)."
 ln astrophys:stellar_evolution astrophys thesaurus:related
 def "astrophys:nuclear_fusion" "The fusing of nuclei that powers stars (核融合)."

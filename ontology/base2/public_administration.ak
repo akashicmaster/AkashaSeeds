@@ -93,7 +93,7 @@ def "place:tax_office" "Tax office (税務署) — civic institution."
 ln place:tax_office place_type:civic civic:function
 ln gov:service:tax_office place:tax_office gov:based_at
 
-# ── emergency services (警察・消防・救急) ──
+# ── emergency services ──
 def "transport:ambulance" "Ambulance (救急車)."
 def "transport:fire_engine" "Fire engine (消防車)."
 def "transport:police_car" "Police car (パトカー)."
@@ -111,7 +111,7 @@ ln gov:emergency_call gov:service:police gov:reaches
 ln gov:emergency_call gov:service:fire_service gov:reaches
 ln gov:emergency_call gov:service:ambulance_service gov:reaches
 
-# ── welfare benefits (福祉) ──
+# ── welfare benefits ──
 def "gov:benefit" "A welfare benefit or public assistance."
 def "gov:benefit:pension" "Pension (年金) — old-age pension."
 ln gov:benefit:pension gov:benefit thesaurus:related
@@ -134,7 +134,7 @@ ln gov:benefit:unemployment_benefit gov:function:welfare gov:delivers
 ln gov:function:welfare place:nursing_home gov:based_at
 ln social:caregiver_of gov:function:welfare thesaurus:related
 
-# ── taxes (税金) ──
+# ── taxes ──
 def "gov:tax" "A tax levied by government."
 def "gov:tax:income_tax" "Income tax (所得税) — tax on income."
 ln gov:tax:income_tax gov:tax thesaurus:related
@@ -158,7 +158,7 @@ def "gov:tax_return" "A filed statement of taxable income (確定申告)."
 ln gov:tax_return gov:function:taxation gov:delivers
 ln civ:resident gov:tax:resident_tax gov:pays
 
-# ── sanitation (清掃) ──
+# ── sanitation ──
 def "gov:sanitation:garbage_collection" "Garbage collection (ゴミ収集) — household waste collection."
 ln gov:sanitation:garbage_collection gov:function:sanitation gov:delivers
 def "gov:sanitation:recycling" "Recycling — sorting & reuse of materials."
@@ -168,7 +168,7 @@ ln gov:sanitation:waste_disposal gov:function:sanitation gov:delivers
 def "gov:sanitation:street_cleaning" "Street cleaning — cleaning of public streets."
 ln gov:sanitation:street_cleaning gov:function:sanitation gov:delivers
 
-# ── parks & green space (公園緑地) ──
+# ── parks & green space ──
 def "green_space" "Public green / open space."
 def "place:city_park" "City park — a municipal park."
 ln place:city_park green_space thesaurus:related

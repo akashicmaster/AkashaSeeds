@@ -364,10 +364,103 @@ def check_runtime():
         fail(f"[D] R4 genesis_rite over network NOT refused: {str(r)[:100]}")
 
 
+def check_set_membership_orphans():
+    """Every `set.add ... id=X` across the ontology must reference an atom that is
+    actually defined (by `def` or `al`) SOMEWHERE in the ontology — even in another
+    pack. A cross-pack orphan (base1 adding a base2 atom) silently loses the
+    membership at load time, so it must never ship. Static, pack-agnostic scan.
+    """
+    import glob
+    ont = os.path.join(ROOT, "ontology")
+    if not os.path.isdir(ont):
+        return
+    defined = set()          # ids created by def / alias, anywhere
+    set_adds = []            # (id, file) for every set.add
+    def_re = re.compile(r'^def\s+"([^"]+)"')
+    al_re  = re.compile(r'^al\s+(\S+)\s+(\S+)')
+    sa_re  = re.compile(r'^set\.add\s+.*\bid="([^"]+)"')
+    for fp in glob.glob(os.path.join(ont, "**", "*.ak"), recursive=True):
+        rel = os.path.relpath(fp, ROOT)
+        for raw in open(fp, encoding="utf-8", errors="replace"):
+            s = raw.strip()
+            if not s or s.startswith("#"):
+                continue
+            m = def_re.match(s)
+            if m:
+                defined.add(m.group(1)); continue
+            m = al_re.match(s)
+            if m:
+                defined.add(m.group(1)); defined.add(m.group(2)); continue
+            m = sa_re.match(s)
+            if m:
+                set_adds.append((m.group(1), rel))
+    orphans = [(i, f) for (i, f) in set_adds if i not in defined]
+    if orphans:
+        shown = ", ".join(f"{i} ({f})" for i, f in orphans[:6])
+        more = "" if len(orphans) <= 6 else f" …+{len(orphans) - 6} more"
+        fail(f"set.add orphans — id defined nowhere in the ontology: {shown}{more}")
+    else:
+        ok(f"set.add membership: all {len(set_adds)} ids resolve to a def/alias (no cross-pack orphans)")
+
+
+def check_loaded_set_memberships():
+    """Runtime companion to the static orphan check: if a loaded nucleus DB is present
+    (a real ontology load has happened), assert every loaded `set.add` membership
+    actually survived into the collections table — the failure the static check can't
+    see. No DB → skip (nothing has been loaded to verify). Delegates to
+    test/verify_set_memberships.py so the same logic serves the release soak test."""
+    db = os.path.join(ROOT, "data", "central", "nucleus.db")
+    if not os.path.isfile(db):
+        return  # nothing loaded — the release soak test runs this after a full load
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "vsm", os.path.join(ROOT, "test", "verify_set_memberships.py"))
+        vsm = importlib.util.module_from_spec(spec); spec.loader.exec_module(vsm)
+        r = vsm.verify(db, os.path.join(ROOT, "ontology"))
+    except Exception as e:
+        warn(f"loaded set-membership check could not run: {e}")
+        return
+    if r["dropped"]:
+        shown = ", ".join(f"{n} <- {i}" for n, i, _ in r["dropped"][:6])
+        more = "" if len(r["dropped"]) <= 6 else f" …+{len(r['dropped']) - 6} more"
+        fail(f"{len(r['dropped'])} loaded set membership(s) LOST at load: {shown}{more}")
+    else:
+        ok(f"loaded set memberships: all {r['checked']} survived (nucleus.db)")
+
+
+def check_loaded_link_targets():
+    """Runtime guard for cross-pack `ln` mis-binding: if a loaded nucleus DB is present,
+    assert every loaded namespaced `ln SRC DST REL` hangs off the REAL source atom, not a
+    proto-word bound before the atom existed. No DB → skip. Delegates to
+    test/verify_link_targets.py so the same logic serves the release soak test."""
+    db = os.path.join(ROOT, "data", "central", "nucleus.db")
+    if not os.path.isfile(db):
+        return
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "vlt", os.path.join(ROOT, "test", "verify_link_targets.py"))
+        vlt = importlib.util.module_from_spec(spec); spec.loader.exec_module(vlt)
+        r = vlt.verify(db, os.path.join(ROOT, "ontology"))
+    except Exception as e:
+        warn(f"loaded link-target check could not run: {e}")
+        return
+    if r["misbound"]:
+        shown = ", ".join(f"{s} -{rel}->" for s, rel, _ in r["misbound"][:6])
+        more = "" if len(r["misbound"]) <= 6 else f" …+{len(r['misbound']) - 6} more"
+        fail(f"{len(r['misbound'])} loaded link(s) mis-bound to a proto-word: {shown}{more}")
+    else:
+        ok(f"loaded link targets: all {r['checked']} namespaced links hang off their real atom")
+
+
 def main():
     check_static_anchors()
     check_route_proliferation()
     check_junk()
+    check_set_membership_orphans()
+    check_loaded_set_memberships()
+    check_loaded_link_targets()
     check_runtime()
 
     print()

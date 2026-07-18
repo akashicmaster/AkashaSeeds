@@ -1,5 +1,5 @@
-# Akasha ontology — rain gear & sun protection (雨具・日除け).
-# raincoat/umbrella existed but 雨具 was not a group and lacked rain boots,
+# Akasha ontology — rain gear & sun protection.
+# raincoat/umbrella existed but 'rain gear' was not a group and lacked rain boots,
 # poncho, folding umbrella, parasol. Group them, and tie to weather and season.
 # weather: is meteorological vocabulary; weather:precipitation is the rain hook.
 # Base pack.
@@ -53,7 +53,7 @@ ln accessory:folding_umbrella concept:rain_gear thesaurus:related
 ln accessory:folding_umbrella weather:precipitation home:used_for
 ln accessory:folding_umbrella obj:durable obj_durability
 
-# ── sun protection (日除け) ──
+# ── sun protection ──
 def "accessory:parasol" "Parasol (日傘)."
 ln accessory:parasol accessory_type:other thesaurus:related
 ln accessory:parasol home:closet home:located_in

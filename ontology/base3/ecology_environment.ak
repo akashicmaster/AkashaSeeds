@@ -1,4 +1,4 @@
-# Akasha ontology — ecology & environmental science/engineering (生態学・環境科学・環境工学).
+# Akasha ontology — ecology & environmental science/engineering.
 # Nearly absent before. Bridged to bio:/geo:/weather:/ce:/chemeng:/infra:/
 # foodsustain:/resource:/law:environmental_law. Base pack.
 
@@ -49,7 +49,7 @@ def "ecol:ecosystem_service" "The benefits ecosystems provide people — pollina
 ln ecol:ecosystem_service ecol thesaurus:related
 ln ecol:ecosystem_service foodsustain:sustainable_diet thesaurus:related
 ln ecol:ecosystem_service futureag:agroecology thesaurus:related
-# ── environmental science & engineering (環境科学・環境工学) ──
+# ── environmental science & engineering ──
 def "enveng" "Environmental science & engineering — protecting and remediating the environment (環境工学)."
 def "enveng:environmental_science" "The interdisciplinary study of the environment and human impact (環境科学)."
 ln enveng:environmental_science enveng thesaurus:related

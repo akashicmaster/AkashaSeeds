@@ -7,7 +7,7 @@
 
 ln ingred:seafood:eel flesh_type:white bio:flesh_type
 
-# ── predominant source (主に養殖 / 主に天然) ──
+# ── predominant source ──
 ln ingred:seafood:salmon source:farmed bio:source_primary
 ln ingred:seafood:trout source:farmed bio:source_primary
 ln ingred:seafood:sea_bass source:farmed bio:source_primary

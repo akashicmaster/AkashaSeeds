@@ -1,4 +1,4 @@
-# Akasha ontology — TCM/Kampo food therapy (五性・五味). Descriptive; provenance: traditional.
+# Akasha ontology — TCM/Kampo food therapy. Descriptive; provenance: traditional.
 
 def "tcm:nature:hot" "熱 — strongly warming."
 ln tcm:nature:hot tradition:tcm thesaurus:related
@@ -27,7 +27,7 @@ def "tcm:flavor:salty" "五味: salty."
 ln tcm:flavor:salty dna:taste:salty thesaurus:related
 ln tcm:flavor:salty tradition:tcm thesaurus:related
 
-# ── food → nature (五性) ──
+# ── food → nature ──
 ln ingred:veg:chili_pepper tcm:nature:hot tcm:nature
 ln ingred:spice:cayenne tcm:nature:hot tcm:nature
 ln ingred:spice:chili_powder tcm:nature:hot tcm:nature

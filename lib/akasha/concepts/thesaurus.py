@@ -14,7 +14,7 @@ projecting concepts onto web concept pages):
                         dive basic view (`consciousness.generate_view`, the same
                         core `dive`/`view` use) and extended with the thesaurus
                         responsibility: a writer's view — synonyms / antonyms /
-                        broader / narrower / related, usage examples (文例), and
+                        broader / narrower / related, usage examples, and
                         external references — for investigating a word before using
                         it in prose.
 
@@ -255,7 +255,7 @@ class ThesaurusConcept(BaseConcept):
         (`consciousness.generate_view`: focus, signposts, resonance, cosmos_nd) —
         reused, not reimplemented. On top of it this adds the thesaurus
         responsibility, aimed at writing: the word's synonyms / antonyms /
-        broader / narrower terms, usage examples (文例), and external references —
+        broader / narrower terms, usage examples, and external references —
         everything needed to investigate a concept word before putting it in prose.
         """
         key = self._resolve_atom(atom_id, name)

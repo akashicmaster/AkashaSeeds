@@ -9,7 +9,7 @@ def "school_stage:secondary" "middle/high"
 def "school_stage:higher" "tertiary"
 def "school_stage:supplementary" "cram/extra"
 
-# ── school types → stage (学校種) ──
+# ── school types → stage ──
 def "school:nursery" "Nursery (保育園)."
 ln school:nursery school_stage:preschool school:stage
 ln school:nursery place:school thesaurus:related
@@ -35,7 +35,7 @@ def "school:cram_school" "Cram school (塾)."
 ln school:cram_school school_stage:supplementary school:stage
 ln school:cram_school place:school thesaurus:related
 
-# ── faculty & students (教職員・生徒) ──
+# ── faculty & students ──
 def "school:teacher" "Teacher — school role."
 ln school:teacher place:school civic:role_at
 ln school:teacher occupation:teacher thesaurus:related
@@ -65,7 +65,7 @@ def "school:pupil" "Pupil — school role."
 ln school:pupil place:school civic:role_at
 ln school:pupil social:student_of thesaurus:related
 
-# ── school supplies (持ち物) ──
+# ── school supplies ──
 def "school:textbook" "Textbook (教科書)."
 ln school:textbook school thesaurus:related
 ln school:textbook verb:act:carry verb:acts_on
@@ -94,7 +94,7 @@ ln school:textbook stationery:notebook thesaurus:related
 ln school:student school:textbook verb:act:carry
 ln clothing:uniform school thesaurus:related
 
-# ── school events (学校行事) ──
+# ── school events ──
 def "event_type:school_event" "a school ceremony or event."
 def "event:entrance_ceremony" "Entrance ceremony (入学式) — start of school life."
 ln event:entrance_ceremony event_type:school_event thesaurus:related
@@ -114,7 +114,7 @@ ln event:field_trip place:school civic:held_at
 ln event:entrance_ceremony school_stage:primary thesaurus:related
 ln event:graduation_ceremony school_stage:secondary thesaurus:related
 
-# ── exams & assessment (試験) ──
+# ── exams & assessment ──
 def "school:assessment" "Testing and grading of students."
 def "school:exam" "Exam (試験) — a formal test."
 ln school:exam school:assessment thesaurus:related

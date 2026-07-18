@@ -1,4 +1,4 @@
-# Akasha ontology — 薬膳 帰經 meridian tropism. Descriptive; provenance: traditional.
+# Akasha ontology — yakuzen (medicinal cuisine) meridian-tropism meridian tropism. Descriptive; provenance: traditional.
 
 def "tcm:meridian:liver" "肝経 — the liver meridian."
 ln tcm:meridian:liver tradition:tcm thesaurus:related

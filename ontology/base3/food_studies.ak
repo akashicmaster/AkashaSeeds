@@ -1,4 +1,4 @@
-# Akasha ontology — food studies (食民俗学) & sensory science.
+# Akasha ontology — food studies & sensory science.
 # The humanities of food — folklore, ethnology, anthropology, history — and the
 # science of tasting. Heavy bridging to cuisine:/dish:/event:/oral:/dh:/region:
 # and to the tasting: vocabulary. Base pack.
@@ -72,7 +72,7 @@ ln foodstud:culinary_identity foodstud thesaurus:related
 ln foodstud:culinary_identity culinary:signature thesaurus:related
 def "foodstud:hospitality" "The social obligation and art of feeding a guest."
 ln foodstud:hospitality foodstud thesaurus:related
-# ── sensory science (官能科学) ──
+# ── sensory science ──
 def "sensory" "Sensory science — the perception and evaluation of food."
 def "sensory:sensory_evaluation" "Systematic measurement of food perception by human panels (官能評価)."
 ln sensory:sensory_evaluation sensory thesaurus:related

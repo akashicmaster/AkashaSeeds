@@ -1,6 +1,6 @@
 # Akasha ontology — future agriculture & livestock + food sustainability.
 # Bridging the food & farming world with agritech (ag:), supply-chain (asc:),
-# seasonality (season:/旬), fishing regulation (regulation:/禁漁) and diet:. Base pack.
+# seasonality, fishing regulation and diet:. Base pack.
 
 def "futureag" "The future of farming, aquaculture and livestock."
 def "futureag:vertical_farming" "Stacked indoor crop production in controlled environments (垂直農業)."
@@ -57,7 +57,7 @@ def "futureag:insect_farming" "Rearing insects for food and feed at scale."
 ln futureag:insect_farming futureag thesaurus:related
 def "futureag:alternative_feed" "Novel animal feeds (insect meal, algae) reducing land and grain use."
 ln futureag:alternative_feed futureag thesaurus:related
-# ── food sustainability (持続可能) ──
+# ── food sustainability ──
 def "foodsustain" "Sustainability of the food system — ecological, social, economic."
 def "foodsustain:food_sustainability" "Meeting food needs without degrading the systems future generations depend on."
 ln foodsustain:food_sustainability foodsustain thesaurus:related

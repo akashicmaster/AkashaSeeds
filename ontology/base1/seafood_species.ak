@@ -1,4 +1,4 @@
-# Akasha ontology — fish species + flesh_type (白身/赤身) + source (天然/養殖)
+# Akasha ontology — fish species + flesh_type + source
 # Add missing food-fish species (incl. roe/liver source species), and two
 # axes: flesh_type white/red for finfish, source wild/farmed for seafood.
 # Base pack.
@@ -96,7 +96,7 @@ ln ingred:seafood:barramundi habitat:catadromous bio:habitat
 ln ingred:seafood:barramundi cut_type:whole culinary:cut_type
 ln ingred:seafood:barramundi dna:taste:umami calc:associated_with
 
-# ── flesh_type (白身/赤身) ──
+# ── flesh_type ──
 ln ingred:seafood:barramundi flesh_type:white bio:flesh_type
 ln ingred:seafood:bream flesh_type:white bio:flesh_type
 ln ingred:seafood:carp flesh_type:white bio:flesh_type
@@ -134,7 +134,7 @@ ln ingred:seafood:trout flesh_type:red bio:flesh_type
 ln ingred:seafood:tuna flesh_type:red bio:flesh_type
 ln ingred:seafood:yellowtail flesh_type:red bio:flesh_type
 
-# ── source (天然/養殖) ──
+# ── source ──
 ln ingred:seafood:anchovy source:wild bio:source
 ln ingred:seafood:bonito source:wild bio:source
 ln ingred:seafood:cod source:wild bio:source

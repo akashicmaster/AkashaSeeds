@@ -1,11 +1,11 @@
-# Akasha ontology — developmental psychology (発達心理学), deepened.
+# Akasha ontology — developmental psychology, deepened.
 # Lifespan development, attachment, and the cognitive/social/moral strands.
 # Bridged to psy:, kin:, school:, care: and neuro:. Base pack.
 
 def "devpsy" "Developmental psychology — how mind and behaviour change across life (発達心理学)."
 ln devpsy psy:developmental_psychology thesaurus:related
 
-# ── lifespan stages (生涯発達) ──
+# ── lifespan stages ──
 def "devpsy:infancy" "Birth to ~2 years — rapid sensory and motor growth (乳児期)."
 ln devpsy:infancy devpsy thesaurus:related
 ln devpsy:infancy devpsy:early_childhood chrono:before
@@ -28,7 +28,7 @@ ln devpsy:middle_childhood school:elementary_school thesaurus:related
 ln devpsy:adolescence school:high_school thesaurus:related
 ln devpsy:old_age care:gerontology thesaurus:related
 
-# ── attachment & socioemotional (愛着) ──
+# ── attachment & socioemotional ──
 def "devpsy:attachment" "The emotional bond between infant and caregiver (Bowlby) (愛着)."
 ln devpsy:attachment devpsy thesaurus:related
 ln devpsy:attachment kin:parent_of thesaurus:related

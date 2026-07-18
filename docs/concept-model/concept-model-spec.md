@@ -1512,7 +1512,7 @@ implementation and one dive implementation.
 |---|---|---|---|
 | `thesaurus.reference` (`reference`) | — | `order` (default `alpha`), `ns`, `initial`, `limit` (default 200) | Glossary index of named concepts, **alphabetical**. `order=` is an open axis: `lang:<code>` (locale collation), `era` (chronological), `assoc` (associative index) are **reserved** and currently fall back to alpha — the response's `order_applied` says which comparator ran. `ns=` scopes to one namespace; `initial=` is the glossary letter-jump. |
 | `thesaurus.explore` (`lookup`) | `query` (or `ns`/`type`) | `ns`, `type`, `limit` (default 20) | Search for a target concept via the shared discovery core. `query` is a name/alias pattern (`%`/`_` wildcards). Each match carries `salience`; results rank by it. |
-| `thesaurus.concept` (`concept`) | `name` or `atom_id` | — | Concept page: the dive basic view (`signposts`, `resonance`, `cosmos_nd`) **plus the writer's view** — `synonyms` / `antonyms` / `broader` / `narrower` related terms, usage `examples` (文例), and `external_refs` — for investigating a word before using it in prose. |
+| `thesaurus.concept` (`concept`) | `name` or `atom_id` | — | Concept page: the dive basic view (`signposts`, `resonance`, `cosmos_nd`) **plus the writer's view** — `synonyms` / `antonyms` / `broader` / `narrower` related terms, usage `examples`, and `external_refs` — for investigating a word before using it in prose. |
 
 **`reference` output** (alphabetical glossary):
 ```json

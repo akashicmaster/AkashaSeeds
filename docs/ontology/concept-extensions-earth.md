@@ -2239,4 +2239,4 @@ CountryRoot ──country:has_correspondence ──▶ CorrLinkAtom
 
 ---
 
-*→ Back to [ontology-spec.md](ontology-spec.md) · [concept-model-spec.md](../concept-model/concept-model-spec.md) · [README](../README.md)*
+*→ Back to [ontology-spec.md](ontology-spec.md) · [concept-model-spec.md](../concept-model/concept-model-spec.md) · [README](../../README.md)*

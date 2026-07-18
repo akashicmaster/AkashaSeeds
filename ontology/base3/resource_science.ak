@@ -1,4 +1,4 @@
-# Akasha ontology — resource science (資源学).
+# Akasha ontology — resource science.
 # Natural resources, their extraction, reserves and management — bridged to
 # geo:mineral, energy:, matsci:, foodsustain:, regulation: and gov:. Base pack.
 

@@ -33,7 +33,7 @@ def "spacefood:spirulina" "A protein-rich cyanobacterium proposed for space and 
 ln spacefood:spirulina spacefood thesaurus:related
 ln spacefood:spirulina futurefood:algae_food thesaurus:related
 ln spacefood:spirulina nutrisci:functional_food thesaurus:related
-# ── future food / alternative protein (未来の食卓) ──
+# ── future food / alternative protein ──
 def "futurefood" "Novel foods and proteins reshaping the future table."
 def "futurefood:alternative_protein" "Protein from non-conventional sources — plants, cells, insects, microbes."
 ln futurefood:alternative_protein futurefood thesaurus:related
@@ -70,7 +70,7 @@ ln futurefood:novel_food futurefood thesaurus:related
 ln futurefood:novel_food foodsafe:haccp thesaurus:related
 def "futurefood:food_tech" "Technology-driven innovation across the food system."
 ln futurefood:food_tech futurefood thesaurus:related
-# ── food security & crisis (食糧危機) ──
+# ── food security & crisis ──
 def "foodsec" "Food security — reliable access to sufficient, safe, nutritious food."
 def "foodsec:food_security" "When all people at all times have access to enough safe, nutritious food (食料安全保障)."
 ln foodsec:food_security foodsec thesaurus:related

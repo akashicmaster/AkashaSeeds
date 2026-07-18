@@ -75,7 +75,7 @@ def "place:repair_shop" "Repair shop — service place."
 ln place:repair_shop place_type:service civic:function
 ln mechanic place:repair_shop civic:role_at
 
-# ── daily necessities (生活必需品) ──
+# ── daily necessities ──
 def "concept:daily_necessities" "生活必需品 — everyday commodities a household needs (food, toiletries, cleaning goods)."
 ln place:supermarket concept:daily_necessities civic:supplies
 ln place:drugstore concept:daily_necessities civic:supplies

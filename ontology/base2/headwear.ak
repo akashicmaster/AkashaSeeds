@@ -1,5 +1,5 @@
-# Akasha ontology — headwear (帽子): group + types.
-# hat/cap/beanie/sunhat existed but 帽子 was not a group and lacked types.
+# Akasha ontology — headwear: group + types.
+# hat/cap/beanie/sunhat existed but 'hat' was not a group and lacked types.
 # Group them and tie by season / sun / rain. Base pack.
 
 def "concept:headwear" "帽子 — hats and caps worn on the head."

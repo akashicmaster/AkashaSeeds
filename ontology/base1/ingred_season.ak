@@ -1,4 +1,4 @@
-# Akasha ontology — ingredient → harvest season (旬) + climate zone.
+# Akasha ontology — ingredient → harvest season + climate zone.
 # Season is climate-relative (see seasonality.ak): the same label maps to
 # opposite months N vs S. Tropical crops are year_round. Base pack.
 

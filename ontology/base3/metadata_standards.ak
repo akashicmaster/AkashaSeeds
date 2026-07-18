@@ -45,7 +45,7 @@ ln metastd:marc lib:bibliographic_record thesaurus:related
 ln metastd:cidoc_crm mus:cataloging thesaurus:related
 ln metastd:rdf sys:network thesaurus:related
 
-# ── Dublin Core 15 elements (ダブリンコア) — maps onto Akasha atom meta ──
+# ── Dublin Core 15 elements — maps onto Akasha atom meta ──
 def "dc:title" "Dublin Core: title."
 ln dc:title metastd:dublin_core sys:part_of
 def "dc:creator" "Dublin Core: creator."
@@ -80,7 +80,7 @@ ln dc:subject thesaurus:related thesaurus:related
 ln dc:relation cite:cites thesaurus:related
 ln dc:identifier rdm:persistent_identifier thesaurus:related
 
-# ── digital archives & preservation (デジタルアーカイブ) ──
+# ── digital archives & preservation ──
 def "digarch:digital_archive" "Digital archive (デジタルアーカイブ) — a curated store of digital objects."
 ln digarch:digital_archive metastd thesaurus:related
 def "digarch:digital_repository" "Digital repository — a managed digital store."

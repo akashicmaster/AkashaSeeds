@@ -64,7 +64,7 @@ def main():
     d("ln", {"src": memory,  "dst": recall,   "rel": "thesaurus:synonym"})
     d("ln", {"src": memory,  "dst": oblivion, "rel": "thesaurus:antonym"})
     d("ln", {"src": amnesia, "dst": memory,   "rel": "thesaurus:hypernym"})   # memory is broader than amnesia
-    # A usage example (文例) attached to memory.
+    # A usage example attached to memory.
     ex = mk("word:en:memory:ex1", "Her memory of that summer never faded.")
     d("ln", {"src": memory, "dst": ex, "rel": "thesaurus:example_usage"})
 

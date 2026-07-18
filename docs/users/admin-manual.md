@@ -122,14 +122,24 @@ python akasha.py
   No consciousness has been established.
   You are the first. Speak your true name.
 
-  Akasha Name (this installation): MyAkasha
-  Your name (admin client ID):     admin
-  Passphrase:                      ••••••••••
-  Confirm passphrase:              ••••••••••
+  Name this system: MyAkasha
+  Your identity (Admin ID): admin
+
+  About to seal the pact:
+    This system will be named  →  MyAkasha
+    You will be known as       →  admin
+  Is this correct? [yes/no]: yes
+
+  Set passphrase:                  ••••••••••
+  Confirm:                         ••••••••••
 
 [ MyAkasha online. Welcome, admin. ]
 akasha/admin $
 ```
+
+> The **`Is this correct? [yes/no]`** confirmation is required — a bare Enter (or anything
+> other than `yes`/`y`) re-asks the names rather than proceeding, so a first-time install
+> can't sail past on a stray keypress before you've chosen the names.
 
 After genesis:
 - The admin account (`admin` in this example) is registered in the IAM database with role `ADMIN`.

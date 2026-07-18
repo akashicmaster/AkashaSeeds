@@ -1,6 +1,6 @@
 # Akasha ontology — epigraphy, papyrology, numismatics, seals, diplomatics.
 # Material and documentary primary sources and their auxiliary sciences
-# (碑文学・パピルス学・貨幣学・印章学・古文書形式学). Base pack.
+#. Base pack.
 
 def "epig" "Epigraphy — the study of inscriptions."
 def "epig:inscription" "A text incised or applied on a durable object (碑文)."

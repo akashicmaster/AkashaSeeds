@@ -1,4 +1,4 @@
-# Akasha ontology — culinary macro-regions (地域クラスタ).
+# Akasha ontology — culinary macro-regions.
 # Group cuisines into regions so shared regional character is visible; some
 # cuisines span two regions (turkish, moroccan, french). Base pack.
 

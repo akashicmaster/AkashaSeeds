@@ -1,4 +1,4 @@
-# Akasha ontology — insurance, foreign exchange & risk management (保険・為替・リスク管理).
+# Akasha ontology — insurance, foreign exchange & risk management.
 # Extends fin:/invest:. Bridged to gov:benefit:, place:bank, admin:country. Base pack.
 
 def "insur" "Insurance — pooling risk against uncertain loss."
@@ -39,7 +39,7 @@ def "insur:adverse_selection" "When the riskiest are likeliest to buy insurance,
 ln insur:adverse_selection insur thesaurus:related
 def "insur:indemnity" "Restoring the insured to their pre-loss position, no more."
 ln insur:indemnity insur thesaurus:related
-# ── insurance types (保険の種類) ──
+# ── insurance types ──
 def "insur:life_insurance" "Pays out on death (or maturity) (生命保険)."
 ln insur:life_insurance insur thesaurus:related
 def "insur:health_insurance" "Covers medical costs (医療保険)."
@@ -62,7 +62,7 @@ ln insur:social_insurance insur thesaurus:related
 ln insur:social_insurance gov:benefit:social_security thesaurus:related
 ln insur:social_insurance gov:benefit:pension thesaurus:related
 ln insur:social_insurance gov:benefit:unemployment_benefit thesaurus:related
-# ── foreign exchange (為替) ──
+# ── foreign exchange ──
 def "fx" "Foreign exchange — the trading and valuation of currencies."
 def "fx:foreign_exchange" "The conversion and trading of one currency for another (外国為替)."
 ln fx:foreign_exchange fx thesaurus:related
@@ -104,7 +104,7 @@ ln fx:purchasing_power_parity fx thesaurus:related
 ln fx:purchasing_power_parity econ:inflation thesaurus:related
 def "fx:remittance" "Money sent home by workers abroad (送金)."
 ln fx:remittance fx thesaurus:related
-# ── risk management (リスク管理) ──
+# ── risk management ──
 def "risk" "Risk management — identifying, assessing and controlling exposure to loss."
 def "risk:risk_management" "The systematic handling of risks that threaten objectives (リスク管理)."
 ln risk:risk_management risk thesaurus:related

@@ -4,7 +4,7 @@
 # Base pack.
 
 def "collab" "Research collaboration."
-# ── co-authorship network (共著ネットワーク) — symmetric typed-link graph ──
+# ── co-authorship network — symmetric typed-link graph ──
 def "collab:coauthor_of" "A co-authored a work with B (symmetric edge)."
 ln collab:coauthor_of collab:coauthor_of sys:synonym   # symmetric
 ln collab:coauthor_of pub:role:coauthor thesaurus:related
@@ -37,7 +37,7 @@ ln collab:research_network collab thesaurus:related
 ln collab:research_team work:team thesaurus:related
 ln collab:co_pi acad:principal_investigator thesaurus:related
 
-# ── open science (オープンサイエンス) ──
+# ── open science ──
 def "os" "Open science — transparent, shareable research."
 def "os:open_access" "Open access (オープンアクセス) — free access to publications."
 ln os:open_access os thesaurus:related

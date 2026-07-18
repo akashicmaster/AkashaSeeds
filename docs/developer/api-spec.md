@@ -33,8 +33,8 @@
     - [10.9 Sets](#109-sets)
     - [10.10 Notes](#1010-notes)
     - [10.11 JCL — Job Control](#1011-jcl--job-control)
-    - [10.12 Contexa](#1012-contexa)
-    - [10.13 Jataka](#1013-jataka)
+    - [10.12 Contexa](#1012-contexa--the-client-sessions-input-side)
+    - [10.13 Jataka](#1013-jataka--the-client-sessions-output-side)
     - [10.14 Session](#1014-session)
     - [10.15 Associate](#1015-associate)
     - [10.16 Scope State](#1016-scope-state)
@@ -424,7 +424,7 @@ DNA atoms are tagged `scope:sys:dna` in addition to `scope:sys:universal`. Only 
 
 ### 8.2 Acquired Ontology Files (Tier 2)
 
-Ontology ships as `.ak` files organised into per-namespace **package directories** under `ontology/<ns>/` (e.g. `ontology/base1–3/` (the base packs), `ontology/art/`, `ontology/film/`), each with a `PACK.json` manifest. `ontology/REGISTRY.json` (version 2) lists every package and its `autoload` flag (only `base` autoloads at startup). The obsolete flat JSON `.ak` format loaded by `bootstrap_ontology()` is no longer used.
+Ontology ships as `.ak` files organised into per-namespace **package directories** under `ontology/<ns>/` (e.g. `ontology/base1–3/` (the base packs), `ontology/art/`, `ontology/film/`), each with a `PACK.json` manifest. `ontology/REGISTRY.json` (version 2) lists every package and its `autoload` flag (`base1`, `base2`, `base3`, `nutrition`, `recipe`, and `curation` autoload at startup). The obsolete flat JSON `.ak` format loaded by `bootstrap_ontology()` is no longer used.
 
 An `.ak` file is a flat sequence of loader commands, not JSON. The full command vocabulary is:
 

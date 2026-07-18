@@ -1102,7 +1102,8 @@ def run_cli(gw):
                 # through the one ModeController rule: try <mode>-scoped candidates in
                 # order, fall back to the global command. Outside a mode, plain global.
                 if nav_mode.get("kind") == "ns":
-                    for cand in _modes.candidates(nav_mode["name"], cmd):
+                    for cand in _modes.candidates(nav_mode["name"], cmd,
+                                                  is_command=CommandRouter.is_command):
                         p = CommandRouter.build_rpc_request(cand, tok)
                         if p is not None:
                             return p

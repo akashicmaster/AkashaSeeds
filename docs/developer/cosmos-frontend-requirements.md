@@ -2,7 +2,7 @@
 
 **Audience:** the front-end context that owns `services/static/cosmos/index.html`.
 **Scope of this doc:** what the backend now provides, what the GUI must change to stop being
-"見かけだけ" (decorative), and which existing backend methods to wire as new cockpit instruments.
+"decorative-only", and which existing backend methods to wire as new cockpit instruments.
 Backend positioning work is **already shipped** (see *Backend anchors*); no backend change is
 required to consume it — only to add the deeper instruments (all of which call methods that
 already exist).
@@ -32,7 +32,7 @@ filter relations), **resonance** (cosine-weighted 2-hop), **jobs** (`job.ls`).
 1. **Seed positions from `x`/`y`/`z`.** Feed them to ForceGraph3D as initial coordinates
    (or pin with `fx/fy/fz` for a fixed semantic layout, or use as a seed then let a light
    physics pass relax link overlaps). Today the GUI ignores them and lets physics scatter
-   nodes — that is the single biggest "見かけだけ": the "cosmos" carried no spatial meaning.
+   nodes — that is the single biggest "cosmetic-only" element: the "cosmos" carried no spatial meaning.
 2. **Size nodes by `val`** instead of the constant fallback.
 3. Colors already come from `n.color` — keep.
 

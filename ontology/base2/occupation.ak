@@ -1,7 +1,7 @@
-# Akasha ontology — occupations (職業) and work rank (地位).
+# Akasha ontology — occupations and work rank.
 # Most adults work: an occupation taxonomy by sector, mapped to workplace
 # (place:*), to the person:field:* it belongs to, and bridged to the social
-# role relations. Plus a work-rank ladder (地位). Base pack.
+# role relations. Plus a work-rank ladder. Base pack.
 
 def "occupation" "A trade or profession."
 def "occupation_sector:healthcare" "health & medicine"
@@ -328,7 +328,7 @@ ln occupation:model model thesaurus:related
 
 def "status" "地位 — position or standing, esp. rank at work."
 def "status:outranks" "Holds a higher position than."
-# ── work-rank ladder (高→低) ──
+# ── work-rank ladder ──
 def "status:owner" "Owner — work rank."
 ln status:owner status thesaurus:related
 ln status:owner status:executive status:outranks

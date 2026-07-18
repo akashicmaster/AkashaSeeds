@@ -1,4 +1,4 @@
-# Akasha ontology — admin: administrative-division TYPE hierarchy (行政区分の型).
+# Akasha ontology — admin: administrative-division TYPE hierarchy.
 # The missing ladder between the bottom-up community concepts (neighborhood/
 # community/local_society) and the top-down geo:* instances (countries/states/
 # capitals). Types carry an admin_scale ordinal and a within/contains chain;

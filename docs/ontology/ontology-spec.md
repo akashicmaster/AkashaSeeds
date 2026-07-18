@@ -19,7 +19,7 @@
    - [4.1 Shell Script Files (.ak)](#41-shell-script-files-ak)
    - [4.2 CSL Script Files (.csl)](#42-csl-script-files-csl)
    - [4.3 Loading Behaviour](#43-loading-behaviour)
-   - [4.4 Manual Reload](#44-manual-reload)
+   - [4.4 Manual Reload](#44-manual-reload--reset)
 5. [Layer 3 — Runtime Ontology: Building via CLI and CSL](#5-layer-3--runtime-ontology-building-via-cli-and-csl)
    - [5.1 The Basic Pattern](#51-the-basic-pattern)
    - [5.2 Writing Structured Ontologies with CSL](#52-writing-structured-ontologies-with-csl)
@@ -31,8 +31,8 @@
    - [6.4 The World-Building Suite (Harmonia)](#64-the-world-building-suite-harmonia)
 7. [Current Ontology Contents](#7-current-ontology-contents)
    - [7.1 Directory Structure](#71-directory-structure)
-   - [7.2 Common Layer](#72-common-layer)
-   - [7.3 Seed Layer](#73-seed-layer)
+   - [7.2 Base Packages](#72-base-packages-ontologybase13)
+   - [7.3 Optional Packages](#73-optional-packages)
 8. [Writing Ontology Files](#8-writing-ontology-files)
    - [8.1 .ak File Format](#81-ak-file-format)
    - [8.2 .csl File Format](#82-csl-file-format)
@@ -53,7 +53,7 @@ Akasha's knowledge model rests on one foundational epistemological claim:
 
 When a bare alias — a word with no namespace qualifier — is registered in Akasha, it makes one and only one claim: *this word exists*. No definition, no category, no part of speech is required. The act of registration is itself the statement: "this word is present and available to be given meaning."
 
-This atom is called a **proto-word** (祖語). It is the lexical anchor for everything that will later be said about the word. At birth it holds only its own spelling. Its character accumulates through:
+This atom is called a **proto-word**. It is the lexical anchor for everything that will later be said about the word. At birth it holds only its own spelling. Its character accumulates through:
 
 - **Links** — semantic edges connecting the proto-word to other atoms (`specializes`, `sys:is_a`, `sys:causes`, `sys:antonym`, …)
 - **Set memberships** — collection assignments that situate the word within categories, domains, or dimensions
@@ -280,7 +280,7 @@ The DNA includes placeholder definitions for alternative philosophical lenses. T
 
 The acquired ontology extends the DNA with richer vocabulary and concept hubs. It is designed to be the "shared common knowledge" that all users inherit without having to build it themselves.
 
-> **REGISTRY.json v2 package layout:** Loading is **not** a recursive directory walk of `ontology/`. `ontology/REGISTRY.json` lists every package (name + autoload flag). At startup, only packages with `"autoload": true` (currently only `base`) are loaded into the graph. Other packages are loaded on demand or by setting their `"autoload"` flag to `true` and running `onto.reload`. The `ontology/thesaurus/` directory is loaded by the same boot sequence alongside the REGISTRY packages.
+> **REGISTRY.json v2 package layout:** Loading is **not** a recursive directory walk of `ontology/`. `ontology/REGISTRY.json` lists every package (name + autoload flag). At startup, only packages with `"autoload": true` (currently `base`, `nutrition`, `recipe`, and `curation`) are loaded into the graph. Other packages are loaded on demand or by setting their `"autoload"` flag to `true` and running `onto.reload`. The `ontology/thesaurus/` directory is loaded by the same boot sequence alongside the REGISTRY packages.
 
 ### 4.1 Shell Script Files (.ak)
 
@@ -537,12 +537,18 @@ Harmonia also includes infrastructure plugins used transparently by the engine:
 ```
 ontology/
 ├── REGISTRY.json            ← v2 package registry (name + autoload flag per package)
-├── base/                    autoload=true — core vocabulary (~9 700 atoms)
+├── base1/                   autoload=true — words, feelings, the everyday table + food/ingredient foundation (~9.5k atoms, 61 files)
 │   ├── PACK.json
-│   ├── emo.ak
-│   ├── word_core_01.ak … word_core_04.ak
-│   ├── phil.ak, sci.ak, geo.ak, … (54 .ak files total)
+│   ├── emo.ak, word_core_01.ak … word_core_04.ak
+│   ├── color.ak, allergen.ak, cuisine_region.ak, ingred*.ak, … 
 │   └── …
+├── base2/                   autoload=true — the life-world (civic, commerce, admin, …) (~1.9k atoms, 68 files)
+│   ├── PACK.json
+│   └── civic_places.ak, commerce_services.ak, admin_hierarchy.ak, … 
+├── base3/                   autoload=true — the sciences & knowledge map (~4.4k atoms, 57 files)
+│   ├── PACK.json
+│   └── academia.ak, astrophysics.ak, agriculture.ak, phil.ak, sci.ak, geo.ak, … 
+├── nutrition/, recipe/, curation/   autoload=true — food-app packs + curator runtime
 ├── tech/                    autoload=false — technology & computing namespaces
 │   ├── PACK.json
 │   ├── ai.ak, sys.ak, prog.ak, data.ak, … (60+ files)
@@ -562,13 +568,13 @@ curations/                   ← auto-loaded after ont:csl:loaded sentinel
 └── sky_dreamers.csl         curator exhibition scripts (Thesaurus concept model)
 ```
 
-Package loading is driven by `ontology/REGISTRY.json` v2, not by a recursive directory walk. Only packages with `"autoload": true` are loaded at startup — currently only `base`. To activate another package, set its `"autoload"` to `true` in REGISTRY.json and run `onto.reload`.
+Package loading is driven by `ontology/REGISTRY.json` v2, not by a recursive directory walk. Only packages with `"autoload": true` are loaded at startup — currently `base`, `nutrition`, `recipe`, and `curation`. To activate another package, set its `"autoload"` to `true` in REGISTRY.json and run `onto.reload`.
 
 **`curations/`** is at the project root (outside `ontology/`). After the `ont:csl:loaded` sentinel is set, the boot sequence automatically loads all `.csl` files from `curations/`. This triggers on every boot where the `ont:curation:loaded` sentinel is absent — i.e., on first install and after `onto.reload` / `onto.reset`.
 
-### 7.2 Base Package (`ontology/base1–3/` (the base packs))
+### 7.2 Base Packages (`ontology/base1–3/`)
 
-The `base1`/`base2`/`base3` packs load automatically at startup (progressively, in order). Together they hold the core vocabulary, everyday life-world, and specialist/knowledge canopy — roughly 16k atoms across ~186 `.ak` files (base1 ≈ words, feelings and the everyday table; base2 ≈ the life-world; base3 ≈ the sciences and the knowledge map). Representative files:
+The `base1`/`base2`/`base3` packs load automatically at startup (progressively, in order), alongside `nutrition`, `recipe`, and `curation`. Together the base packs hold the core vocabulary, everyday life-world, and specialist/knowledge canopy — roughly 16k atoms across ~186 `.ak` files (base1 ≈ words, feelings and the everyday table; base2 ≈ the life-world; base3 ≈ the sciences and the knowledge map). Representative files:
 
 **`emo.ak`** — Extended emotion vocabulary  
 Defines compound emotion concepts with `emo:*` aliases, extending the 8 primary emotions hard-coded in DNA: `emo:admiration`, `emo:adoration`, `emo:aesthetic`, `emo:amusement`, `emo:anxiety`, `emo:awkwardness`, and more.
@@ -632,10 +638,8 @@ An `.ak` file is a plain-text list of shell commands, one per line. Blank lines 
 ```
 # ==============================================================================
 # Akasha Ontology: [Topic]
-# ⚠️ このontologyはLLMに指示して作られました。人間の専門家による厳密なチェックは
-# 行なっていませんので、利用の際はご注意ください。
-# (This ontology was created with LLM instructions and has not been rigorously
-# reviewed by human domain experts. Please use with caution.)
+# ⚠️ This ontology was created with LLM instructions and has not been rigorously
+# reviewed by human domain experts. Please use with caution.
 # ==============================================================================
 
 # --- Section name ---
@@ -771,7 +775,7 @@ This workflow lets a collaborating LLM serve as an auditor without needing file-
 | [`docs/concept-model/concept-model-intelligence.md`](../concept-model/concept-model-intelligence.md) | The Fact→Intelligence pipeline in detail |
 | [`docs/ontology/concept-extensions-earth.md`](concept-extensions-earth.md) | Geo and Earth-science concept extensions |
 | [`docs/concept-extensions-story.md`](concept-extensions-story.md) | Story and character concept extensions |
-| [`docs/scope-dimension-model.md`](scope-dimension-model.md) | How multi-dimensional scoping works |
+| [`docs/developer/scope-dimension-model.md`](../developer/scope-dimension-model.md) | How multi-dimensional scoping works |
 
 ---
 

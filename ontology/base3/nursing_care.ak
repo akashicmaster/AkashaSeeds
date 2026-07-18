@@ -1,4 +1,4 @@
-# Akasha ontology — nursing science & long-term care (看護学・介護).
+# Akasha ontology — nursing science & long-term care.
 # Bridged to occupation:nurse/caregiver, place:hospital/nursing_home, social:
 # caregiver_of/care_recipient_of, gov:welfare and med:. Base pack.
 
@@ -7,7 +7,7 @@ ln nursing occupation:nurse thesaurus:related
 ln nursing social:caregiver_of thesaurus:related
 ln nursing place:hospital thesaurus:related
 
-# ── nursing process (看護過程, ordered) ──
+# ── nursing process ──
 def "nursing:nursing_assessment" "Gathering the patient's health data (アセスメント)."
 ln nursing:nursing_assessment nursing thesaurus:related
 ln nursing:nursing_assessment nursing:nursing_diagnosis chrono:before
@@ -51,7 +51,7 @@ def "nursing:self_care_deficit_theory" "Orem's theory: nursing meets the self-ca
 ln nursing:self_care_deficit_theory nursing thesaurus:related
 def "nursing:theory_of_caring" "Watson's theory placing caring at the heart of nursing."
 ln nursing:theory_of_caring nursing thesaurus:related
-# ── long-term care & gerontology (介護・老年学) ──
+# ── long-term care & gerontology ──
 def "care" "Long-term care — sustained support for daily living (介護)."
 ln care occupation:caregiver thesaurus:related
 ln care place:nursing_home thesaurus:related

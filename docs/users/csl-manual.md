@@ -39,7 +39,7 @@
 9. [Common Mistakes](#9-common-mistakes)
 
 > **→ Akasha Shell Reference:** [`docs/user-manual.md`](user-manual.md)  
-> **→ CSL Implementation Spec:** [`docs/csl-spec.md`](csl-spec.md)
+> **→ CSL Implementation Spec:** [`docs/developer/csl-spec.md`](../developer/csl-spec.md)
 
 ---
 
@@ -1548,4 +1548,4 @@ Decimal numbers always use a dot, regardless of your locale.
 ---
 
 *For Akasha shell commands: [`docs/user-manual.md`](user-manual.md)*  
-*For implementation details: [`docs/csl-spec.md`](csl-spec.md)*
+*For implementation details: [`docs/developer/csl-spec.md`](../developer/csl-spec.md)*

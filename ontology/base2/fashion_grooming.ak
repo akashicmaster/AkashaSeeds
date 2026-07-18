@@ -1,6 +1,6 @@
 # Akasha ontology — personal: fashion, cosmetics, accessories, grooming.
 # Clothing by body zone × formality × season; cosmetics by type; bags/wallets;
-# and the身支度 activities (dressing/makeup/grooming) that going out requires.
+# and thegetting-ready activities (dressing/makeup/grooming) that going out requires.
 # Built on home:closet, season:*, verb:act:wear. Base pack.
 
 def "clothing" "A garment."
@@ -20,7 +20,7 @@ def "formality:formal" "formal dress."
 def "formality:sportswear" "sportswear dress."
 def "formality:loungewear" "loungewear dress."
 
-# ── clothing (部位×フォーマル度×季節) ──
+# ── clothing ──
 def "clothing:t_shirt" "T shirt."
 ln clothing:t_shirt clothing_zone:upper clothing:zone
 ln clothing:t_shirt formality:casual clothing:formality
@@ -318,7 +318,7 @@ def "cosmetic_type:cheek" "cheek makeup"
 def "cosmetic_type:nail" "nail"
 def "cosmetic_type:skincare" "skincare"
 def "cosmetic_type:tool" "makeup tool"
-# ── cosmetics (化粧品) → makeup ──
+# ── cosmetics → makeup ──
 def "cosmetic:foundation" "Foundation."
 ln cosmetic:foundation cosmetic_type:base thesaurus:related
 ln cosmetic:foundation activity:makeup home:used_for
@@ -472,7 +472,7 @@ def "accessory_type:bag" "bag/luggage"
 def "accessory_type:wallet" "money-carrier"
 def "accessory_type:jewelry" "jewellery"
 def "accessory_type:other" "other accessory"
-# ── accessories (カバン・財布・装身具) ──
+# ── accessories ──
 def "accessory:handbag" "Handbag."
 ln accessory:handbag accessory_type:bag thesaurus:related
 ln accessory:handbag home:closet home:located_in
@@ -569,7 +569,7 @@ ln accessory:sunglasses home:closet home:located_in
 ln accessory:sunglasses verb:act:wear verb:acts_on
 ln accessory:sunglasses obj:durable obj_durability
 
-# ── grooming / going-out activities (身だしなみ) ──
+# ── grooming / going-out activities ──
 def "activity:dressing" "着替え — getting dressed."
 def "activity:makeup" "化粧 — applying makeup."
 def "activity:grooming" "身だしなみ — grooming (hair, shaving, tidying)."

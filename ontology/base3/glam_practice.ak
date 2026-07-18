@@ -1,4 +1,4 @@
-# Akasha ontology — GLAM practice: librarian (司書) & curator (学芸員).
+# Akasha ontology — GLAM practice: librarian & curator.
 # Professional practice of libraries and museums — close to Akasha's own
 # thesaurus / curation / librarian roles. Adds place:museum. Base pack.
 
@@ -29,7 +29,7 @@ ln occupation:librarian place:library civic:role_at
 ln occupation:curator place:museum civic:role_at
 ln occupation:archivist place:archive civic:role_at
 
-# ── librarian practice (司書実務) ──
+# ── librarian practice ──
 def "lib:cataloging" "Cataloging (目録) — describing an item for the catalog."
 ln lib:cataloging place:library civic:role_at
 ln lib:cataloging occupation:librarian thesaurus:related
@@ -96,7 +96,7 @@ ln lib:classification thesaurus:related thesaurus:related
 ln lib:circulation lib:lending sys:part_of
 ln lib:lending verb:act:lend thesaurus:related
 
-# ── curator practice (学芸員実務) ──
+# ── curator practice ──
 def "mus:exhibition" "Exhibition (展覧会) — planning and mounting a show."
 ln mus:exhibition place:museum civic:role_at
 ln mus:exhibition occupation:curator thesaurus:related

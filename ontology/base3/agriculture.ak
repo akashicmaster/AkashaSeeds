@@ -1,4 +1,4 @@
-# Akasha ontology — agriculture & agronomy (農学).
+# Akasha ontology — agriculture & agronomy.
 # ag:/agri: held only agritech; this adds the agricultural SCIENCES — soil, crop,
 # animal and plant science — bridged to ag:/futureag:/foodsustain:/ingred:/
 # occupation:/bio:/season:. Base pack.
@@ -6,7 +6,7 @@
 def "agron" "Agronomy — the science of crop production and soil management (農学)."
 ln agron occupation:farmer thesaurus:related
 
-# ── soil science (土壌学) ──
+# ── soil science ──
 def "agron:soil_science" "The study of soil as a natural resource (土壌学)."
 ln agron:soil_science agron thesaurus:related
 def "agron:soil_fertility" "The soil's capacity to supply nutrients to crops (地力)."
@@ -31,7 +31,7 @@ ln agron:compost foodsci:fermentation_science thesaurus:related
 def "agron:nutrient_management" "Managing nutrient inputs for yield and environment."
 ln agron:nutrient_management agron thesaurus:related
 ln agron:nutrient_management enveng:water_pollution thesaurus:related
-# ── crop science (作物学) ──
+# ── crop science ──
 def "agron:crop_science" "The study of field-crop production (作物学)."
 ln agron:crop_science agron thesaurus:related
 def "agron:crop_rotation" "Alternating crops to preserve soil and break pests (輪作)."
@@ -66,7 +66,7 @@ def "agron:horticulture" "The cultivation of fruits, vegetables and ornamentals 
 ln agron:horticulture agron thesaurus:related
 ln agron:horticulture home:garden thesaurus:related
 ln agron:horticulture activity:gardening thesaurus:related
-# ── animal & plant science (畜産・植物) ──
+# ── animal & plant science ──
 def "agron:animal_science" "The science of livestock production (畜産学)."
 ln agron:animal_science agron thesaurus:related
 def "agron:animal_husbandry" "The care and breeding of farm animals (家畜飼育)."

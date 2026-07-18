@@ -1,4 +1,4 @@
-# Akasha ontology — educational psychology (教育心理学) & education studies (教育学).
+# Akasha ontology — educational psychology & education studies.
 # The learning sciences and the study of teaching — cross-linking psy:, school:,
 # teaching:, org: motivation, and ai: (human vs machine learning). Base pack.
 
@@ -71,7 +71,7 @@ ln edupsy:feedback edupsy thesaurus:related
 ln edupsy:feedback work:performance_review thesaurus:related
 def "edupsy:differentiated_instruction" "Adapting teaching to diverse learners."
 ln edupsy:differentiated_instruction edupsy thesaurus:related
-# ── education studies & pedagogy (教育学) ──
+# ── education studies & pedagogy ──
 def "pedagogy" "The theory and practice of teaching and education (教育学)."
 ln pedagogy edupsy thesaurus:related
 ln pedagogy teaching:lecture thesaurus:related

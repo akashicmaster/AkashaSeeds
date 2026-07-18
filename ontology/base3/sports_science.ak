@@ -1,4 +1,4 @@
-# Akasha ontology — sports science & physical education (スポーツ科学・体育).
+# Akasha ontology — sports science & physical education.
 # Greenfield. Bridged to med:/bme:/nutrisci:/psy:/rehab:/activity:exercise/group:.
 # Base pack.
 

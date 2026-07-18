@@ -1,4 +1,4 @@
-# Akasha ontology — archaeology & geography (考古学・地理学).
+# Akasha ontology — archaeology & geography.
 # archaeology/ was empty; geography as a discipline was thin (geo: is mostly
 # places). Bridged to mus:/digarch:/epig:/earthsci:/oral:/cartog:/geo:/admin:/
 # region:/dh:. Base pack.
@@ -52,7 +52,7 @@ ln archaeo:ethnoarchaeology socio:ethnography thesaurus:related
 ln archaeo:ethnoarchaeology foodstud:food_ethnology thesaurus:related
 def "archaeo:cultural_layer" "An occupation deposit accumulated by human activity (文化層)."
 ln archaeo:cultural_layer archaeo thesaurus:related
-# ── geography as a discipline (地理学) ──
+# ── geography as a discipline ──
 def "geog" "Geography — the study of places, space and human–environment relations (地理学)."
 def "geog:physical_geography" "The study of natural landscapes and processes (自然地理学)."
 ln geog:physical_geography geog thesaurus:related

@@ -1,4 +1,4 @@
-# Akasha ontology — bibliometrics & research evaluation (計量書誌学・研究評価).
+# Akasha ontology — bibliometrics & research evaluation.
 # Metrics over the citation/coauthor graphs (cite:*/collab:*), plus the
 # assessment frameworks and their critiques. Base pack.
 

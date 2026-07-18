@@ -1,4 +1,4 @@
-# Akasha ontology — clinical medicine & medical science (医学).
+# Akasha ontology — clinical medicine & medical science.
 # The academic/clinical discipline, on the small existing med:* (systems/
 # conditions/drugs). Bridged to occupation:doctor, place:hospital, social:
 # doctor_of, research: and bio:. Base pack.
@@ -8,7 +8,7 @@ ln med:medicine occupation:doctor thesaurus:related
 ln med:medicine place:hospital thesaurus:related
 ln med:medicine med:system:western_medicine thesaurus:related
 
-# ── specialties (診療科) ──
+# ── specialties ──
 def "med:specialty:internal_medicine" "Non-surgical care of adult disease (内科)."
 ln med:specialty:internal_medicine med:medicine thesaurus:related
 def "med:specialty:surgery" "Operative treatment of disease (外科)."
@@ -47,7 +47,7 @@ ln med:specialty:anesthesiology med:medicine thesaurus:related
 def "med:specialty:public_health_medicine" "Health of populations (公衆衛生医学)."
 ln med:specialty:public_health_medicine med:medicine thesaurus:related
 ln med:specialty:public_health_medicine gov:function:public_health thesaurus:related
-# ── clinical process (臨床) ──
+# ── clinical process ──
 def "med:clinical:history_taking" "Eliciting the patient's story of illness (問診)."
 ln med:clinical:history_taking med:medicine thesaurus:related
 def "med:clinical:physical_examination" "Systematic bodily examination (診察)."

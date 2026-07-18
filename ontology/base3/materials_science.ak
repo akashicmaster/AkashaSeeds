@@ -1,4 +1,4 @@
-# Akasha ontology — materials science (材料科学).
+# Akasha ontology — materials science.
 # The classes, structure, properties and processing of materials. Bridged to
 # chem:/geo:mineral/electron:/bme:/mecheng:. Base pack.
 

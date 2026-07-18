@@ -1,9 +1,9 @@
-# Akasha ontology — room contents: appliances (家電), toiletries, fixtures.
+# Akasha ontology — room contents: appliances, toiletries, fixtures.
 # The tools and machines inside each room. Tagged by location (home:located_in)
 # and durability; appliances link to the activity/verb they serve. Base pack.
 
 def "appliance" "A household electrical appliance (家電)."
-# ── appliances (家電) ──
+# ── appliances ──
 def "appliance:refrigerator" "Refrigerator."
 ln appliance:refrigerator appliance thesaurus:related
 ln appliance:refrigerator home:kitchen home:located_in
@@ -89,7 +89,7 @@ ln appliance:ceiling_light appliance thesaurus:related
 ln appliance:ceiling_light home:living_room home:located_in
 ln appliance:ceiling_light obj:durable obj_durability
 
-# ── toiletries (洗面・浴室の道具) ──
+# ── toiletries ──
 def "toiletry:toothbrush" "Toothbrush."
 ln toiletry:toothbrush home:bathroom home:located_in
 ln toiletry:toothbrush obj:durable obj_durability
@@ -129,7 +129,7 @@ ln toiletry:cotton_swab home:bathroom home:located_in
 ln toiletry:cotton_swab obj:consumable obj_durability
 ln toiletry:cotton_swab concept:daily_necessities civic:supplies
 
-# ── room fixtures (什器・水回り) ──
+# ── room fixtures ──
 def "home:bathtub" "Bathtub — fixture."
 ln home:bathtub home_type:fixture thesaurus:related
 ln home:bathtub home:bathroom home:located_in

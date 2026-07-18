@@ -1,4 +1,4 @@
-# Akasha ontology — digital humanities (デジタル人文学), thick + cross-disciplinary.
+# Akasha ontology — digital humanities, thick + cross-disciplinary.
 # DH is bridging by nature: humanities method ↔ computation ↔ GLAM/linked data.
 # Each method carries dh:bridges edges to the field(s) it connects — and many
 # land squarely on Akasha's own graph/thesaurus/linked-data core. Base pack.

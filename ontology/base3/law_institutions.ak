@@ -1,4 +1,4 @@
-# Akasha ontology — law as institution: the formal face of the norm (法・制度面).
+# Akasha ontology — law as institution: the formal face of the norm.
 # The existing law: layer is rich in jurisprudence, legal history and comparative
 # traditions (law:concept/tradition/code). This adds the everyday INSTITUTIONAL
 # machinery — branches, institutions, process, actors, sources, sanctions — and
@@ -11,7 +11,7 @@ ln law:law socio:social_control thesaurus:related
 ln law:law law:concept:rule_of_law thesaurus:related
 ln law:law civ:responsibility thesaurus:related
 
-# ── branches of law (法分野) ──
+# ── branches of law ──
 def "law:branch:criminal_law" "Law defining offences against the public and their punishment (刑法)."
 ln law:branch:criminal_law law:law thesaurus:related
 ln law:branch:criminal_law socio:deviance thesaurus:related
@@ -72,7 +72,7 @@ def "law:branch:environmental_law" "Law protecting the environment (環境法)."
 ln law:branch:environmental_law law:law thesaurus:related
 ln law:branch:environmental_law foodsustain:carbon_footprint_food thesaurus:related
 ln law:branch:environmental_law econ:externality thesaurus:related
-# ── legal institutions (法機関) ──
+# ── legal institutions ──
 def "law:institution:court" "A tribunal that hears and decides legal cases (裁判所)."
 ln law:institution:court law:law thesaurus:related
 ln law:institution:court occupation:judge thesaurus:related
@@ -98,7 +98,7 @@ ln law:institution:jury law:law thesaurus:related
 ln law:institution:jury law:concept:trial_by_jury thesaurus:related
 def "law:institution:prosecution_service" "The public body that brings criminal charges (検察)."
 ln law:institution:prosecution_service law:law thesaurus:related
-# ── legal process (手続) ──
+# ── legal process ──
 def "law:process:legislation" "The making of statutes by a legislature (立法)."
 ln law:process:legislation law:law thesaurus:related
 ln law:process:legislation law:source:statute thesaurus:related
@@ -140,7 +140,7 @@ ln law:process:arbitration law:branch:commercial_law thesaurus:related
 def "law:process:mediation" "Facilitated negotiation toward a voluntary agreement (調停)."
 ln law:process:mediation law:law thesaurus:related
 ln law:process:mediation civ:facilitation thesaurus:related
-# ── legal actors (当事者) ──
+# ── legal actors ──
 def "law:actor:legislator" "A member of a law-making body (議員)."
 ln law:actor:legislator law:law thesaurus:related
 ln law:actor:legislator occupation:official thesaurus:related
@@ -165,7 +165,7 @@ def "law:actor:witness" "One who gives evidence under oath (証人)."
 ln law:actor:witness law:law thesaurus:related
 def "law:actor:magistrate" "A minor judicial officer."
 ln law:actor:magistrate law:law thesaurus:related
-# ── sources of law (法源) ──
+# ── sources of law ──
 def "law:source:statute" "A written law enacted by a legislature (制定法/法律)."
 ln law:source:statute law:law thesaurus:related
 ln law:source:statute socio:norm thesaurus:related
@@ -196,7 +196,7 @@ def "law:source:customary_law" "Law arising from long-established practice (慣�
 ln law:source:customary_law law:law thesaurus:related
 ln law:source:customary_law law:concept:customary_law thesaurus:related
 ln law:source:customary_law socio:folkways thesaurus:related
-# ── sanctions & remedies (制裁) ──
+# ── sanctions & remedies ──
 def "law:sanction:sanction" "A penalty enforcing a law or norm (制裁)."
 ln law:sanction:sanction law:law thesaurus:related
 ln law:sanction:sanction socio:social_control thesaurus:related
