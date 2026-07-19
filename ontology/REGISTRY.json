@@ -2,6 +2,10 @@
   "version": "2",
   "packages": [
     {
+      "name": "lexicon",
+      "autoload": true
+    },
+    {
       "name": "base1",
       "autoload": true
     },

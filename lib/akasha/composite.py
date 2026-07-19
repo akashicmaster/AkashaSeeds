@@ -790,33 +790,57 @@ class AkashaEngine:
     def get_all_aliases(self) -> List[Dict[str, str]]: return self.core.get_aliases_by_pattern('%')
 
     def get_adjacent_links(self, key: str, rel_pattern: Optional[str] = None) -> List[List[str]]:
-        links = self.core.get_adjacent_links(key, rel_pattern)
-        if not links:
-            nucleus = getattr(self, '_nucleus', None)
-            if nucleus:
-                links = nucleus.core.get_adjacent_links(key, rel_pattern)
-        return [[r["dst"], r["rel"]] for r in (links or [])]
+        # UNION local + nucleus (dedup by dst+rel), never either/or: an atom's edges
+        # can be split across a per-user cell and the shared nucleus (e.g. a proto-word
+        # whose ontology `specializes` senses live in the nucleus while the user's own
+        # cell holds an unrelated edge to it). An either/or fallback would drop the
+        # nucleus edges the moment the local side had ANY edge — hiding the path to the
+        # same-leaf namespaced atoms. Correctness over throughput (reads are hash lookups).
+        links = list(self.core.get_adjacent_links(key, rel_pattern) or [])
+        nucleus = getattr(self, '_nucleus', None)
+        if nucleus:
+            seen = {(r["dst"], r["rel"]) for r in links}
+            for r in (nucleus.core.get_adjacent_links(key, rel_pattern) or []):
+                if (r["dst"], r["rel"]) not in seen:
+                    links.append(r); seen.add((r["dst"], r["rel"]))
+        return [[r["dst"], r["rel"]] for r in links]
 
     def get_incoming_links(self, key: str, rel_pattern: Optional[str] = None) -> List[List[str]]:
-        links = self.core.get_incoming_links(key, rel_pattern)
-        if not links:
-            nucleus = getattr(self, '_nucleus', None)
-            if nucleus:
-                links = nucleus.core.get_incoming_links(key, rel_pattern)
-        return [[r["src"], r["rel"]] for r in (links or [])]
+        # UNION local + nucleus (dedup by src+rel) — see get_adjacent_links. Incoming
+        # `specializes` edges from the ontology's namespaced senses live in the nucleus;
+        # an either/or fallback dropped them once the caller's cell had any local edge.
+        links = list(self.core.get_incoming_links(key, rel_pattern) or [])
+        nucleus = getattr(self, '_nucleus', None)
+        if nucleus:
+            seen = {(r["src"], r["rel"]) for r in links}
+            for r in (nucleus.core.get_incoming_links(key, rel_pattern) or []):
+                if (r["src"], r["rel"]) not in seen:
+                    links.append(r); seen.add((r["src"], r["rel"]))
+        return [[r["src"], r["rel"]] for r in links]
     
     def get_magnetic_neighborhood(self, key: str, radius_threshold: float = 0.5) -> List[Dict]:
+        # UNION local + nucleus for BOTH directions (dedup by endpoint+rel), never
+        # either/or — an atom's edges may be split across the per-user cell and the
+        # shared nucleus, so an either/or fallback would drop one side's edges the
+        # moment the other had any. This is what surfaces a proto-word's `specializes`
+        # senses (nucleus) even when the caller's own cell also links to it. See the
+        # get_adjacent_links note for the full rationale.
         nucleus = getattr(self, '_nucleus', None)
-        out_links = self.core.get_adjacent_links(key)
-        if not out_links and nucleus:
-            out_links = nucleus.core.get_adjacent_links(key)
-        in_links = self.core.get_incoming_links(key)
-        if not in_links and nucleus:
-            in_links = nucleus.core.get_incoming_links(key)
+        out_links = list(self.core.get_adjacent_links(key) or [])
+        in_links = list(self.core.get_incoming_links(key) or [])
+        if nucleus:
+            seen_out = {(r["dst"], r["rel"]) for r in out_links}
+            for r in (nucleus.core.get_adjacent_links(key) or []):
+                if (r["dst"], r["rel"]) not in seen_out:
+                    out_links.append(r); seen_out.add((r["dst"], r["rel"]))
+            seen_in = {(r["src"], r["rel"]) for r in in_links}
+            for r in (nucleus.core.get_incoming_links(key) or []):
+                if (r["src"], r["rel"]) not in seen_in:
+                    in_links.append(r); seen_in.add((r["src"], r["rel"]))
         results = []
-        for link in (out_links or []):
+        for link in out_links:
             results.append({"key": link["dst"], "rel": link["rel"], "w": link["w"], "type": "explicit", "direction": "out"})
-        for link in (in_links or []):
+        for link in in_links:
             results.append({"key": link["src"], "rel": link["rel"], "w": link["w"], "type": "explicit", "direction": "in"})
         return results
 
@@ -1227,6 +1251,31 @@ class AkashaEngine:
         current_layer = {focal_key}
         _nucleus = getattr(self, '_nucleus', None)
 
+        # Proto-word hub seeding: a bare hub's OWN outgoing links are only the
+        # `specializes` scaffolding, so its semantic associations live on its SENSES
+        # (the qualified atoms that specialize it — reached via INCOMING specializes).
+        # Seed the BFS with those senses as depth-0 peers of the hub so their outgoing
+        # semantic links surface as the hub's associations — the same through-the-hub
+        # traversal generate_view uses for signposts. visited-guarded (senses are
+        # traversal sources, not emitted as associations) and fail-closed (a sense the
+        # caller cannot read is never traversed, so it can't leak its edges).
+        _incoming = list(self.core.get_incoming_links(focal_key) or [])
+        if _nucleus:
+            _seen_in = {(l["src"], l["rel"]) for l in _incoming}
+            for l in (_nucleus.core.get_incoming_links(focal_key) or []):
+                if (l["src"], l["rel"]) not in _seen_in:
+                    _incoming.append(l)
+        for l in _incoming:
+            if l["rel"] != "specializes":
+                continue
+            sk = l["src"]
+            if sk in visited:
+                continue
+            if allowed_scopes and not self.check_access(sk, allowed_scopes):
+                continue
+            visited.add(sk)
+            current_layer.add(sk)
+
         for depth in range(1, scope + 1):
             next_layer: set = set()
             for nid in current_layer:
@@ -1521,6 +1570,29 @@ class AkashaEngine:
                 "hint":       f"No '{ax}' links found.",
                 "candidates": candidates[:3],
             })
+
+        # Salient-relation voids (first-class rels): a relation the atom's CATEGORY
+        # declares salient (fruit → varieties, sweetness — resolved up the is_a/part_of
+        # hierarchy) but the atom LACKS is a domain-specific gap. Only on a general scan
+        # (no explicit axis), so an axis-filtered query stays focused.
+        if axis is None:
+            from lib.akasha import lexicon
+            present_rels = {l["rel"] for l in (self.core.get_adjacent_links(focal_key) or [])}
+            if nucleus:
+                present_rels |= {l["rel"] for l in (nucleus.core.get_adjacent_links(focal_key) or [])}
+            for rel in lexicon.resolve_salient_rels(self, focal_key):
+                if rel in present_rels:
+                    continue
+                _full = lexicon.rel_description(self, rel)       # reldef full-spelling
+                _label = _full.split("—", 1)[0].strip() if _full else rel
+                voids.append({
+                    "axis":       "salient",
+                    "missing":    rel,
+                    "missing_full": _full,
+                    "hint":       f"Salient relation '{_label}' expected for this category but absent.",
+                    "candidates": [],
+                    "salient":    True,
+                })
 
         return voids
 

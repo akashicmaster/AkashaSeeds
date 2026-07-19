@@ -66,6 +66,7 @@ class OntologyLearner:
         self.vocab: Dict[str, int] = {}
         self.vectors = None             # numpy [V, k]
         self.trained = False
+        self.n_docs = 0                 # corpus size at train time (for stunted-model self-heal)
 
     @staticmethod
     def available() -> bool:
@@ -76,6 +77,7 @@ class OntologyLearner:
         if not _HAS_NUMPY:
             return False
         docs = [d for d in docs if d]
+        self.n_docs = len(docs)
         if len(docs) < 3:
             return False
 
@@ -153,6 +155,7 @@ class OntologyLearner:
             "dim": int(self.vectors.shape[1]),
             "vocab": self.vocab,
             "vectors": [[round(float(x), 5) for x in row] for row in self.vectors],
+            "n_docs": int(self.n_docs),
         }
 
     @classmethod
@@ -163,6 +166,7 @@ class OntologyLearner:
         try:
             learner.vocab = d["vocab"]
             learner.vectors = _np.array(d["vectors"], dtype=_np.float64)
+            learner.n_docs = int(d.get("n_docs", 0) or 0)
             learner.trained = True
         except Exception:                # pragma: no cover
             learner.trained = False

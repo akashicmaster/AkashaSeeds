@@ -129,11 +129,16 @@ class MultiLocaleNLP:
 
     def __init__(self):
         self.models: Dict[str, Any] = {}
+        # Latin-script SpaCy models only. CJK models (ja/zh/ko) are intentionally
+        # omitted: they pull heavy per-language morphology deps (fugashi+ipadic for
+        # Japanese, jieba/pkuseg for Chinese) that are not needed yet and error on
+        # constrained hosts. CJK segments degrade to the built-in bigram floor (T0)
+        # — see _tokenize_cjk_basic. Akasha stays multi-locale at the DATA layer
+        # (Unicode); full CJK NLP is the deferred multi-locale roadmap item, not a
+        # privileged special case. Add a CJK model back here to re-enable it.
         self.model_map: Dict[str, str] = {
             "en": "en_core_web_sm",
-            "ja": "ja_core_news_sm",
             "de": "de_core_news_sm",
-            "zh": "zh_core_web_sm",
             "fr": "fr_core_news_sm",
             "es": "es_core_news_sm",
         }

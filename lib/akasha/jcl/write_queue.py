@@ -30,7 +30,9 @@ Role in the homoiconic job graph:
     LOW    → background: LLM batch, ontology load, sensor polling loops
 """
 
+import os
 import queue
+import time
 import itertools
 import threading
 import concurrent.futures
@@ -38,6 +40,40 @@ import logging
 from typing import Any, Callable, Optional
 
 logger = logging.getLogger("Harmonia.WriteQueue")
+
+
+def _host_is_constrained() -> bool:
+    """A single-GIL host where a background write flood (boot ontology load) can
+    starve the interactive threads that serve the web portal — chiefly a-Shell /
+    iOS (which the runtime reports as iPadOS/iOS) and genuinely low-core machines.
+    On a capable desktop the GIL's own time-slicing keeps the portal responsive, so
+    the pacing below is a no-op there."""
+    try:
+        import platform
+        s = platform.system().lower()
+        if s in ("ios", "ipados", "iphoneos"):
+            return True
+        if platform.machine().lower().startswith(("ipad", "iphone")):
+            return True
+    except Exception:
+        pass
+    return (os.cpu_count() or 4) <= 2
+
+
+# Background-write pacing (constrained hosts only). While a background job (priority
+# >= _BG_PRIO) is flooding the queue, cede the CPU for _YIELD_S every _YIELD_INTERVAL
+# of processing so interactive threads (the portal's RPCs) get a fair share. Only
+# background items are paced — interactive writes (priority 0) are never delayed. The
+# overhead is proportional (~_YIELD_S/_YIELD_INTERVAL of background time) and tunable.
+_CONSTRAINED = _host_is_constrained()
+_BG_PRIO = 2                                                    # 0=HIGH..3=IDLE; >=2 is background
+# Defaults cede ~35% of background time to interactive threads — enough to keep the
+# portal responsive on a-Shell; boot (already slow there) is proportionally longer.
+# Tune with AKASHA_WQ_YIELD_INTERVAL_MS / AKASHA_WQ_YIELD_MS (larger yield = snappier
+# portal, slower boot; set yield to 0 to disable pacing entirely).
+_YIELD_INTERVAL = float(os.environ.get("AKASHA_WQ_YIELD_INTERVAL_MS", "15")) / 1000.0
+_YIELD_S = float(os.environ.get("AKASHA_WQ_YIELD_MS", "8")) / 1000.0
+_PACING = _CONSTRAINED and _YIELD_S > 0                         # off on desktop / when disabled
 
 
 class WriteQueue:
@@ -57,6 +93,7 @@ class WriteQueue:
 
     def _run(self) -> None:
         self._worker = threading.current_thread()
+        _last_yield = time.monotonic()
         while True:
             _prio, _seq, item = self._q.get()
             if item is None:       # shutdown sentinel
@@ -66,6 +103,13 @@ class WriteQueue:
                 future.set_result(fn())
             except Exception as exc:
                 future.set_exception(exc)
+            # Constrained hosts only: while a background flood (boot ontology load)
+            # runs, briefly cede the CPU so the web portal's interactive RPCs are not
+            # starved. Paces BACKGROUND items only; interactive writes run full speed.
+            if _PACING and _prio >= _BG_PRIO:
+                if time.monotonic() - _last_yield >= _YIELD_INTERVAL:
+                    time.sleep(_YIELD_S)
+                    _last_yield = time.monotonic()
 
     def submit(self, fn: Callable[[], Any], priority: Optional[int] = None) -> Any:
         """

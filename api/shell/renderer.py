@@ -122,6 +122,17 @@ def paged_render(resp: dict) -> None:
         sys.stdout.write(text)
 
 
+def _rel_label(rel: str, rel_desc=None) -> str:
+    """Display label for a relation (definition-completeness display precedence): the
+    reldef full-spelling head when the ontology defines one, else the raw rel string —
+    never a bare undefined token beyond what the graph actually holds."""
+    if rel_desc:
+        head = rel_desc.split("—", 1)[0].strip()
+        if head:
+            return head
+    return rel or ""
+
+
 def render(resp: dict):
     """Render a JSON-RPC 2.0 response dict to stdout."""
     if "error" in resp:
@@ -505,6 +516,11 @@ def render_atom(result: dict):
     if content:
         print(f"  {c(Colors.GREEN, chr(34) + str(content) + chr(34))}")
 
+    # First-class namespace: plain-language gloss of the atom's namespace prefix.
+    ns_desc = result.get("namespace_desc")
+    if ns_desc:
+        print(f"  {c(Colors.DIM, 'namespace: ' + str(ns_desc)[:72])}")
+
     # Meta fields (skip empty/internal)
     _SKIP_META = {"key", "content"}
     if meta:
@@ -518,7 +534,8 @@ def render_atom(result: dict):
         print(f"  {c(Colors.DIM, '─' * 46)}")
         for lk in all_links:
             arrow   = "→" if lk.get("direction") == "out" else "←"
-            rel     = lk.get("rel", "?")
+            # First-class relation: show the reldef full-spelling when defined.
+            rel     = _rel_label(lk.get("rel", "?"), lk.get("rel_desc"))
             lkey    = lk.get("key", "")
             lshort  = lkey[:8] + "…" if len(lkey) > 8 else lkey
             laliases = lk.get("aliases", [])
@@ -704,8 +721,12 @@ def _render_assoc(result: dict):
                 print(f"    {c(Colors.CYAN, str(num)):>6}. {rel} → {a_c}  {prv}  {cnt}")
                 num += 1
         else:
+            # Suggest the write with the readable label; keep the raw rel token in the
+            # actual command so it stays copy-pasteable.
             hint_rel = miss_rel or ax
-            print(f"    {c(Colors.DIM, f'(no candidates — ln {focal_ref} <target> {hint_rel})')}")
+            hint_lbl = _rel_label(miss_rel, void.get("missing_full")) if miss_rel else ax
+            _shown = f"{hint_rel}" if hint_lbl == hint_rel else f"{hint_rel}  ({hint_lbl})"
+            print(f"    {c(Colors.DIM, f'(no candidates — ln {focal_ref} <target> {_shown})')}")
 
     if filled:
         print(f"\n  {c(Colors.GREEN, f'Filled {len(filled)} void(s):')}")
@@ -1006,6 +1027,11 @@ def render_dive(view: dict):
         nd_str = _fmt_nd(focus_nd)
         print(f"  {c(Colors.DIM, 'cosmos: ' + nd_str)}")
 
+    # First-class namespace: plain-language gloss of the focus atom's namespace prefix.
+    ns_desc = focus.get("namespace_desc")
+    if ns_desc:
+        print(f"  {c(Colors.DIM, 'namespace: ' + ns_desc[:72])}")
+
     # ── Signposts: links + containment, numbered for navigation ──────────
     if signposts:
         link_sps   = [sp for sp in signposts if sp.get("rel") != "sys:member_of"]
@@ -1021,7 +1047,8 @@ def render_dive(view: dict):
                 hex_col = (sp_nd[5] if (sp_nd and len(sp_nd) > 5) else None) \
                           or _alias_aura(sp.get("alias") or "")
                 alias   = aura_c(hex_col, raw_alias) if hex_col else raw_alias
-                rel     = c(Colors.DIM, sp.get("rel", ""))
+                # First-class relation: show the reldef full-spelling when defined.
+                rel     = c(Colors.DIM, _rel_label(sp.get("rel", ""), sp.get("rel_desc")))
                 arrow   = "←" if sp.get("direction") == "in" else "→"
                 bra     = sp.get("branches_ahead", 0)
                 bra_s   = f"  {c(Colors.DIM, f'[{bra}→]')}" if bra else ""
@@ -1066,6 +1093,12 @@ def render_dive(view: dict):
         if nd_list:
             colors = {nd[5] for nd in nd_list if len(nd) > 5 and nd[5]}
             print(f"\n{c(Colors.DIM, f'Cosmos field: {len(signposts)} neighbours  {len(colors)} regions')}")
+
+    # Explicit overflow — proximity-ranked hub neighbours beyond the display bound are
+    # never silently dropped; say how many and how to reach them (dive a sense).
+    overflow = view.get("hub_overflow", 0)
+    if overflow:
+        print(c(Colors.DIM, f"     … +{overflow} more near neighbours — dive a sense to see all"))
 
     print()
 

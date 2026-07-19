@@ -49,6 +49,7 @@ import uuid
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
+from lib.akasha.pagination import paginate as _shared_paginate
 from lib.akasha.concepts.base import BaseConcept
 
 # An item atom's display text is stored as "<text>⁣<lid>" — the U+2063
@@ -113,22 +114,11 @@ def _dur_min(amount, unit) -> Optional[float]:
 def _paginate(items: List[Any], limit: Any, offset: Any) -> Tuple[List[Any], Optional[str], bool]:
     """Slice a result list. `limit`=0/None → no limit (whole list). The `cursor` is an
     opaque offset; `next_cursor` is the offset to pass next, `has_more` whether more
-    remain. v1-compatible: callers that omit limit/offset get the full list."""
-    try:
-        off = max(0, int(offset or 0))
-    except (TypeError, ValueError):
-        off = 0
-    try:
-        lim = int(limit or 0)
-    except (TypeError, ValueError):
-        lim = 0
-    if lim <= 0:
-        page = items[off:]
-        return page, None, False
-    page = items[off:off + lim]
-    nxt = off + lim
-    more = nxt < len(items)
-    return page, (str(nxt) if more else None), more
+    remain. v1-compatible: callers that omit limit/offset get the full list. Thin
+    adapter over the shared `pagination.paginate` (default=0 preserves the whole-list
+    default this model's callers rely on; page size is already resolved by _page_limit)."""
+    window, page = _shared_paginate(items, limit, offset, default=0)
+    return window, page["next_cursor"], page["has_more"]
 
 
 def _num(v) -> Optional[float]:

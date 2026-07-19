@@ -605,6 +605,9 @@ def run_cli(gw):
     _assoc_state: dict  = {"focal_key": None, "focal_alias": None, "menu": {}}
     _dream_state: dict  = {"focal_key": None, "focal_alias": None, "menu": {}}
     _lens_state:  dict  = {"src": "", "candidates": {}}
+    # Last paginated list command (for `more`/`prev`/`page N` follow-ups). `cmd` is the
+    # raw command with any cursor=/limit= stripped; limit/offset come from its page envelope.
+    _last_list:   dict  = {"cmd": None, "limit": 20, "offset": 0}
 
     # Commands that enter a named navigation mode
     # Selection modes (numeric pick of a staged candidate) — bespoke in-mode handling
@@ -644,6 +647,22 @@ def run_cli(gw):
                 continue
 
             low = full_cmd.lower()
+
+            # ── Page navigation: more / next / prev / page N ──────────────
+            # Re-issue the last paginated list command with an adjusted cursor, so a
+            # long list is turned page-by-page instead of scrolled line-by-line.
+            _pw = low.split()
+            if _pw and _pw[0] in ("more", "next", "prev", "page") and _last_list["cmd"]:
+                _lim = _last_list["limit"] or 20
+                if _pw[0] in ("more", "next"):
+                    _no = _last_list["offset"] + _lim
+                elif _pw[0] == "prev":
+                    _no = max(0, _last_list["offset"] - _lim)
+                else:  # page N (1-based)
+                    _n = int(_pw[1]) if len(_pw) > 1 and _pw[1].isdigit() else 1
+                    _no = max(0, (_n - 1) * _lim)
+                full_cmd = f"{_last_list['cmd']} cursor={_no} limit={_lim}"
+                low = full_cmd.lower()
 
             if low in ("exit", "quit", "bye", "out", "..") and nav_mode["active"]:
                 name = nav_mode["name"]
@@ -1157,6 +1176,13 @@ def run_cli(gw):
             if _nav_cmd == "lens" and "error" not in resp:
                 _lens_state.update(extract_lens_candidates(resp.get("result", {})))
 
+            # Remember a paginated list command so `more`/`prev`/`page N` can re-issue it.
+            _pg = (resp.get("result") or {}).get("page") if isinstance(resp.get("result"), dict) else None
+            if _pg is not None:
+                _base = " ".join(t for t in dispatch_cmd.split()
+                                 if not (t.lower().startswith("cursor=") or t.lower().startswith("limit=")))
+                _last_list = {"cmd": _base, "limit": _pg.get("limit") or 20, "offset": _pg.get("offset") or 0}
+
             if redirect_path:
                 try:
                     with open(redirect_path, "w", encoding="utf-8") as rf:
@@ -1167,6 +1193,16 @@ def run_cli(gw):
                     render(resp)
             else:
                 paged_render(resp)
+                # Page footer: never a silent truncation — say the window and how to move.
+                if _pg is not None and (_pg.get("has_more") or _pg.get("offset")):
+                    _o, _cnt, _tot = _pg.get("offset", 0), _pg.get("count", 0), _pg.get("total", 0)
+                    _hints = []
+                    if _pg.get("has_more"):
+                        _hints.append("`more` next")
+                    if _pg.get("offset"):
+                        _hints.append("`prev`")
+                    _tail = ("  ·  " + " · ".join(_hints)) if _hints else ""
+                    print(c(Colors.DIM, f"     page: {_o + 1}–{_o + _cnt} of {_tot}{_tail}"))
 
         except (KeyboardInterrupt, EOFError):
             print(c(Colors.DIM, "\n[*] Emergency disconnect."))

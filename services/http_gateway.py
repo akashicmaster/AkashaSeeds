@@ -11,13 +11,14 @@ to the internal Akasha Matrix.
 """
 
 import os
+import sys
 import stat as _stat
 import json
 import urllib.parse
 import socket
 import logging
 import traceback
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import HTTPServer, ThreadingHTTPServer, SimpleHTTPRequestHandler
 from typing import Dict, Any, Callable, Optional
 
 import api.gateway as _gw_module
@@ -238,6 +239,43 @@ class BaseWebHandler(SimpleHTTPRequestHandler):
     def log_message(self, format: str, *args):
         logger.debug(f"[HTTP] {format % args}")
 
+class _QuietHTTPServer(ThreadingHTTPServer):
+    """The portal's HTTP server, hardened for real browsers on constrained hosts.
+
+    Two things a plain single-thread HTTPServer gets wrong for mobile Safari / a-Shell:
+
+    1. **Concurrency.** A browser opens several parallel + speculative connections per
+       page (preconnect, prefetch, favicon, asset fan-out). Served one-at-a-time they
+       queue behind each other; the browser cancels the ones it's tired of waiting for,
+       and on a slow device the *actual* HTML request can starve — so the portal never
+       finishes loading. Threading each connection lets the page complete regardless of
+       the speculative ones. Safe here: the backend uses thread-local SQLite read
+       connections and serialises every write through the WriteQueue (the design's
+       read-side parallelism), so concurrent request threads never race the write path.
+
+    2. **Disconnect noise.** When the client tears a connection down mid-response the
+       server hits BrokenPipeError / ConnectionResetError inside wfile.write(), which the
+       stdlib dumps as a scary 'Exception occurred during processing of request …'
+       traceback. On a slow console that ~30-line dump per cancelled connection itself
+       starves the server. It is client-side teardown, not a server fault — nothing is
+       corrupted — so log it quietly. REAL errors still get the full report.
+    """
+
+    daemon_threads = True          # don't let in-flight requests block shutdown
+
+    _BENIGN = (BrokenPipeError, ConnectionResetError, ConnectionAbortedError,
+               TimeoutError)
+
+    def handle_error(self, request, client_address):
+        import sys
+        exc = sys.exc_info()[1]
+        if isinstance(exc, self._BENIGN):
+            logger.debug("[HTTP] client %s disconnected mid-response (%s) — ignored",
+                         client_address, type(exc).__name__)
+            return
+        super().handle_error(request, client_address)
+
+
 class BaseWebService:
     """Manager for the HTTP Server lifecycle."""
     def __init__(self, gw=None, port: int = 8080, host: str = '0.0.0.0', static_dir: str = None):
@@ -258,6 +296,26 @@ class BaseWebService:
     def add_route(self, path: str, method: str, handler: Callable):
         self.routes[path] = {'method': method.upper(), 'handler': handler}
 
+    @staticmethod
+    def _is_ios() -> bool:
+        """True on a-Shell / iOS / iPadOS. There, a server bound to the *explicit*
+        loopback 127.0.0.1 is reachable only inside the same process — a separate
+        client process (Safari, another curl) gets 'Connection refused'. Binding all
+        interfaces works (which is why the stock `python -m http.server`, whose default
+        bind is 0.0.0.0, serves Safari there). platform.system() reports 'iPadOS' /
+        'iOS' and machine is like 'iPad14,1' — the same signal env_detector shows as
+        'OS: Ipados'. A same-process reachability probe can't detect this (it succeeds),
+        so we key off the platform directly."""
+        try:
+            import platform as _p
+            sysname = _p.system().lower()
+            machine = _p.machine().lower()
+        except Exception:
+            sysname = machine = ""
+        return (sysname in ("ios", "ipados", "iphoneos")
+                or machine.startswith(("ipad", "iphone"))
+                or getattr(sys, "platform", "") == "ios")
+
     def start(self, ready_event=None):
         """Bind and serve. If *ready_event* is given, it is set once the banner
         has been printed (or on failure) so the boot sequence can flush all
@@ -271,8 +329,26 @@ class BaseWebService:
         if self._static_dir:
             attrs['static_dir'] = os.path.abspath(self._static_dir)
         handler_class = type('DynamicWebHandler', (BaseWebHandler,), attrs)
+        _loopback = ("127.0.0.1", "localhost", "::1")
+        # On iOS/a-Shell a loopback bind is unreachable from other processes (Safari),
+        # so bind all interfaces instead — with no operator action. Desktop keeps the
+        # requested (safe, localhost-only) bind.
+        if self.host in _loopback and self._is_ios():
+            print(f"{Colors.WARNING}[i] iOS/a-Shell detected — 127.0.0.1 is only reachable "
+                  f"in-process here; binding all interfaces so Safari can reach the "
+                  f"portal.{Colors.ENDC}", flush=True)
+            self.host = "0.0.0.0"
         try:
-            self._httpd = HTTPServer((self.host, self.port), handler_class)
+            # Defensive: if the requested loopback bind itself fails, fall back too.
+            try:
+                self._httpd = _QuietHTTPServer((self.host, self.port), handler_class)
+            except OSError as _bind_err:
+                if self.host not in _loopback:
+                    raise
+                logger.warning("[HTTP] bind to %s failed (%s) — falling back to all "
+                               "interfaces", self.host, _bind_err)
+                self.host = "0.0.0.0"
+                self._httpd = _QuietHTTPServer((self.host, self.port), handler_class)
             for _line in portal_banner(self.host, self.port):
                 print(_line, flush=True)
             if ready_event is not None:

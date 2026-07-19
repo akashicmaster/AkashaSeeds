@@ -1,0 +1,8 @@
+{
+  "label": "Lexicon — Relation & Namespace Definitions",
+  "description": "First-class, self-describing definitions for every relation and namespace in the graph (reldef:/nsdef:), plus the salient-relation profiles that rank a category's most meaningful edges. Loads early so cryptic identifiers read as plain words from first boot. See docs/for-llm/rel-definition-spec.md.",
+  "theme": "Lexicon — Relation & Namespace Definitions",
+  "license": "MIT",
+  "source": "internal",
+  "version": "1.0"
+}

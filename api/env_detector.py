@@ -167,26 +167,21 @@ class EnvironmentDetector:
         return "installable"
 
     def get_nlp_status(self, lang_code: Optional[str] = None) -> str:
-        """Evaluates NLP library status with the Struggle Algorithm."""
+        """Evaluates NLP library status with the Struggle Algorithm.
+
+        `lang_code` is accepted for API compatibility but no longer affects the
+        result: status is language-agnostic now (see below)."""
         ml_status = self.get_ml_engine_status()
         if ml_status == "impossible":
             return "impossible"
-            
-        if not lang_code:
-            lang_code = self.get_primary_locale()
-            
+
+        # No per-language special-casing. SpaCy covers the Latin-script languages
+        # (en/de/fr/es/…) we auto-load; CJK degrades to the built-in bigram floor
+        # and needs no extra package. So SpaCy present == ready. (Full CJK NLP —
+        # fugashi/ipadic for Japanese etc. — is the deferred multi-locale roadmap
+        # item; it is not required for status here and Japanese is not privileged.)
         has_spacy = self.is_library_available('spacy')
-        
-        if lang_code.startswith('ja'):
-            has_fugashi = self.is_library_available('fugashi')
-            has_ipadic = self.is_library_available('ipadic')
-            if has_spacy and has_fugashi and has_ipadic:
-                return "ready"
-        elif lang_code.startswith('en'):
-            if has_spacy:
-                return "ready"
-                
-        return "installable"
+        return "ready" if has_spacy else "installable"
 
     # =========================================================================
     # Getters and Output

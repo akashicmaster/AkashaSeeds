@@ -45,7 +45,24 @@ import sys
 import os
 import platform
 from typing import Dict, Any, List, Optional
-from lib.akasha.composite import AkashaEngine
+from lib.akasha.composite import AkashaEngine, _rel_salience_weight
+from lib.akasha.tensor import TensorEngine
+from lib.akasha import lexicon
+
+# 語感 — the affect field (emotion + sensation) a word evokes. A word's feel is
+# recalled regardless of which SENSE is meant (fruit-apple vs company-apple both
+# evoke the vague "apple" feel), so exploration surfaces MUST show every affect
+# node reachable from a proto-word AND all its same-leaf senses, without a cap.
+# Emotion lives under emo:; sensation is split across the DNA sensory axes
+# (dna:taste/smell/color/texture/sound — where the food ontology's sensory edges
+# actually attach) plus the word:sense:/word:color: palette. Membership is decided
+# by the TARGET atom's alias namespace (atoms are content-addressed; the namespace
+# lives in the alias), the same signal CosmosMapper.get_aura_color uses.
+_AFFECT_PREFIXES: tuple = (
+    "emo:",
+    "dna:taste:", "dna:smell:", "dna:color:", "dna:texture:", "dna:sound:",
+    "word:sense:", "word:color:", "calc:sense", "calc:color",
+)
 
 class CosmosMapper:
     """Delegates N-D cognitive vector mapping to the Tensor Engine."""
@@ -391,6 +408,88 @@ class ConsciousnessEngine:
     # =========================================================================
     # 👁️ COGNITIVE RETRIEVAL & TRAVERSALS (With Scope Boundaries)
     # =========================================================================
+
+    # Proto-word hub expansion bounds. Emotion/sensation (_affect) nodes are NEVER
+    # capped (語感-first). For the remaining neighbours a soft DISPLAY bound keeps the
+    # field legible; whatever is beyond it is reported as an explicit overflow, and each
+    # sense stays independently divable, so nothing is silently dropped. The SCAN bound
+    # caps traversal cost for a pathologically common word (many senses × many edges) —
+    # if it is hit, some far neighbours are simply never scanned (the affect nodes and
+    # nearest neighbours, gathered first per sense, are unaffected in practice).
+    _HUB_SIGNPOST_DISPLAY = 48
+    _HUB_SCAN_CAP = 600
+
+    def _build_signpost(self, link: Dict[str, Any], focus_key: str,
+                        allowed_scopes: List[str], idx: int) -> Optional[Dict[str, Any]]:
+        """Enrich one magnetic-neighbourhood link into a signpost dict (alias, preview,
+        branch count, N-D position), or return None if the neighbour is scope-denied.
+        Reads fall through local → nucleus → group engines, mirroring generate_view."""
+        neighbor_key = link["key"]
+        rel = link["rel"]
+        w = link.get("w", 1.0)
+        link_type = link.get("type", "explicit")
+        direction = link.get("direction", "out")
+
+        # [SECURITY] Filter: local → nucleus → group engines
+        if allowed_scopes:
+            local_ok = self.cortex.check_access(neighbor_key, allowed_scopes)
+            if not local_ok:
+                nucleus_ok = (self.nucleus and
+                              "scope:sys:universal" in allowed_scopes and
+                              self.nucleus.core.check_chunk_access_any(
+                                  neighbor_key, ["scope:sys:universal"]))
+                group_ok = (not nucleus_ok and any(
+                    ge.check_access(neighbor_key) and
+                    f"scope:group_{gid}" in allowed_scopes
+                    for gid, ge in self.group_engines.items()
+                ))
+                if not nucleus_ok and not group_ok:
+                    return None
+
+        dst_aliases = self.cortex.get_aliases_by_key(neighbor_key)
+        if not dst_aliases and self.nucleus:
+            dst_aliases = self.nucleus.get_aliases_by_key(neighbor_key)
+        if not dst_aliases:
+            dst_aliases = self._group_fallback(neighbor_key, "get_aliases_by_key") or []
+
+        dst_content = self.cortex.get_chunk(neighbor_key) or ""
+        if not dst_content and self.nucleus:
+            dst_content = self.nucleus.get_chunk(neighbor_key) or ""
+        if not dst_content:
+            dst_content = self._group_fallback(neighbor_key, "get_chunk") or ""
+
+        branch_count = len(self.cortex.get_adjacent_links(neighbor_key))
+        preview = dst_content[:30].replace('\n', ' ') + "..." if len(dst_content) > 30 else dst_content.replace('\n', ' ')
+
+        dst_meta_row = self.cortex.core.get_chunk_raw(neighbor_key)
+        if not dst_meta_row and self.nucleus:
+            dst_meta_row = self.nucleus.get_chunk_raw(neighbor_key)
+        dst_meta = json.loads(dst_meta_row["meta"]) if dst_meta_row and dst_meta_row["meta"] else {}
+
+        sp_nd = CosmosMapper.calculate_nd(self.cortex, neighbor_key, dst_content, dst_meta, origin_key=focus_key, depth=1)
+
+        # Internal ranking hints (stripped before the view is returned):
+        #  _affect — is this an emotion/sensation node (by the neighbour's alias
+        #            namespace)? 語感-first inclusion never caps these.
+        #  _svec   — the neighbour's semantic vector, for proximity cosine.
+        is_affect = any(a.startswith(p) for a in dst_aliases for p in _AFFECT_PREFIXES)
+        svec = dst_meta.get("semantic_vector") if isinstance(dst_meta, dict) else None
+
+        return {
+            "index": idx,
+            "key": neighbor_key,
+            "alias": dst_aliases[0] if dst_aliases else None,
+            "rel": rel,
+            "direction": direction,
+            "w": w,
+            "type": link_type,
+            "preview": preview,
+            "branches_ahead": branch_count,
+            "cosmos_nd": sp_nd,
+            "_affect": is_affect,
+            "_svec": svec,
+        }
+
     def generate_view(self, focus_key: str, allowed_scopes: List[str] = None) -> Dict[str, Any]:
         """Generates the field of view including N-D vectors and signposts."""
         is_col = self.cortex.core.collection_exists(focus_key)
@@ -460,64 +559,110 @@ class ConsciousnessEngine:
         signposts = []
         magnetic_links = self.cortex.get_magnetic_neighborhood(focus_key)
 
-        for idx, link in enumerate(magnetic_links):
-            neighbor_key = link["key"]
-            rel = link["rel"]
-            w = link.get("w", 1.0)
-            link_type = link.get("type", "explicit")
-            direction = link.get("direction", "out")
+        seen_keys = {focus_key}
+        for link in magnetic_links:
+            sp = self._build_signpost(link, focus_key, allowed_scopes, len(signposts))
+            if sp is not None:
+                signposts.append(sp)
+                seen_keys.add(sp["key"])
 
-            # [SECURITY] Filter: local → nucleus → group engines
-            if allowed_scopes:
-                local_ok = self.cortex.check_access(neighbor_key, allowed_scopes)
-                if not local_ok:
-                    nucleus_ok = (self.nucleus and
-                                  "scope:sys:universal" in allowed_scopes and
-                                  self.nucleus.core.check_chunk_access_any(
-                                      neighbor_key, ["scope:sys:universal"]))
-                    group_ok = (not nucleus_ok and any(
-                        ge.check_access(neighbor_key) and
-                        f"scope:group_{gid}" in allowed_scopes
-                        for gid, ge in self.group_engines.items()
-                    ))
-                    if not nucleus_ok and not group_ok:
+        # ── Proto-word hub expansion ──────────────────────────────────────────────
+        # A bare proto-word (e.g. `apple`) is a lexical disambiguation stub: when
+        # several qualified atoms share a leaf (`word:en:apple`, `ingred:fruit:apple`),
+        # the alias engine links each SENSE to the shared proto-word via `specializes`.
+        # All the real edges (→ sweet, → red, dish → apple) attach to the senses, so a
+        # bare hub's only 1-hop links are that `specializes` scaffolding. An exploration
+        # dive wants the proto-word AS A WHOLE, so traverse ONE hop through each incoming
+        # `specializes` and surface the union of the senses' neighbourhoods. Presentation
+        # rule (語感-first):
+        #   1. EMOTION/SENSATION nodes (_affect) are surfaced without a cap — the feel of
+        #      a word is recalled across all its senses (fruit-apple + company-apple both
+        #      evoke "apple"); these must never be truncated.
+        #   2. The remaining neighbours are proximity-ranked (edge weight × relation-kind
+        #      weight × semantic-vector nearness) and filled up to a soft display bound;
+        #      any beyond it are reported as an explicit overflow (never a silent cut),
+        #      and every sense stays independently navigable so nothing is truly hidden.
+        overflow = 0
+        sense_keys = [l["key"] for l in magnetic_links
+                      if l.get("rel") == "specializes" and l.get("direction") == "in"]
+        if sense_keys:
+            focus_svec = meta.get("semantic_vector") if isinstance(meta, dict) else None
+            candidates: List[Dict[str, Any]] = []
+            scanned = 0
+            for sk in sense_keys:
+                if scanned >= self._HUB_SCAN_CAP:
+                    break
+                # Fail-closed: only traverse through a sense the caller may read
+                # (its own signpost already passed this check; this guards the
+                # expansion source too, so a denied sense never leaks its edges).
+                if allowed_scopes and not self.cortex.check_access(sk, allowed_scopes) \
+                        and not (self.nucleus and "scope:sys:universal" in allowed_scopes
+                                 and self.nucleus.core.check_chunk_access_any(
+                                     sk, ["scope:sys:universal"])):
+                    continue
+                for link in self.cortex.get_magnetic_neighborhood(sk):
+                    if scanned >= self._HUB_SCAN_CAP:
+                        break
+                    nk = link["key"]
+                    # Skip the scaffolding (sense→hub, hub→sense, sibling senses) and
+                    # anything already surfaced as a direct signpost of the hub.
+                    if nk in seen_keys or link.get("rel") == "specializes":
                         continue
+                    sp = self._build_signpost(link, focus_key, allowed_scopes, 0)
+                    if sp is None:
+                        continue
+                    sp["via"] = sk              # provenance: which sense carried the edge
+                    seen_keys.add(nk)
+                    candidates.append(sp)
+                    scanned += 1
 
-            dst_aliases = self.cortex.get_aliases_by_key(neighbor_key)
-            if not dst_aliases and self.nucleus:
-                dst_aliases = self.nucleus.get_aliases_by_key(neighbor_key)
-            if not dst_aliases:
-                dst_aliases = self._group_fallback(neighbor_key, "get_aliases_by_key") or []
+            affect = [c for c in candidates if c.get("_affect")]
+            rest   = [c for c in candidates if not c.get("_affect")]
 
-            dst_content = self.cortex.get_chunk(neighbor_key) or ""
-            if not dst_content and self.nucleus:
-                dst_content = self.nucleus.get_chunk(neighbor_key) or ""
-            if not dst_content:
-                dst_content = self._group_fallback(neighbor_key, "get_chunk") or ""
+            # Relation evaluation via the set's salient-rel profile (first-class rels):
+            # a neighbour whose relation is declared salient for this concept's
+            # category (fruit → varieties, sweetness) is boosted by its rank in that
+            # ordered, inheritance-resolved profile — rank 0 strongest.
+            salient = lexicon.resolve_salient_rels(self.cortex, focus_key)
+            salient_rank = {rel: i for i, rel in enumerate(salient)}
+            n_sal = len(salient)
 
+            def _proximity(c: Dict[str, Any]) -> float:
+                w    = float(c.get("w", 1.0) or 1.0)
+                relw = _rel_salience_weight(c.get("rel", ""))
+                cos  = (TensorEngine.cosine(focus_svec, c.get("_svec"))
+                        if (focus_svec and c.get("_svec")) else 0.0)
+                base = w * relw * (0.5 + 0.5 * cos)
+                rank = salient_rank.get(c.get("rel"))
+                if rank is not None:                       # salient rel → boost by rank
+                    base *= 1.0 + (n_sal - rank) / n_sal   # rank 0 → ×2, later ranks less
+                return base
 
-            branch_count = len(self.cortex.get_adjacent_links(neighbor_key))
-            preview = dst_content[:30].replace('\n', ' ') + "..." if len(dst_content) > 30 else dst_content.replace('\n', ' ')
+            rest.sort(key=_proximity, reverse=True)
 
-            dst_meta_row = self.cortex.core.get_chunk_raw(neighbor_key)
-            if not dst_meta_row and self.nucleus:
-                dst_meta_row = self.nucleus.get_chunk_raw(neighbor_key)
-            dst_meta = json.loads(dst_meta_row["meta"]) if dst_meta_row and dst_meta_row["meta"] else {}
+            # Emotion/sensation: ALWAYS all in. Others: fill to the soft display bound.
+            room = max(0, self._HUB_SIGNPOST_DISPLAY - len(signposts) - len(affect))
+            kept_rest = rest[:room]
+            overflow  = len(rest) - len(kept_rest)
+            for c in affect + kept_rest:
+                c["index"] = len(signposts)
+                signposts.append(c)
 
-            sp_nd = CosmosMapper.calculate_nd(self.cortex, neighbor_key, dst_content, dst_meta, origin_key=focus_key, depth=1)
+        # Strip internal ranking hints from the public payload.
+        for sp in signposts:
+            sp.pop("_affect", None)
+            sp.pop("_svec", None)
 
-            signposts.append({
-                "index": idx,
-                "key": neighbor_key,
-                "alias": dst_aliases[0] if dst_aliases else None,
-                "rel": rel,
-                "direction": direction,
-                "w": w,
-                "type": link_type,
-                "preview": preview,
-                "branches_ahead": branch_count,
-                "cosmos_nd": sp_nd
-            })
+        # First-class relations: attach each signpost's relation full-spelling (from its
+        # reldef:<rel> definition) so a short cryptic edge label reads plainly. Memoised
+        # per relation — the same rel repeats across many signposts.
+        _rd_cache: Dict[str, Optional[str]] = {}
+        for sp in signposts:
+            r = sp.get("rel")
+            if r not in _rd_cache:
+                _rd_cache[r] = lexicon.rel_description(self.cortex, r)
+            if _rd_cache[r]:
+                sp["rel_desc"] = _rd_cache[r]
 
         # ── Resonance: 2-hop semantic neighbourhood ───────────────────────────────
         signpost_keys = {sp["key"] for sp in signposts}
@@ -559,18 +704,29 @@ class ConsciousnessEngine:
                 if len(resonance) >= 15:
                     break
 
+        # First-class namespaces: surface the focus atom's namespace description so a
+        # cryptic prefix (dna:taste:, emo:, bio:) reads plainly.
+        focus_alias = aliases[0] if aliases else None
+        ns_desc = lexicon.namespace_description(self.cortex, lexicon.namespace_of_alias(focus_alias)) \
+            if focus_alias else None
+
         return {
             "type": "atom",
             "focus": {
                 "key": focus_key,
-                "alias": aliases[0] if aliases else None,
+                "alias": focus_alias,
                 "content": content,
                 "meta": meta_str,
-                "cosmos_nd": focus_nd
+                "cosmos_nd": focus_nd,
+                **({"namespace_desc": ns_desc} if ns_desc else {}),
             },
             "signposts":    signposts,
             "resonance":    resonance,
             "associations": associations,
+            # Explicit overflow (never a silent cut): how many proximity-ranked hub
+            # neighbours were beyond the display bound. Each sense stays divable, so
+            # these remain reachable by diving the sense that carried them.
+            "hub_overflow": overflow,
         }
 
     def generate_collection_view(self, name: str, allowed_scopes: List[str] = None) -> Dict[str, Any]:

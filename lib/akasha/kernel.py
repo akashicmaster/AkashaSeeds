@@ -28,6 +28,8 @@ from lib.akasha.identity import Role, Capability
 from lib.akasha.resolver import ContextResolver
 from lib.akasha.kernel_methods import METHOD_TO_ACTION as _METHOD_TO_ACTION
 from lib.akasha.consciousness import CosmosMapper
+from lib.akasha import lexicon
+from lib.akasha.pagination import paginate as _paginate, resolve_limit as _rlimit, resolve_offset as _roffset
 
 try:
     from lib.akasha import __version__ as _AKASHA_VERSION
@@ -1244,6 +1246,7 @@ class KernelDispatcher:
 
             logger.info("[Kernel] Ontology boot load complete")
             self._schedule_semantic_learn()
+            self._schedule_node_learn()
 
         except Exception as exc:
             logger.warning("[Kernel] Ontology boot load failed (non-fatal): %s", exc, exc_info=True)
@@ -1251,9 +1254,12 @@ class KernelDispatcher:
     def _schedule_semantic_learn(self) -> None:
         """After the ontology is loaded, learn the distributional embedding model in the
         background so semantic.search / dream are smart from (shortly after) startup —
-        with no external model. Non-blocking (a daemon thread), numpy-gated, and skipped
-        if a model already exists. Set AKASHA_NO_AUTOLEARN=1 to disable. This is the
-        'startup makes Akasha an order smarter' hook: the graph learns from itself."""
+        with no external model. Non-blocking (a daemon thread), numpy-gated. Set
+        AKASHA_NO_AUTOLEARN=1 to disable. Gates on the relations-complete sentinel so it
+        learns on the WHOLE corpus (not the few atoms present at boot-submit time), and
+        self-heals a previously-persisted stunted model by re-learning when the corpus has
+        grown far beyond what that model was trained on. This is the 'startup makes Akasha
+        an order smarter' hook: the graph learns from itself."""
         if os.environ.get("AKASHA_NO_AUTOLEARN"):
             return
         try:
@@ -1268,8 +1274,20 @@ class KernelDispatcher:
 
         def _run():
             try:
-                if get_shared_model(nucleus) is not None:     # already learned/persisted
-                    return
+                # Gate on the relations-complete sentinel, exactly like node.learn. The
+                # "Ontology boot load complete" log fires when jobs are SUBMITTED, not
+                # when the atoms are written (the JCL writes them async), so reading the
+                # corpus immediately would learn a stunted model on the few hundred atoms
+                # present at that instant and persist it forever. Wait for the whole atom
+                # set to exist first.
+                import glob as _glob
+                sent_dir = os.path.join(self.base_dir, "central", "sentinels")
+                deadline = time.time() + 7200
+                while time.time() < deadline:
+                    if _glob.glob(os.path.join(sent_dir, "_relations_*.done")):
+                        break
+                    time.sleep(5)
+
                 import json as _json
                 chunks = nucleus.core.get_all_chunks() or []
                 # Learn only from CURATED content — external (fetched) atoms carry
@@ -1285,6 +1303,22 @@ class KernelDispatcher:
                     docs.append(tokens(content))
                     if len(docs) >= 40000:
                         break
+
+                # Self-heal: keep an existing model only if it was trained on a corpus
+                # comparable to what exists now. A model persisted from an early-boot race
+                # (tiny n_docs) is discarded and re-learned — so installs already carrying
+                # a stunted model heal on the next boot. Legacy models without n_docs fall
+                # back to vocab size as the proxy.
+                existing = get_shared_model(nucleus)
+                if existing is not None:
+                    prev = getattr(existing, "n_docs", 0) or 0
+                    if prev <= 0:
+                        prev = len(getattr(existing, "vocab", {}) or {})
+                    if len(docs) < max(500, prev * 3):
+                        return                                   # adequate — keep it
+                    logger.info("[Kernel] semantic model stunted (trained~%d docs, now %d) "
+                                "— relearning", prev, len(docs))
+
                 learner = OntologyLearner(dim=64, max_vocab=2000)
                 if not learner.learn(docs):
                     return
@@ -1324,6 +1358,73 @@ class KernelDispatcher:
 
         import threading
         threading.Thread(target=_run, name="semantic-autolearn", daemon=True).start()
+
+    def _schedule_node_learn(self) -> None:
+        """Structural sibling of _schedule_semantic_learn: after the ontology loads,
+        learn the STRUCTURAL node embeddings (NodeWalkLearner: random walks over the
+        typed-link graph → PPMI+SVD) in the background so `node.sim` works from
+        startup with no operator step. Non-blocking daemon thread, numpy-gated, and
+        skipped if a model already persists (idempotent across restarts). Set
+        AKASHA_NO_AUTOLEARN=1 to disable. Unlike the content model it needs the LINK
+        graph — the deferred GLOBAL relations phase — so it waits for that phase's
+        completion sentinel (`_relations`) before learning, never a fixed timeout, so
+        a slow host does not learn on a half-built graph."""
+        if os.environ.get("AKASHA_NO_AUTOLEARN"):
+            return
+        try:
+            from lib.akasha.semantic_learn import (NodeWalkLearner, get_node_model,
+                                                   store_node_model)
+        except Exception:
+            return
+        if not NodeWalkLearner.available():          # numpy absent → no structural model
+            return
+        nucleus = getattr(self.manager, "shared_nucleus", None)
+        if nucleus is None:
+            return
+
+        def _run():
+            try:
+                if get_node_model(nucleus) is not None:      # already learned/persisted
+                    return
+                # The structural model needs the LINK graph, produced by the deferred
+                # GLOBAL relations phase (all al/ln/set.add run as one job AFTER every
+                # pack's atoms). A fixed wait / link-count heuristic is wrong on a slow
+                # host: the relations job can still be running (links trickling in), so
+                # we would learn on a half-built graph and most atoms would be absent
+                # from the model. Gate on the authoritative completion signal instead —
+                # the `_relations` filesystem sentinel that _boot_load_ontology writes
+                # when the relations phase finishes. Only then is the graph whole.
+                import glob as _glob
+                sent_dir = os.path.join(self.base_dir, "central", "sentinels")
+                gated = False
+                deadline = time.time() + 7200               # generous ceiling (slow hosts)
+                while time.time() < deadline:
+                    if _glob.glob(os.path.join(sent_dir, "_relations_*.done")):
+                        gated = True
+                        break
+                    time.sleep(5)
+                if not gated:
+                    logger.info("[Kernel] Auto node.learn: relations-complete sentinel not "
+                                "seen within ceiling — learning best-effort on current links")
+                try:
+                    links = nucleus.core.get_all_links(limit=200000) or []
+                except Exception:
+                    links = []
+                if len(links) < 50:
+                    logger.info("[Kernel] Auto node.learn skipped (graph too sparse: "
+                                "links=%d)", len(links))
+                    return
+                nwl = NodeWalkLearner(dim=32, walks_per_node=10, length=8, seed=7)
+                if not nwl.learn(links):
+                    return
+                store_node_model(nucleus, nwl)
+                logger.info("[Kernel] Auto node.learn complete (links=%d, nodes=%d)",
+                            len(links), len(nwl.vocab))
+            except Exception as exc:                          # never break boot
+                logger.warning("[Kernel] Auto node.learn failed (non-fatal): %s", exc)
+
+        import threading
+        threading.Thread(target=_run, name="node-autolearn", daemon=True).start()
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -2571,25 +2672,29 @@ class KernelDispatcher:
         return _ok(rid, result)
 
     def _handle_sys_ls(self, rid: str, data: dict, ctx, scopes, client_id: str) -> dict:
-        try:
-            limit = min(int(data.get("limit", 10)), 100)
-        except (TypeError, ValueError):
-            limit = 10
-        raw = ctx.stream(limit * 5 + 20)
+        # Cursor pagination over the recent-atom stream. Fetch enough of the stream to
+        # cover offset+limit AFTER filtering (×5 slack for excluded sys/other-author
+        # atoms), then page the filtered list.
+        lim = _rlimit(data.get("limit"), default=10, max_limit=100)
+        off = _roffset(data.get("cursor"))
+        need = off + (lim or 100)
+        raw = ctx.stream(need * 5 + 20)
         # su root: expose all atoms including system-owned ones
         if scopes and "scope:sys:root" in scopes:
-            user_atoms = raw[:limit]
+            filtered = list(raw)
         else:
             # Keep only atoms authored by this user; exclude internal sys: atoms.
-            user_atoms = [item for item in raw
-                          if item.get("author") == client_id and not _is_sys_atom(item)][:limit]
+            filtered = [item for item in raw
+                        if item.get("author") == client_id and not _is_sys_atom(item)]
+        window, page = _paginate(filtered, data.get("limit"), data.get("cursor"),
+                                 default=10, max_limit=100)
         atoms = []
-        for i, item in enumerate(user_atoms):
+        for i, item in enumerate(window):
             key     = item.get("key", "")
             content = item.get("content") or ctx.get_chunk(key) or ""
             aliases = ctx.get_aliases_by_key(key)
-            atoms.append({"idx": i, "key": key, "preview": content[:60], "aliases": aliases})
-        return _ok(rid, {"atoms": atoms, "count": len(atoms)})
+            atoms.append({"idx": page["offset"] + i, "key": key, "preview": content[:60], "aliases": aliases})
+        return _ok(rid, {"atoms": atoms, "count": len(atoms), "page": page})
 
     def _handle_genesis_rite(self, rid: str, data: dict) -> dict:
         akasha_name = data.get("akasha_name", "AKASHA")
@@ -3523,9 +3628,17 @@ class KernelDispatcher:
         # aliases are only revealed if the caller may actually see that neighbour;
         # out-of-scope endpoints show the edge but redact the payload so links
         # cannot be used to enumerate private/nucleus atoms.
+        _rel_desc_cache: dict = {}
+        def _rd(rel: str):
+            # First-class relation: the reldef:<rel> full-spelling, memoised per rel.
+            if rel not in _rel_desc_cache:
+                _rel_desc_cache[rel] = lexicon.rel_description(ctx, rel)
+            return _rel_desc_cache[rel]
+
         def _link_entry(key: str, rel: str, direction: str) -> dict:
+            rd = _rd(rel)
             if not ctx.check_access(key, scopes):
-                return {
+                entry = {
                     "key":       key,
                     "rel":       rel,
                     "direction": direction,
@@ -3533,14 +3646,18 @@ class KernelDispatcher:
                     "preview":   "",
                     "restricted": True,
                 }
+                if rd: entry["rel_desc"] = rd
+                return entry
             preview = ctx.get_chunk(key) or ""
-            return {
+            entry = {
                 "key":       key,
                 "rel":       rel,
                 "direction": direction,
                 "aliases":   ctx.get_aliases_by_key(key),
                 "preview":   preview[:60],
             }
+            if rd: entry["rel_desc"] = rd
+            return entry
 
         out_links = [_link_entry(dst, rel, "out")
                      for dst, rel in ctx.get_adjacent_links(resolved)
@@ -3554,7 +3671,11 @@ class KernelDispatcher:
         if not sets and nucleus:
             sets = nucleus.core.get_collections_for_key(resolved)
 
-        return _ok(rid, {
+        # First-class namespace: plain-language gloss of the atom's namespace prefix.
+        ns_desc = lexicon.namespace_description(
+            ctx, lexicon.namespace_of_alias(aliases[0] if aliases else None))
+
+        result = {
             "key":      resolved,
             "content":  content,
             "meta":     meta,
@@ -3562,7 +3683,10 @@ class KernelDispatcher:
             "out_links": out_links,
             "in_links":  in_links,
             "sets":     sets,
-        })
+        }
+        if ns_desc:
+            result["namespace_desc"] = ns_desc
+        return _ok(rid, result)
 
     def _handle_drop(self, rid, data, session, ctx, scopes) -> dict:
         target = data.get("id") or data.get("target", "")
@@ -3666,7 +3790,9 @@ class KernelDispatcher:
         # get_magnetic_neighborhood returns List[Dict] with "direction","rel","key","w"
         # (get_adjacent_links returns List[List] which the renderer cannot use)
         links = ctx.get_magnetic_neighborhood(resolved)
-        return _ok(rid, {"key": resolved, "links": links})
+        window, page = _paginate(links, data.get("limit"), data.get("cursor"),
+                                 default=0, max_limit=500)   # default: whole list (link.list is literal)
+        return _ok(rid, {"key": resolved, "links": window, "count": len(window), "page": page})
 
     def _handle_link_reinforce(self, rid, data, ctx, client_id) -> dict:
         src = data.get("src", "")
@@ -3758,8 +3884,18 @@ class KernelDispatcher:
         ns      = (data.get("ns") or "").rstrip(":")
         rel_f   = (data.get("rel") or "")
         coll    = (data.get("collection") or "")
-        limit   = min(int(data.get("limit") or 500), 5000)
         pattern = (data.get("pattern") or "")
+        cursor  = data.get("cursor")
+        # Cursor pagination over the FULL sorted result — so pages are consistent, the
+        # list must be built and sorted whole before slicing. For the unbounded modes
+        # (links, atoms) `scan` bounds that universe (admin may raise it); the page
+        # envelope's `total` is the size within the scanned universe.
+        scan    = min(int(data.get("scan") or 20000), 100000)
+
+        def _page(items):
+            window, page = _paginate(items, data.get("limit"), cursor,
+                                     default=500, max_limit=5000)
+            return window, page
 
         def _best_alias(key: str) -> str:
             als = ctx.core.get_aliases_by_key(key)
@@ -3787,11 +3923,12 @@ class KernelDispatcher:
                         local_ns[ns_key] = ni
             if sort == "alpha":
                 items.sort(key=lambda x: x["ns"])
-            return _ok(rid, {"mode": mode, "count": len(items), "items": items[:limit]})
+            window, page = _page(items)
+            return _ok(rid, {"mode": mode, "count": len(window), "items": window, "page": page})
 
         if mode in ("links", "antonyms"):
             effective_rel = "sys:antonym" if mode == "antonyms" else rel_f
-            rows = ctx.core.get_all_links(rel_filter=effective_rel or None, limit=limit * 2)
+            rows = ctx.core.get_all_links(rel_filter=effective_rel or None, limit=scan)
             items = []
             for r in rows:
                 src_a = _best_alias(r["src"])
@@ -3799,7 +3936,8 @@ class KernelDispatcher:
                 items.append({"src": src_a, "dst": dst_a, "rel": r["rel"], "w": r["w"]})
             if sort == "alpha":
                 items.sort(key=lambda x: (x["rel"], x["src"]))
-            return _ok(rid, {"mode": mode, "count": len(items), "items": items[:limit]})
+            window, page = _page(items)
+            return _ok(rid, {"mode": mode, "count": len(window), "items": window, "page": page})
 
         if mode == "sets":
             name = coll or "ontology.narrative_typology"
@@ -3812,7 +3950,9 @@ class KernelDispatcher:
                 items.sort(key=lambda x: x["alias"])
             elif sort == "count":
                 pass  # no count available per-member
-            return _ok(rid, {"mode": mode, "collection": name, "count": len(items), "items": items[:limit]})
+            window, page = _page(items)
+            return _ok(rid, {"mode": mode, "collection": name, "count": len(window),
+                             "items": window, "page": page})
 
         if mode == "aliases":
             pat = pattern or (f"{ns}:%" if ns else "%")
@@ -3820,7 +3960,8 @@ class KernelDispatcher:
             items = [{"alias": r["alias"], "key": r["key"][:12]} for r in rows]
             if sort == "alpha":
                 items.sort(key=lambda x: x["alias"])
-            return _ok(rid, {"mode": mode, "count": len(items), "items": items[:limit]})
+            window, page = _page(items)
+            return _ok(rid, {"mode": mode, "count": len(window), "items": window, "page": page})
 
         # default: atoms — one row per distinct atom key, primary alias + content preview.
         # Composed from ISA primitives (alias pattern match + per-key content) rather
@@ -3832,7 +3973,7 @@ class KernelDispatcher:
             alias_rows += list(_nucleus.core.get_aliases_by_pattern(pat))
         seen: set = set()
         items = []
-        for r in alias_rows[: limit * 4]:
+        for r in alias_rows[:scan]:
             key = r["key"]
             if key in seen:
                 continue
@@ -3843,7 +3984,8 @@ class KernelDispatcher:
             preview = ((row["content"] if row else "") or "")[:100].replace("\n", " ")
             items.append({"alias": r["alias"], "key": key[:12], "preview": preview})
         items.sort(key=lambda x: x["alias"])
-        return _ok(rid, {"mode": mode, "count": len(items), "items": items[:limit]})
+        window, page = _page(items)
+        return _ok(rid, {"mode": mode, "count": len(window), "items": window, "page": page})
 
     # ------------------------------------------------------------------
     # Ontology export  (DB → .ak files)
@@ -4870,6 +5012,43 @@ class KernelDispatcher:
         return _ok(rid, {"status": "learned", "links": len(links),
                          "nodes": len(nwl.vocab), "dim": dim})
 
+    # Abstract / definitional vocabulary that crowds CONTENT similarity once loaded — its
+    # glosses are lexically dense, so it dominates sim/search though it is not a real
+    # content neighbour. Two populations:
+    #   • the lexicon layer  — reldef:/nsdef: atoms (members of the `rels`/`namespaces` sets)
+    #   • abstract hub atoms — the DNA/structural/logical vocabulary whose whole job is to
+    #     DEFINE (emotions, system relations, set operations, logic, frames, …), detected
+    #     by their namespace prefix.
+    # Both are excluded from sim / semantic.search / node.sim by default; opt back in with
+    # meta=1 / all=1 (vocabulary exploration). Content namespaces (word:, concept:, ingred:,
+    # dish:, geo:, …) are never excluded.
+    _META_NAMESPACES = frozenset({
+        "sys", "set_op", "log", "frame", "emo", "calc", "dna", "meta", "scope", "tmp",
+    })
+
+    def _meta_scope_flag(self, data) -> bool:
+        return str(data.get("meta") or data.get("all") or "").strip().lower() in ("1", "yes", "true", "all", "y")
+
+    def _meta_scope_keys(self, ctx) -> set:
+        # Lexicon layer via set membership (synchronous); abstract hubs via an INDEXED
+        # alias-prefix scan (`alias LIKE 'emo:%'` — a prefix range, index-backed), which is
+        # synchronous and does not depend on the async ns:/leaf: derivation queue having
+        # drained. Built once per call; unioned local cell + nucleus.
+        keys: set = set()
+        nucleus = getattr(ctx, "_nucleus", None)
+        try:
+            keys |= set(ctx.get_collection_members("rels") or [])          # reldef: layer
+            keys |= set(ctx.get_collection_members("namespaces") or [])    # nsdef: layer
+            for ns in self._META_NAMESPACES:                              # abstract hubs
+                for r in (ctx.core.get_aliases_by_pattern(f"{ns}:%") or []):
+                    keys.add(r["key"])
+                if nucleus:
+                    for r in (nucleus.core.get_aliases_by_pattern(f"{ns}:%") or []):
+                        keys.add(r["key"])
+        except Exception:
+            pass
+        return keys
+
     def _handle_node_sim(self, rid, data, session, ctx, scopes) -> dict:
         """node.sim id= [limit=] — atoms STRUCTURALLY similar to an atom (nearest node-walk
         embeddings): "connected the same way". Requires a learned model (node.learn) and that
@@ -4885,12 +5064,24 @@ class KernelDispatcher:
         anchor = ctx.resolve_alias(target) or target
         avec = model.node_vector(anchor)
         if not avec:
+            # Proto-word hub (e.g. 'rome'): the real links hang off its senses, each of
+            # which --specializes--> the proto-word. Anchor on the sense that IS in the
+            # structural model, so `node.sim rome` behaves like node.sim on
+            # geo:capital:rome — parity with how `r`/the explorer resolve a bare word.
+            for _src, _rel in (ctx.get_incoming_links(anchor, "specializes") or []):
+                _sv = model.node_vector(_src)
+                if _sv:
+                    anchor, avec = _src, _sv
+                    break
+        if not avec:
             return _err(rid, -32002,
                         f"atom '{anchor}' is not in the structural model (no links, or re-run node.learn)")
-        limit = max(1, min(int(data.get("limit", 10)), 100))
+        _meta = set() if self._meta_scope_flag(data) else self._meta_scope_keys(ctx)
         scored = []
         for key in list(model.vocab.keys()):
             if key == anchor:
+                continue
+            if key in _meta:                       # lexicon definition atom — not a content neighbour
                 continue
             if scopes and not ctx.check_access(key, scopes):
                 continue
@@ -4901,10 +5092,12 @@ class KernelDispatcher:
             if s > 0.0:
                 scored.append((s, key))
         scored.sort(key=lambda t: t[0], reverse=True)
+        window, page = _paginate(scored, data.get("limit"), data.get("cursor"),
+                                 default=10, max_limit=100)
         results = [{"key": k, "name": _readable(ctx, k), "score": round(s, 4),
-                    "preview": (ctx.get_chunk(k) or "")[:80]} for s, k in scored[:limit]]
+                    "preview": (ctx.get_chunk(k) or "")[:80]} for s, k in window]
         return _ok(rid, {"anchor": anchor, "results": results, "count": len(results),
-                         "mode": "structural"})
+                         "mode": "structural", "page": page})
 
     def _handle_semantic_search(self, rid, data, session, ctx, scopes) -> dict:
         """semantic.search query=|id= [limit=] [scan=] — rank atoms by cosine similarity.
@@ -4943,11 +5136,12 @@ class KernelDispatcher:
         else:
             return _ok(rid, {"query": query, "results": [], "count": 0, "tier": "none"})
 
+        _meta = set() if self._meta_scope_flag(data) else self._meta_scope_keys(ctx)
         import json as _json
         scored = []
         for row in (ctx.stream(limit=scan) or []):
             key = row.get("key")
-            if not key or key == anchor_key or (scopes and not ctx.check_access(key, scopes)):
+            if not key or key == anchor_key or key in _meta or (scopes and not ctx.check_access(key, scopes)):
                 continue
             content = row.get("content") or ""
             if tier == "learned":
@@ -4966,9 +5160,11 @@ class KernelDispatcher:
             if s > 0.0:
                 scored.append((s, key, content))
         scored.sort(key=lambda t: t[0], reverse=True)
+        window, page = _paginate(scored, data.get("limit"), data.get("cursor"),
+                                 default=10, max_limit=100)
         results = [{"key": k, "name": _readable(ctx, k), "score": round(s, 4), "preview": c[:80]}
-                   for s, k, c in scored[:limit]]
-        out = {"results": results, "count": len(results), "tier": tier}
+                   for s, k, c in window]
+        out = {"results": results, "count": len(results), "tier": tier, "page": page}
         if anchor_key:
             out["anchor"] = anchor_key
         else:
@@ -5244,7 +5440,10 @@ class KernelDispatcher:
             if focus:
                 members = [m for m in members
                            if self._passes_display_focus(m["key"], focus, ctx, nucleus)]
-        for m in members:
+        # Cursor pagination: page the member list, then enrich only the window.
+        window, page = _paginate(members, data.get("limit"), data.get("cursor"),
+                                 default=20, max_limit=200)
+        for m in window:
             aliases = ctx.get_aliases_by_key(m["key"])
             if not aliases and group_engines:
                 for _gid, _ge in group_engines:
@@ -5252,7 +5451,7 @@ class KernelDispatcher:
                     if aliases:
                         break
             m["alias"] = aliases[0] if aliases else None
-        return _ok(rid, {"set": name, "members": members, "count": len(members)})
+        return _ok(rid, {"set": name, "members": window, "count": len(window), "page": page})
 
     def _handle_set_clear(self, rid, data, ctx) -> dict:
         name = data.get("name", "")
