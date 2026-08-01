@@ -39,6 +39,9 @@ import time
 import base64
 import hmac
 import hashlib
+import logging
+
+logger = logging.getLogger("Harmonia.IAM")   # under Harmonia.* so it reaches system.log
 
 
 # ---------------------------------------------------------------------------
@@ -65,6 +68,7 @@ class Capability(Enum):
     DELEGATE          = "delegate"
     SIMULATE          = "simulate"
     TELEMETRY         = "telemetry"
+    SVC_OPERATE       = "svc_operate"  # run service lifecycle verbs (start/stop/restart/logs)
 
 
 class Role(Enum):
@@ -398,6 +402,12 @@ class IdentityManager:
         self._group_members:   Dict[str, List[str]] = {}
         self._group_admins:    Dict[str, str]        = {}
         self._group_librarians: Dict[str, List[str]] = {}
+        # Group hydrate-on-miss throttle: a SplitGateway read-side portal builds its
+        # local IAM once at start and would otherwise never see a group created after
+        # (society.ls → "Not a member of group" even though the vault has it). A miss
+        # re-scans the group vault, throttled so a storm of group-less reads can't turn
+        # into a scan-per-call.
+        self._groups_hydrated_at: float = 0.0
 
         # Guest binding store: self-verifying tokens, no server-side state
         self._guest_bindings = GuestBindingStore(nucleus_fn=self._nucleus)
@@ -426,13 +436,54 @@ class IdentityManager:
             if record.get("active", True):
                 self._cache[client_id] = record
         # Groups
-        for ident, record in n.vault_scan("iam", prefix="group:"):
-            group_id = ident[6:]    # strip "group:"
-            self._group_admins[group_id]    = record.get("admin", "")
-            self._group_members[group_id]   = record.get("members", [])
-            self._group_librarians[group_id] = record.get("librarians", [])
+        self._hydrate_groups_from_vault()
         # Migrate genesis admin if not yet in IAM records
         self._migrate_genesis()
+
+    def _hydrate_groups_from_vault(self) -> None:
+        """(Re)load every group record from the vault into the in-memory group dicts.
+        Idempotent — overwrites the mirror with the durable truth. Used both at boot
+        and as a hydrate-on-miss for long-lived read-side portals."""
+        n = self._nucleus()
+        if n is None:
+            return
+        for ident, record in n.vault_scan("iam", prefix="group:"):
+            group_id = ident[6:]    # strip "group:"
+            self._group_admins[group_id]     = record.get("admin", "")
+            self._group_members[group_id]    = record.get("members", [])
+            self._group_librarians[group_id] = record.get("librarians", [])
+        self._groups_hydrated_at = time.time()
+
+    def _hydrate_user_on_miss(self, client_id: str) -> Optional[dict]:
+        """Load one user's record straight from the store when the in-memory cache misses —
+        the boot-timing safety net for verify_passphrase. Tries the IAM record, then lifts the
+        genesis admin from the system vault (same as _migrate_genesis) if the id is the admin.
+        Populates the cache so subsequent calls are warm. Returns the record or None."""
+        n = self._nucleus()
+        if n is None:
+            return None
+        try:
+            rec = n.vault_retrieve("iam", f"user:{client_id}")
+        except Exception:
+            rec = None
+        if rec and rec.get("active", True):
+            self._cache[client_id] = rec
+            return rec
+        # Not yet migrated to an IAM record — is this the genesis admin still in the system vault?
+        try:
+            admin_name = n.vault_retrieve("system", "admin_name")
+            passphrase_hash = n.vault_retrieve("system", "passphrase_hash")
+        except Exception:
+            admin_name = passphrase_hash = None
+        if admin_name and passphrase_hash and client_id in (admin_name, "admin"):
+            record = _make_user_record(Role.ADMIN, None, client_id, "genesis")
+            record.update(self._seal_passphrase(passphrase_hash))
+            try:
+                self._save_user(client_id, record)   # persist + cache (idempotent with _migrate_genesis)
+            except Exception:
+                self._cache[client_id] = record
+            return record
+        return None
 
     def _migrate_genesis(self):
         """One-time migration: lift genesis admin from system vault into IAM records."""
@@ -589,12 +640,36 @@ class IdentityManager:
         if not presented_hash:
             return False
         record = self._cache.get(client_id)
+        _cache_hit = bool(record and record.get("passphrase_hash"))
+        # Hydrate-on-miss: never deny for a COLD cache. If the in-memory cache has no record for
+        # this id (e.g. the very first login right after an overwrite-seeds deploy, before/while
+        # _load_all has populated the cache from the store), read the user's record — and the
+        # genesis admin vault entry — directly from the store before deciding. This is exactly the
+        # same record _load_all/_migrate_genesis would have loaded, so it adds NO trust; it only
+        # stops a boot-timing gap from surfacing as a spurious "user not recognized" that then
+        # succeeds on the next launch once the cache is warm.
+        _hydrated = False
+        if not _cache_hit:
+            hydrated = self._hydrate_user_on_miss(client_id)
+            if hydrated:
+                record = hydrated
+                _hydrated = True
         if record and record.get("passphrase_hash"):
             stored = record["passphrase_hash"]
             salt   = record.get("salt")
             kdf    = record.get("kdf")
             if kdf == self._KDF_NAME and salt:
-                return hmac.compare_digest(stored, self._kdf(presented_hash, salt))
+                ok = hmac.compare_digest(stored, self._kdf(presented_hash, salt))
+                # Diagnostic (no secrets — booleans only): the persistent "first login after an
+                # overwrite deploy is denied, second succeeds" report. If this logs deny with
+                # cache_hit=False hydrated=False, the store had no credential at that instant
+                # (a boot/store-timing gap); if kdf_match=False with a record present, it is a
+                # salt/hash mismatch, not a timing gap.
+                if not ok:
+                    logger.warning(
+                        "[IAM] verify DENY id=%s cache_hit=%s hydrated=%s kdf_match=False "
+                        "cache_size=%d", client_id, _cache_hit, _hydrated, len(self._cache))
+                return ok
             # Legacy unsalted record — accept, then upgrade in place (no epoch bump:
             # the credential is unchanged, so outstanding tokens stay valid).
             if hmac.compare_digest(stored, presented_hash):
@@ -604,13 +679,23 @@ class IdentityManager:
                 except Exception:
                     pass
                 return True
+            logger.warning("[IAM] verify DENY id=%s legacy-record hash-mismatch cache_size=%d",
+                           client_id, len(self._cache))
             return False
         # Fallback: legacy single-hash vault entry (pre-persistence installs)
         n = self._nucleus()
+        _vault_present = False
         if n:
             stored = n.vault_retrieve("system", "passphrase_hash")
             if stored:
-                return hmac.compare_digest(stored, presented_hash)
+                _vault_present = True
+                if hmac.compare_digest(stored, presented_hash):
+                    return True
+        # Reached only when NO usable credential was found anywhere for this id.
+        logger.warning(
+            "[IAM] verify DENY id=%s NO-RECORD cache_hit=%s hydrated=%s nucleus=%s "
+            "sysvault_passphrase=%s cache_size=%d — credential not resolvable at this instant",
+            client_id, _cache_hit, _hydrated, n is not None, _vault_present, len(self._cache))
         return False
 
     # ── User CRUD ─────────────────────────────────────────────────────────────
@@ -744,8 +829,28 @@ class IdentityManager:
 
         return list(dict.fromkeys(scopes))
 
+    _GROUP_HYDRATE_TTL = 3.0   # seconds — max re-scan cadence for the read-side hydrate
+
+    def _maybe_hydrate_groups(self) -> None:
+        """Throttled group re-scan from the vault — the read-side hydrate for a long-lived
+        SplitGateway portal whose group mirror is otherwise only built once at start.
+
+        Must NOT be gated on "the caller has zero groups": the common case is a user who
+        ALREADY holds groups (e.g. a librarian in relgrp/testgrp) creating a NEW one — a
+        non-empty result would skip the scan and the new group would never appear. Gate on
+        time only; the scan is a light vault stat and _GROUP_HYDRATE_TTL bounds it to at
+        most once every few seconds even under a storm of reads."""
+        if (time.time() - self._groups_hydrated_at) > self._GROUP_HYDRATE_TTL:
+            self._hydrate_groups_from_vault()
+
     def get_client_groups(self, client_id: str) -> List[str]:
-        """Return all group IDs the client belongs to (member, admin, or librarian)."""
+        """Return all group IDs the client belongs to (member, admin, OR librarian).
+        Refreshes the group mirror (throttled) first so a group created after this portal
+        started is visible even to a caller who already belongs to other groups."""
+        self._maybe_hydrate_groups()
+        return self._collect_client_groups(client_id)
+
+    def _collect_client_groups(self, client_id: str) -> List[str]:
         seen: dict = {}
         for gid, members in self._group_members.items():
             if client_id in members:
@@ -824,7 +929,9 @@ class IdentityManager:
         self._save_group(group_id)
 
     def list_groups(self) -> List[dict]:
-        """Return all group records."""
+        """Return all group records. Refreshes the mirror (throttled) so grp.ls on a
+        read-side portal reflects groups created after the portal started."""
+        self._maybe_hydrate_groups()
         return [
             {
                 "group_id": gid,
@@ -837,16 +944,15 @@ class IdentityManager:
 
     def get_group(self, group_id: str) -> Optional[dict]:
         if group_id not in self._group_admins:
-            return None
+            self._maybe_hydrate_groups()          # miss → refresh, then re-check
+            if group_id not in self._group_admins:
+                return None
         return {
             "group_id": group_id,
             "admin": self._group_admins[group_id],
             "members": self._group_members.get(group_id, []),
             "librarians": self._group_librarians.get(group_id, []),
         }
-
-    def get_client_groups(self, client_id: str) -> List[str]:
-        return [g for g, members in self._group_members.items() if client_id in members]
 
     # ── Authorization ─────────────────────────────────────────────────────────
 
@@ -860,11 +966,17 @@ class IdentityManager:
                       "link.list", "dive.look", "dive.out"):
             if not policy.has(Capability.READ):
                 return False
-            req_depth = int(params.get("depth", params.get("scope", 1)))
-            if req_depth > policy.max_depth:
-                raise PermissionError(
-                    f"Quota exceeded: depth {req_depth} > {policy.max_depth}"
-                )
+            # The depth quota bounds OPEN-ENDED graph traversal only. The concept
+            # navigator (concept.roots/tree/children — action "read") and plain reads
+            # are taxonomic / fan-out-capped and cost-bounded regardless of the display
+            # `depth`, so quota'ing them wrongly blocked the archives' concept-hierarchy
+            # tree (guests request depth 3, cap was 2) → the left pane silently hid.
+            if action in ("explore", "network.tree"):
+                req_depth = int(params.get("depth", params.get("scope", 1)))
+                if req_depth > policy.max_depth:
+                    raise PermissionError(
+                        f"Quota exceeded: depth {req_depth} > {policy.max_depth}"
+                    )
             return True
 
         if action in ("write", "define", "link.create", "meta.set",
@@ -890,6 +1002,18 @@ class IdentityManager:
         if action in ("iam.manage",):
             return policy.has(Capability.IAM_MANAGE)
 
+        # Service lifecycle operation (svc start/stop/restart/logs). A DELEGABLE capability
+        # distinct from blanket ADMIN — admin holds it implicitly (build_admin_policy grants
+        # every Capability), and a future delegate can hold it over a unit selector without
+        # being admin (service-extension-and-delegation-spec §3). `svc.read` (svc ls) is
+        # plain READ. Effective policy = base role ⊕ attached grants (capability-delegation
+        # -iam-spec §3) is consulted by the caller before this static check where a resource
+        # target is in play; this line is the base-role floor.
+        if action in ("svc.operate",):
+            return policy.has(Capability.SVC_OPERATE)
+        if action in ("svc.read",):
+            return policy.has(Capability.READ)
+
         if action in ("dream", "jataka.dream", "link.reinforce"):
             return policy.has(Capability.SIMULATE)
 
@@ -906,6 +1030,121 @@ class IdentityManager:
             return True
 
         return False
+
+    # ── Capability delegation — grants compose ON TOP of the base role ────────
+    # A grant is the universal unit of delegated authority (capability-delegation-iam-spec).
+    # Effective policy = base role ⊕ attached active grants. This is purely ADDITIVE: a
+    # principal with no grants composes to EXACTLY the static role behaviour above, so
+    # seeds/thesaurus are byte-for-byte unchanged until the first grant is created ("ship
+    # dark"). Grants live in the nucleus vault (auth ≠ collections), never a client atom.
+
+    # Action → the Capability a grant must supply to authorize it. Only delegable actions
+    # need an entry; anything absent cannot be granted (fail-closed).
+    _GRANT_ACTION_CAP = {
+        "svc.operate": Capability.SVC_OPERATE,
+        "svc.read":    Capability.READ,
+        "write":       Capability.WRITE,
+        "define":      Capability.WRITE,
+        "collective.write": Capability.COLLECTIVE_WRITE,
+        "drop":        Capability.DELETE,
+        "iam.manage":  Capability.IAM_MANAGE,
+        "group.manage": Capability.GROUP_MANAGE,
+    }
+
+    def _grants_for(self, grantee: str) -> List[dict]:
+        try:
+            v = self._nucleus().vault_retrieve("iam", f"grant:{grantee}")
+            return v if isinstance(v, list) else []
+        except Exception:
+            return []
+
+    def _save_grants(self, grantee: str, grants: List[dict]) -> None:
+        self._nucleus().vault_store("iam", f"grant:{grantee}", grants)
+
+    @staticmethod
+    def _resource_of(params: dict) -> Optional[str]:
+        """The resource a grant is matched against — the action's target if any, else None
+        (a scoped grant matches nothing when there is no target; only resource '*' would)."""
+        if not params:
+            return None
+        for k in ("id", "unit", "scope", "pack", "group_id", "name"):
+            v = params.get(k)
+            if v:
+                return str(v)
+        return None
+
+    @staticmethod
+    def _resource_matches(selector: str, target: Optional[str]) -> bool:
+        if selector == "*":
+            return True
+        if target is None:
+            return False
+        if selector.endswith("*"):
+            return target.startswith(selector[:-1])
+        return selector == target
+
+    def _grant_authorize(self, client_id: str, action: str, params: dict) -> bool:
+        """True if an ACTIVE, unexpired, resource-matching grant supplies the capability the
+        action needs. Fail-closed: unknown action, no grant, expired/revoked, or out-of-resource
+        all contribute nothing."""
+        cap = self._GRANT_ACTION_CAP.get(action)
+        if cap is None:
+            return False
+        target = self._resource_of(params)
+        now = time.time()
+        verb = str((params or {}).get("_verb") or action.split(".")[-1])
+        for g in self._grants_for(client_id):
+            if g.get("state", "active") != "active":
+                continue
+            exp = g.get("expires")
+            if exp and now > float(exp):
+                continue
+            if g.get("capability") != cap.value:
+                continue
+            if not self._resource_matches(str(g.get("resource", "*")), target):
+                continue
+            verbs = g.get("verbs")
+            if verbs and verbs != "*" and verb not in verbs:
+                continue
+            return True
+        return False
+
+    def authorize_effective(self, client_id: str, role: Role, action: str,
+                            params: dict = None) -> bool:
+        """authorize(), then — only if the base role denies — consult attached grants. The
+        union is the effective policy; the no-grant path is exactly the base role check, so
+        this is a safe drop-in for the dispatcher (ship dark)."""
+        if self.authorize(role, action, params):     # base role (may raise quota PermissionError)
+            return True
+        return self._grant_authorize(client_id, action, params or {})
+
+    def grant_add(self, grantor: str, grantee: str, capability: str, resource: str = "*",
+                  verbs=None, expires=None, state: str = "active",
+                  approved_by: Optional[str] = None) -> dict:
+        """Attach a grant to `grantee`. Admin-set grants land active; a sub-admin request would
+        land `requested` (staged). Returns the stored grant."""
+        cap = str(capability).lower()
+        payload = {"grantor": grantor, "grantee": grantee, "capability": cap,
+                   "resource": resource, "verbs": verbs or "*", "expires": expires,
+                   "state": state, "approved_by": approved_by,
+                   "created": time.time()}
+        payload["id"] = hashlib.sha256(
+            f"{grantee}|{cap}|{resource}|{payload['created']}".encode()).hexdigest()[:16]
+        grants = [g for g in self._grants_for(grantee) if g.get("id") != payload["id"]]
+        grants.append(payload)
+        self._save_grants(grantee, grants)
+        return payload
+
+    def grant_revoke(self, grantee: str, grant_id: str) -> bool:
+        grants = self._grants_for(grantee)
+        kept = [g for g in grants if g.get("id") != grant_id]
+        if len(kept) == len(grants):
+            return False
+        self._save_grants(grantee, kept)
+        return True
+
+    def grants_list(self, grantee: str) -> List[dict]:
+        return self._grants_for(grantee)
 
     # ── Internal helpers ──────────────────────────────────────────────────────
 

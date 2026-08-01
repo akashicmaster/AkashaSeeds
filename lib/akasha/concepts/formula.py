@@ -144,6 +144,49 @@ def _spec_met(actual: float, op: str, value: float) -> bool:
 _SPEC_RE = re.compile(r"^\s*([a-z_][a-z0-9_]*)\s*(<=|>=|<|>|=)\s*([0-9]+(?:\.[0-9]+)?)\s*$", re.I)
 
 
+class _CatalogWriteCortex:
+    """Write-routing proxy for baking a SHARED reference catalogue into the graph: every atom
+    / link / set / alias WRITE goes to the NUCLEUS (universal scope — so guests read it), while
+    every READ (and any method not overridden here) delegates to the local cortex, which unions
+    the nucleus on read. This is what lets a concept's bake reuse its own decomposition
+    unchanged but land the result in the one shared store every session scans. Mirrors
+    kernel._NucleusWriteCtx; kept here so a concept never imports the kernel (layering).
+    Shared by every FormulaConcept domain via `_bake_catalogue`."""
+
+    def __init__(self, local, nucleus):
+        self._loc = local
+        self._nuc = nucleus
+
+    def put_chunk(self, content, meta=None, author="system", status="verified",
+                  context_links=None, scopes=None):
+        # nucleus put_atom stamps scope:sys:universal; the private `scopes` arg is intentionally
+        # dropped (a shared catalogue is universal, not the baking admin's private note).
+        return self._nuc.put_atom(content, meta or {}, author=author)
+
+    def put_link(self, src, dst, rel="sys:associated_with", w=1.0, author="system",
+                 status="verified"):
+        return self._nuc.put_link(src, dst, rel, w=w, author=author)
+
+    def set_alias(self, key, alias, force=False):
+        return self._nuc.set_alias(key, alias, force=force)
+
+    def add_to_set(self, name, key):
+        return self._nuc.add_to_set(name, key)
+
+    def create_set(self, name):
+        # NucleusEngine auto-creates the collection on first add_to_set; create locally too so
+        # any set-meta read still resolves. Membership itself lives in the nucleus.
+        try:
+            return self._loc.create_set(name)
+        except Exception:
+            return None
+
+    def __getattr__(self, name):
+        if name in ("_loc", "_nuc"):
+            raise AttributeError(name)
+        return getattr(self.__dict__["_loc"], name)
+
+
 class FormulaConcept(BaseConcept):
     """Materials + operations + ordered process, with property rollup and axis suggestion."""
 
@@ -1078,6 +1121,92 @@ class FormulaConcept(BaseConcept):
                 if len(seen) >= cap:
                     break
         return list(seen.items())
+
+    # ── shared catalogue mechanism (bake reference → guest-searchable; pairing) ───
+    # These are the ONLY generalisations lifted to the base: the write-routing + paging of a
+    # bake, and the traversal behind a pairing. Each domain skins them with clear, single-
+    # purpose operators (recipe.reference.bake, wine.pairs, …) — never a parametrised
+    # pair(via=,to=) / bake(kind=) on the surface. The mechanism is shared; the surface is not.
+
+    def _bake_catalogue(self, namespace: str, build_fn, card_prefix: str,
+                        limit: Any = 50, offset: Any = 0,
+                        all_: bool = False) -> Dict[str, Any]:
+        """Materialise a reference namespace (`<namespace>:<slug>`) into structured,
+        guest-searchable instances in the NUCLEUS (universal). For each reference atom, run
+        `build_fn(key)` under a nucleus-write proxy — so the whole structured build lands
+        universal/guest-readable — then alias the root `<card_prefix><slug>` for idempotency
+        (a re-run skips an already-baked card). `build_fn` returns the root key, or a dict
+        carrying `{'root': key, …extras}` (extras are echoed back per card). Bounded/paged
+        (default 50; `all_` bakes the rest); the CALLER owns the catalog-manager gate."""
+        nuc = getattr(self.session, "nucleus", None)
+        if nuc is None or not hasattr(nuc, "put_atom"):
+            raise RuntimeError("no_nucleus: the shared catalogue needs an attached nucleus.")
+        refs = sorted((alias, key) for key, alias in self._catalog_scan(namespace, cap=100000))
+        total = len(refs)
+        start = max(0, int(_num(offset) or 0))
+        take = total if all_ else max(1, int(_num(limit) or 50))
+        window = refs[start:start + take]
+        proxy = _CatalogWriteCortex(self.cortex, nuc)
+        baked: List[Dict[str, Any]] = []
+        skipped = 0
+        errors: List[Dict[str, str]] = []
+        for alias, key in window:
+            slug = alias.split(":", 1)[1]
+            card = f"{card_prefix}{slug}"
+            if nuc.resolve_alias(card):                     # already baked → idempotent skip
+                skipped += 1
+                continue
+            prev = self.cortex
+            self.cortex = proxy                             # route the whole build → nucleus
+            try:
+                out = build_fn(key)
+                root = out.get("root") if isinstance(out, dict) else out
+                if root:
+                    proxy.set_alias(root, card)
+                    extra = ({k: v for k, v in out.items() if k != "root"}
+                             if isinstance(out, dict) else {})
+                    baked.append({"card": card, "root": root, **extra})
+            except Exception as exc:                        # one bad entry never aborts the batch
+                errors.append({"ref": alias, "error": str(exc)})
+                logger.warning("[bake:%s] %s failed: %s", namespace, alias, exc)
+            finally:
+                self.cortex = prev
+        done = start + len(window)
+        return {"namespace": namespace, "total": total, "baked": baked, "skipped": skipped,
+                "errors": errors, "processed_to": done, "remaining": max(0, total - done),
+                "next_offset": (done if done < total else None)}
+
+    def _pairings(self, key: str, rels, target_ns: str = "", incoming: bool = True,
+                  limit: int = 50) -> List[Dict[str, Any]]:
+        """Follow typed pairing edges from `key` (outgoing, plus incoming when `incoming`)
+        whose relation is in `rels`, returning the paired atoms — optionally restricted to a
+        `target_ns` namespace (e.g. wine → cheese). Ranked by pairing strength (edge count),
+        scope-filtered. This is the shared traversal behind each domain's clear `X.pairs`
+        operator; kept internal so the surface stays domain-named."""
+        relset = set(rels)
+        scored: Dict[str, List[Any]] = {}                   # other -> [hits, {rels}]
+
+        def consider(other: str, rel: str):
+            if rel not in relset or not other:
+                return
+            name = self._name(other) or ""
+            if target_ns and not name.startswith(f"{target_ns}:"):
+                return
+            if not self._visible(other):
+                return
+            s = scored.setdefault(other, [0, set()])
+            s[0] += 1
+            s[1].add(rel)
+
+        for dst, rel in (self.cortex.get_adjacent_links(key) or []):
+            consider(dst, rel)
+        if incoming:
+            for src, rel in (self.cortex.get_incoming_links(key) or []):
+                consider(src, rel)
+        items = [{"key": k, "name": self._name(k), "via": sorted(rs), "strength": hits}
+                 for k, (hits, rs) in scored.items()]
+        items.sort(key=lambda x: (-x["strength"], x["name"] or ""))
+        return items[:limit]
 
     # ── publication (mark a root public / official) ──────────────────────────────
 

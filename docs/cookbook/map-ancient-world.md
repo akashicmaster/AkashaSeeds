@@ -51,26 +51,54 @@ Pleiades coordinates serve double duty: atom positions AND GCP candidates.
 
 ## Akasha Atom Structure
 
-```
+The block below is a **schematic** — a diagram of how two place atoms are shaped
+(atom id, aliases, coordinate/period attributes, and outgoing links). It is **not**
+runnable CLI or `.ak`; the `→` arrows stand for "links to", not command syntax. The
+real syntax follows underneath.
+
+```text
 place:rome
   al: Rome, Roma, Ῥώμη
   coord: [41.8919, 12.5113]
-  period_start: -753          ← founding (traditional)
-  period_end: 476             ← fall of Western Empire
-  ln → place:carthage   thesaurus:rival_of
-  ln → place:ostia      thesaurus:gateway_of
-  ln → era:roman        thesaurus:belongs_to
-  ln → myth:romulus     thesaurus:founded_by
+  period_start: -753          (founding, traditional)
+  period_end: 476             (fall of Western Empire)
+  → place:carthage   thesaurus:rival_of
+  → place:ostia      thesaurus:gateway_of
+  → era:roman        thesaurus:belongs_to
+  → myth:romulus     thesaurus:founded_by
 
 place:carthage
   al: Carthage, Kart-Hadasht
   coord: [36.8528, 10.3233]
   period_start: -814
-  period_end: -146            ← destroyed by Rome
-  ln → place:rome       thesaurus:rival_of
-  ln → era:punic        thesaurus:belongs_to
-  ln → myth:dido        thesaurus:origin_of
+  period_end: -146            (destroyed by Rome)
+  → place:rome       thesaurus:rival_of
+  → era:punic        thesaurus:belongs_to
+  → myth:dido        thesaurus:origin_of
 ```
+
+In real `.ak` / CLI syntax, an atom is defined with `def`, named with `al`, and its
+links written as `ln <source> <destination> <relation>`. The links from the schematic
+above become:
+
+```
+def place:rome "Rome — capital of the Roman world."
+al place:rome Rome
+al place:rome Roma
+ln place:rome place:carthage thesaurus:rival_of
+ln place:rome place:ostia thesaurus:gateway_of
+ln place:rome era:roman thesaurus:belongs_to
+ln place:rome myth:romulus thesaurus:founded_by
+
+def place:carthage "Carthage — Phoenician city and rival of Rome."
+al place:carthage Carthage
+ln place:carthage place:rome thesaurus:rival_of
+ln place:carthage era:punic thesaurus:belongs_to
+ln place:carthage myth:dido thesaurus:origin_of
+```
+
+(Coordinates and period ranges are stored as attributes of the place atom; the
+`geo:` / `chrono:` layers are covered in the map demo's build steps.)
 
 The `sky_dreamers` curation already seeds some of the mythological atoms
 (Icarus, Daedalus, da Vinci, Lilienthal) that share the Mediterranean context.

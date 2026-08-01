@@ -56,6 +56,7 @@ table.import → parses RFC 4180 CSV; header must use declared column names.
 """
 
 import csv as _csv
+import hashlib
 import io
 import logging
 import time
@@ -129,23 +130,36 @@ class TableConcept(BaseConcept, ImportableMixin, ExportableMixin):
 
     CONCEPT_PREFIX = "table"
     CONCEPT_METHODS = {
-        "new":     {"op": "op_new"},
-        "get":     {"op": "op_get"},
-        "rm":      {"op": "op_rm"},
-        "col.add": {"op": "op_col_add"},
-        "col.ls":  {"op": "op_col_ls"},
-        "row.add": {"op": "op_row_add", "coerce": _coerce_row_add},
-        "row.get": {"op": "op_row_get"},
-        "row.rm":  {"op": "op_row_rm"},
-        "ls":      {"op": "op_ls"},
+        "new":     {"op": "op_new", "action": "write", "args": ["name", "cols"],
+                    "desc": "Create a table: table.new <name> <cols> [description=]"},
+        "get":     {"op": "op_get", "action": "read", "args": ["table"],
+                    "desc": "Get a table's schema/summary: table.get <name>"},
+        "rm":      {"op": "op_rm", "action": "drop", "args": ["table"],
+                    "desc": "Delete a table: table.rm <name>"},
+        "col.add": {"op": "op_col_add", "action": "write", "args": ["table", "name"],
+                    "desc": "Add a column: table.col.add <table> <name> [type=text]"},
+        "col.ls":  {"op": "op_col_ls", "action": "read", "args": ["table"],
+                    "desc": "List a table's columns: table.col.ls <table>"},
+        "row.add": {"op": "op_row_add", "coerce": _coerce_row_add, "action": "write", "args": ["table"],
+                    "desc": "Add a row: table.row.add <table> <col>=<val> …"},
+        "row.get": {"op": "op_row_get", "action": "read", "args": ["table", "row"],
+                    "desc": "Read a row: table.row.get <table> <row>"},
+        "row.rm":  {"op": "op_row_rm", "action": "drop", "args": ["table", "row"],
+                    "desc": "Delete a row: table.row.rm <table> <row>"},
+        "ls":      {"op": "op_ls", "action": "read", "args": ["table"],
+                    "desc": "List table rows: table.ls <table> [limit=N]"},
         "view":    {
             "op":     "op_view",
             "action": "read",
             "args":   ["table"],
             "desc":   "Show table rows as a formatted CLI table: tbl.view <name> [limit=N]",
         },
-        "export":  {"op": "op_export"},
-        "import":  {"op": "op_import", "coerce": _coerce_import},
+        "export":  {"op": "op_export", "action": "read", "args": ["table"],
+                    "desc": "Export a table as CSV (inline): table.export <table> "
+                            "(or io.export table=<t> path=… for a file)"},
+        "import":  {"op": "op_import", "coerce": _coerce_import, "action": "write", "args": ["table"],
+                    "desc": "Import CSV rows into a table: table.import <table> csv=… "
+                            "(or io.import path=… for a file)"},
     }
 
     _COL_SUFFIX = "cols"
@@ -329,9 +343,20 @@ class TableConcept(BaseConcept, ImportableMixin, ExportableMixin):
         return cols
 
     def _val_key(self, val: str, author: str, scopes: List[str]) -> str:
+        """Resolve a cell value to an atom key WITHOUT ever clobbering an existing atom.
+
+        Atoms are content-addressed and put_chunk is INSERT-OR-REPLACE, so storing a
+        value that equals an existing atom's content would overwrite that atom's meta
+        (acute during a projection, which surfaces existing atoms' contents as values).
+        Reuse an existing content-addressed atom as the value; only mint a fresh
+        rec_value atom when nothing matches — strictly non-destructive."""
         existing = self.cortex.resolve_alias(val)
         if existing:
             return existing
+        key = hashlib.sha256(val.encode("utf-8")).hexdigest()
+        core = getattr(self.cortex, "core", None)
+        if core is not None and core.get_chunk_raw(key) is not None:
+            return key   # atom already exists → reuse, never overwrite its meta
         return self.cortex.put_chunk(
             content=val,
             meta={"type": "rec_value"},

@@ -10,7 +10,7 @@ import shutil
 import subprocess
 import contextlib
 import json
-from api.env_detector import Colors
+from api.env_detector import Colors, env
 
 
 def c(color: str, text: str) -> str:
@@ -84,7 +84,12 @@ def _page(text: str) -> None:
     numbered-selection commands (explore, dive, r) where the user needs to see
     the list while typing their selection number.
     """
-    if not sys.stdout.isatty() or os.environ.get("AKASHA_NO_PAGER"):
+    # Never page on a restricted/embedded console. iOS terminals (a-Shell / Pyto) report a
+    # TTY but ship a built-in `less` and lack the subprocess job-control a pager needs — so
+    # `dive`/long output would spawn `less` and trap the user at its `:` prompt (typed commands
+    # go to less, not the REPL). isatty() alone doesn't catch this; the env flags do.
+    if (not sys.stdout.isatty() or os.environ.get("AKASHA_NO_PAGER")
+            or os.environ.get("AKASHA_EMBEDDED") or getattr(env, "is_restricted_console", False)):
         sys.stdout.write(text)
         return
     try:
@@ -167,6 +172,14 @@ def render(resp: dict):
         render_dive(result)
         return
 
+    # Concept dictionary profile (cheese.get / wine.get / ingredient.get, …). Without
+    # this the full RPC profile fell through to the generic key fallback and showed only
+    # "↳ <hash>". `type` is "<domain>:profile".
+    if isinstance(result, dict) and isinstance(result.get("type"), str) \
+            and result["type"].endswith(":profile"):
+        _render_dict_profile(result)
+        return
+
     if isinstance(result, dict) and result.get("type") == "thesaurus:AtomView":
         _render_thesaurus_atom_view(result)
         return
@@ -239,7 +252,18 @@ def render(resp: dict):
         _render_set_ls(result)
         return
 
-    if isinstance(result, dict) and "group" in result:
+    # Society responses (society.new/ls/feed/roster/turn/say/info) carry `society_id`
+    # or `societies`, and MANY of them also carry `group` as a STRING (the gid the
+    # society lives on). They must be matched BEFORE the generic `"group" in result`
+    # branch below — otherwise a society response was routed into _render_group_list,
+    # which assumes `group` is a dict and crashes the whole CLI with AttributeError.
+    if isinstance(result, dict) and ("society_id" in result or "societies" in result):
+        _render_society(result)
+        return
+
+    # Generic single-group render — ONLY when `group` is a dict (a group object). A
+    # bare string `group` belongs to some other response (e.g. society, guarded above).
+    if isinstance(result, dict) and isinstance(result.get("group"), dict):
         _render_group_list({"groups": [result["group"]]})
         return
 
@@ -393,6 +417,13 @@ def render(resp: dict):
         if "voids" in result and "focal" in result:
             _render_assoc(result)
             return
+        # nebula shares dream's {status, candidates} envelope but its candidates are
+        # regions (name/member_aliases/size/salient_rels), NOT dream bridges
+        # (alias/dst/preview). Match the explicit kind discriminator first so nebula
+        # regions don't render as empty `[]` via the dream bridge renderer.
+        if result.get("kind") == "nebula":
+            _render_nebula(result)
+            return
         if ("candidates" in result or "proposals" in result) and "status" in result:
             _render_dream(result)
             return
@@ -489,6 +520,137 @@ def _render_group_list(result: dict):
         for m in members:
             tag = " [lib]" if m in libs else ""
             print(f"    · {m}{c(Colors.DIM, tag)}")
+    print()
+
+
+def _render_society(result: dict):
+    """Render society.* responses (new/ls/feed/roster/turn/say/info). These carry
+    `society_id` or `societies`; `group` (when present) is the plain gid string, so
+    they must never reach _render_group_list (which assumes a group dict)."""
+    # society.ls — spaces on a group
+    if isinstance(result.get("societies"), list):
+        socs = result["societies"]
+        gid  = result.get("group", "")
+        print(f"\n  {c(Colors.CYAN, 'societies')}  {c(Colors.DIM, f'group: {gid}  ({len(socs)})')}")
+        if not socs:
+            print(c(Colors.DIM, "    (no societies)"))
+        for s in socs:
+            nm = s.get("name", "") or s.get("society_id", "")
+            print(f"    · {c(Colors.GREEN, nm)}  {c(Colors.DIM, s.get('society_id', ''))}")
+        print()
+        return
+    # society.feed — the timeline
+    if isinstance(result.get("messages"), list):
+        sid = result.get("society_id", "")
+        msgs = result["messages"]
+        print(f"\n  {c(Colors.CYAN, 'feed')}  {c(Colors.DIM, f'{sid}  ({len(msgs)} msg)')}")
+        if not msgs:
+            print(c(Colors.DIM, "    (no messages yet)"))
+        for m in msgs:
+            who = m.get("cast_name") or m.get("from_cast", "")
+            print(f"    {c(Colors.GREEN, who)}{c(Colors.DIM, ':')} {m.get('text', '')}")
+        print()
+        return
+    # society.roster — the casts in the space
+    if isinstance(result.get("casts"), list):
+        sid = result.get("society_id", "")
+        casts = result["casts"]
+        print(f"\n  {c(Colors.CYAN, 'roster')}  {c(Colors.DIM, f'{sid}  ({len(casts)} cast)')}")
+        for cst in casts:
+            nm = cst.get("name", "") or cst.get("cast_id", "")
+            tag = " [decider]" if cst.get("decider") else ""
+            print(f"    · {c(Colors.GREEN, nm)}{c(Colors.DIM, tag)}")
+        print()
+        return
+    # society.turn — whose turn is next
+    if "turns" in result or "next_cast" in result or "last_cast" in result:
+        sid = result.get("society_id", "")
+        nxt = result.get("next_cast_name") or result.get("next_cast", "")
+        last = result.get("last_cast_name") or result.get("last_cast", "")
+        print(f"\n  {c(Colors.CYAN, 'turn')}  {c(Colors.DIM, sid)}")
+        print(f"    turns: {result.get('turns', 0)}   last: {c(Colors.DIM, last or '—')}"
+              f"   next: {c(Colors.GREEN, nxt or '—')}")
+        print()
+        return
+    # society.new / say / info / decider / open / public / cross / delete — status line
+    sid    = result.get("society_id", "")
+    status = result.get("status", "")
+    name   = result.get("name", "")
+    head   = name or sid
+    print(f"\n  {c(Colors.CYAN, 'society')}  {c(Colors.GREEN, head)}"
+          f"{('  ' + c(Colors.DIM, status)) if status else ''}")
+    if result.get("cast_name"):
+        print(f"    {c(Colors.GREEN, result['cast_name'])}{c(Colors.DIM, ':')} said")
+    if result.get("decider_name") or result.get("decider"):
+        print(f"    decider: {c(Colors.GREEN, result.get('decider_name') or result.get('decider'))}")
+    for flag in ("open_guest", "public", "world"):
+        if flag in result:
+            print(f"    {flag}: {c(Colors.DIM, str(result[flag]))}")
+    print()
+
+
+def _render_dict_profile(result: dict):
+    """Render a concept-dictionary entry profile (cheese/wine/ingredient .get): name,
+    note, axis attributes, and the pairings/links it carries. Generic over domains —
+    reads whatever scalar axis fields the profile happens to include."""
+    name = result.get("name", "") or result.get("id", "")
+    kind = result.get("type", "").split(":")[0]
+    print(f"\n{c(Colors.CYAN, '─' * 52)}")
+    print(f"  {c(Colors.GREEN, name)}  {c(Colors.DIM, kind)}")
+    note = (result.get("note") or "").strip()
+    if note:
+        print(f"  {note}")
+    # Scalar axis attributes (milk/texture/country/color/region/…): every str value that
+    # isn't a structural/system field.
+    _skip = {"id", "key", "name", "note", "type", "query", "target"}
+    attrs = [(k, v) for k, v in result.items()
+             if k not in _skip and isinstance(v, str) and v.strip()]
+    if attrs:
+        print("  " + c(Colors.DIM, "  ".join(f"{k}: {v}" for k, v in attrs)))
+    pairings = result.get("pairings") or []
+    if pairings:
+        print(f"\n  {c(Colors.DIM, 'pairings:')}")
+        for p in pairings[:20]:
+            nm  = p.get("name") or p.get("id") or p.get("dst", "")
+            rel = p.get("rel") or p.get("relation") or ""
+            rl  = f"  {c(Colors.DIM, '(' + str(rel).split(':')[-1] + ')')}" if rel else ""
+            print(f"    · {c(Colors.GREEN, nm)}{rl}")
+    print()
+
+
+def _render_nebula(result: dict):
+    """Render nebula candidate regions (the global/inductive explorer). Candidates are
+    regions with name/size/member_aliases/salient_rels — NOT dream bridges."""
+    status = result.get("status", "")
+    if status == "surveying":
+        print(f"\n{c(Colors.CYAN, '🜁')} nebula  {c(Colors.DIM, 'surveying the meaning-universe…')}")
+        print(c(Colors.DIM, "  Come back with `nebula` to see the candidate regions."))
+        print()
+        return
+    if status == "failed":
+        print(f"\n{c(Colors.FAIL, '✗')} nebula  {c(Colors.DIM, 'survey failed')}")
+        print()
+        return
+    cands = result.get("candidates", [])
+    print(f"\n{c(Colors.CYAN, '🜁')} nebula  {c(Colors.DIM, f'{len(cands)} candidate region(s)')}")
+    if not cands:
+        print(c(Colors.DIM, "  (no dense emerging regions found)"))
+        print()
+        return
+    for num, cand in enumerate(cands, start=1):
+        name  = cand.get("name") or cand.get("id", "")
+        size  = cand.get("size", "")
+        score = cand.get("score")
+        sc    = f"  {c(Colors.DIM, f'{score:.3f}')}" if isinstance(score, (int, float)) else ""
+        members = cand.get("member_aliases", [])[:6]
+        rels    = cand.get("salient_rels", [])[:4]
+        print(f"  {c(Colors.CYAN, str(num)):>6}. {c(Colors.GREEN, name)}  "
+              f"{c(Colors.DIM, f'size={size}')}{sc}")
+        if members:
+            print(f"          {c(Colors.DIM, 'members: ' + ', '.join(members))}")
+        if rels:
+            print(f"          {c(Colors.DIM, 'rels: ' + ', '.join(rels))}")
+    print(c(Colors.DIM, "\n     (plant with `nebula.confirm id=<neb:…> name=<concept>`  |  drop with `nebula.forget id=`)"))
     print()
 
 
@@ -1144,7 +1306,7 @@ def _render_ref_slots(slots: dict):
 
 
 def render_svc_list(services: list, session_counts: dict = None):
-    """Render ServiceManager.list_services() + live session summary.
+    """Render the Supervisor run-dir service/job rows + live session summary.
 
     session_counts: optional dict from AkashaManager.count_sessions()
     """
@@ -1745,6 +1907,7 @@ def print_help(core_specs: dict, concept_info: "list[tuple[str,str,int]]"):
     print(f"  {c(Colors.GREEN, 'run <file>'):<22} {'':32} Submit .ak file as JCL batch job")
     print(f"  {c(Colors.GREEN, '<cmd> > <file>'):<22} {'':32} Redirect output to local file")
     print(f"  {c(Colors.GREEN, 'svc ls|stop|restart <n>'):<22} {'':32} Service control  (stop/restart: admin only)")
+    print(f"  {c(Colors.GREEN, 'grant|grants|ungrant'):<22} {'':32} Delegate a scoped capability  (grant/ungrant: admin)")
     print(f"  {c(Colors.GREEN, 'su <target|exit>'):<22} {'':32} Role switch: root / librarian / <user>  (admin only)")
     print(f"  {c(Colors.GREEN, 'history [n]'):<22} {'':32} Show last n commands (default 50)")
     print(f"  {c(Colors.GREEN, '!! / !n / !-n / !pfx'):<22} {'':32} Re-run: last / by index / from end / by prefix")
@@ -2039,6 +2202,29 @@ def _render_onto_status(result: dict):
 
     print(f"\n{c(Colors.CYAN, '─── Ontology Status ' + '─'*32)}")
 
+    # Load progress first — the one-glance "still loading / done" the operator needs
+    # after a seed re-extract (the boot re-imports changed packs in the background).
+    load = result.get("load", {})
+    if load:
+        loaded, present = load.get("packs_loaded", 0), load.get("packs_present", 0)
+        rel = "✓" if load.get("relations_done") else "…"
+        cur = "✓" if load.get("curations_done") else "…"
+        if load.get("complete"):
+            print(f"\n  {c(Colors.GREEN, '● Load COMPLETE')}   "
+                  f"{loaded}/{present} packs · relations ✓ · curations {cur}")
+        else:
+            print(f"\n  {c(Colors.WARNING, '◐ Load IN PROGRESS')}   "
+                  f"{loaded}/{present} packs · relations {rel} · curations {cur} · "
+                  f"atoms {load.get('atoms', 0):,}")
+            pend = load.get("packs_pending", [])
+            if pend:
+                print(f"    {c(Colors.DIM, 'still loading: ' + ', '.join(pend[:10]))}"
+                      + (c(Colors.DIM, f'  (+{len(pend)-10})') if len(pend) > 10 else ''))
+            # Pack marks are binary (◐→●); for per-step N/N progress within a pack, job.ls.
+            print(f"    {c(Colors.DIM, 'watch: onto.status (packs · atoms) · job.ls (per-step N/N)')}")
+        if load.get("hint"):
+            print(f"    {c(Colors.DIM, load['hint'])}")
+
     atoms   = nucleus.get("atoms", 0)
     links   = nucleus.get("links", 0)
     aliases = nucleus.get("aliases", 0)
@@ -2051,11 +2237,20 @@ def _render_onto_status(result: dict):
     if reg_pkgs:
         print(f"\n  {c(Colors.DIM, 'REGISTRY.json packages:')}")
         for p in reg_pkgs:
-            dot    = "●" if p.get("exists") else c(Colors.WARNING, "○")
-            label  = p.get("name", "?")
             fcount = p.get("file_count", 0)
+            note   = ""
+            if not p.get("exists"):
+                dot = c(Colors.WARNING, "○")            # not bundled
+            elif fcount == 0:
+                dot  = c(Colors.DIM, "·")               # empty placeholder — nothing to load
+                note = c(Colors.DIM, "  (empty — skipped)")
+            elif p.get("loaded"):
+                dot = c(Colors.GREEN, "●")              # loaded (sentinel present)
+            else:
+                dot = c(Colors.WARNING, "◐")            # present, still loading
+            label  = p.get("name", "?")
             auto   = " (autoload)" if p.get("autoload") else ""
-            print(f"    {dot} {label:<22} {fcount} files{auto}")
+            print(f"    {dot} {label:<22} {fcount} files{auto}{note}")
 
     if opt_packs:
         print(f"\n  {c(Colors.DIM, 'Enabled packs:')}  {', '.join(opt_packs)}")

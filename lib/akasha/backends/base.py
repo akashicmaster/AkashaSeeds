@@ -213,6 +213,18 @@ class AkashaBackend(ABC):
                            rel_pattern: Optional[str] = None) -> List[dict]:
         """Return incoming link dicts {src, rel, w, dir, type} to dst."""
 
+    # Degree counts — number of edges only, never their contents. Concrete backends
+    # override with a direct COUNT (SQL) or key-only walk (Silica: no value pread), which
+    # is what makes a dense-hub dive's "branches ahead" cue cheap. The default degrades
+    # to counting a materialized fetch so a minimal backend still works (just not as fast).
+    def count_adjacent_links(self, src: str) -> int:
+        """Number of OUTGOING edges of `src`."""
+        return len(self.get_adjacent_links(src))
+
+    def count_incoming_links(self, dst: str) -> int:
+        """Number of INCOMING edges of `dst`."""
+        return len(self.get_incoming_links(dst))
+
     # ── Collections ───────────────────────────────────────────────────────────
 
     @abstractmethod
@@ -336,8 +348,12 @@ class AkashaBackend(ABC):
         """Return the most recent `limit` atoms, newest first."""
 
     @abstractmethod
-    def get_all_chunks(self) -> List[dict]:
-        """Return all atoms (for export/backup)."""
+    def get_all_chunks(self, limit: Optional[int] = None) -> List[dict]:
+        """Return all atoms (for export/backup). When `limit` is given, return AT MOST
+        that many and — critically for the disk-value store — stop reading values from disk
+        once the cap is reached, so a bounded consumer (e.g. the boot autolearn) never
+        materializes the whole corpus into RAM. `limit=None` preserves the read-everything
+        behaviour used by export/backup."""
 
     @abstractmethod
     def get_all_links(self, rel_filter: Optional[str] = None,

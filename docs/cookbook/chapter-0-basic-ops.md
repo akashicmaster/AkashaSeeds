@@ -18,8 +18,10 @@ The smallest unit of memory in Akasha is called an **Atom**.
 An Atom is plain text. Whether it is a single word, a sentence, or multiple paragraphs, the structure is the same. When you write an Atom, a **hash key** (e.g. `3a9fc2…`) is computed from the content and used to identify it. If the content is identical, writing it again produces the same key (idempotency).
 
 ```
-w "Nile"                              # a single word is an Atom too
-w "The Nile is the longest river in Africa"   # so is a sentence — the structure is the same
+# a single word is an Atom too
+w "Nile"
+# so is a sentence — the structure is the same
+w "The Nile is the longest river in Africa"
 ```
 
 At this stage, an Atom is **just a symbol**. It carries no meaning for Akasha yet. Symbols acquire meaning only when they form relationships with other Atoms through the **links and Sets** described below.
@@ -50,9 +52,12 @@ w """
 ### Read
 
 ```
-r $it           # read the most recent Atom
-r 3a9fc2        # read by the first few characters of the hash key
-r nile          # read by alias (explained below)
+# read the most recent Atom
+r $it
+# read by the first few characters of the hash key
+r 3a9fc2
+# read by alias (explained below)
+r nile
 ```
 
 ### Delete
@@ -71,8 +76,10 @@ You can assign a human-readable name in place of the hash key.
 
 ```
 w "Nile"
-al $it nile                      # assign the name "nile"
-r nile                           # from here on, refer to it by this name
+# assign the name "nile"
+al $it nile
+# from here on, refer to it by this name
+r nile
 ```
 
 Multi-word names can be written as-is:
@@ -90,8 +97,10 @@ r "nile river"
 w "Nile"
 al $it nile
 al $it "nile river"
-al $it nil                       # abbreviated forms can be added too
-r nile                           # any of the names can be used to reference it
+# abbreviated forms can be added too
+al $it nil
+# any of the names can be used to reference it
+r nile
 r "nile river"
 r nil
 ```
@@ -99,8 +108,10 @@ r nil
 There is a constraint in the other direction: **each alias can only be bound to one Atom.** If `nile` is already assigned to another Atom, attempting to assign the same name to a different Atom later will not redirect the alias. Instead, the later Atom receives an implicit `specializes` link pointing to `nile`, and the name is not moved (first-wins policy).
 
 ```
-al atom_A nile            # nile → atom_A is fixed
-al atom_B nile            # later: nile does not move; a specializes link is created from atom_B → atom_A
+# nile → atom_A is fixed
+al atom_A nile
+# later: nile does not move; a specializes link is created from atom_B → atom_A
+al atom_B nile
 ```
 
 To deliberately reassign an existing alias, delete it first with `al.rm`, then re-register it:
@@ -113,10 +124,14 @@ al atom_B nile
 ### Managing Aliases
 
 ```
-al.ls                            # list all named Atoms
-al.find nile%                    # find names starting with "nile" (% is a wildcard)
-al.find %river%                  # find names containing "river"
-al.rm nile                       # remove the alias (the Atom itself remains)
+# list all named Atoms
+al.ls
+# find names starting with "nile" (% is a wildcard)
+al.find nile%
+# find names containing "river"
+al.find %river%
+# remove the alias (the Atom itself remains)
+al.rm nile
 ```
 
 ---
@@ -143,7 +158,8 @@ al $it nile
 w "River"
 al $it river
 
-ln nile river sys:is_a          # nile is a type of river
+# nile is a type of river
+ln nile river sys:is_a
 ```
 
 ### Link Uniqueness and Multiplicity
@@ -151,9 +167,12 @@ ln nile river sys:is_a          # nile is a type of river
 **Multiple links with different relation types can coexist between the same pair of Atoms.**
 
 ```
-ln nile africa "flows through"     # ← (nile, africa, "flows through")
-ln nile africa sys:associated_with # ← (nile, africa, sys:associated_with)
-ln nile africa emo:evokes          # ← (nile, africa, emo:evokes)
+# ← (nile, africa, "flows through")
+ln nile africa "flows through"
+# ← (nile, africa, sys:associated_with)
+ln nile africa sys:associated_with
+# ← (nile, africa, emo:evokes)
+ln nile africa emo:evokes
 ```
 
 All three are stored as independent links. There is no conflict.
@@ -161,8 +180,10 @@ All three are stored as independent links. There is no conflict.
 The uniqueness constraint operates at the level of the **(source, destination, relation type)** triple. Writing the same triple again is an upsert — the link itself does not change; only its weight and authorship metadata are updated.
 
 ```
-ln nile africa "flows through"     # first time: new registration
-ln nile africa "flows through"     # second time: no duplicate; only metadata is updated
+# first time: new registration
+ln nile africa "flows through"
+# second time: no duplicate; only metadata is updated
+ln nile africa "flows through"
 ```
 
 Relation types (rel) fall into two categories: those pre-defined by Akasha, and those you define freely yourself. The main ones are described below.
@@ -180,11 +201,16 @@ These are the most fundamental relation types, defined in Akasha's DNA (`lib/aka
 Expresses that something is a member of a broader category. The dictionary equivalent is "a kind of".
 
 ```
-ln nile    river    sys:is_a    # nile is a type of river
-ln oak     tree     sys:is_a    # oak is a type of tree
-ln tokyo   city     sys:is_a    # tokyo is a type of city
-ln python  language sys:is_a    # Python is a type of language
-ln sonnet  poem     sys:is_a    # a sonnet is a type of poem
+# nile is a type of river
+ln nile    river    sys:is_a
+# oak is a type of tree
+ln oak     tree     sys:is_a
+# tokyo is a type of city
+ln tokyo   city     sys:is_a
+# Python is a type of language
+ln python  language sys:is_a
+# a sonnet is a type of poem
+ln sonnet  poem     sys:is_a
 ```
 
 Chaining `sys:is_a` links builds a classification hierarchy (taxonomy):
@@ -204,11 +230,16 @@ This enables queries such as "enumerate everything that belongs to body_of_water
 Expresses that something is a constituent of something larger. The relationship of "contained in" or "forms part of".
 
 ```
-ln cairo      egypt        sys:part_of   # cairo is part of egypt
-ln amazon     south_america sys:part_of  # the Amazon is part of South America
-ln neuron     brain        sys:part_of   # a neuron is a component of the brain
-ln chapter_1  book         sys:part_of   # chapter 1 is part of the book
-ln wheel      bicycle      sys:part_of   # a wheel is a part of a bicycle
+# cairo is part of egypt
+ln cairo      egypt        sys:part_of
+# the Amazon is part of South America
+ln amazon     south_america sys:part_of
+# a neuron is a component of the brain
+ln neuron     brain        sys:part_of
+# chapter 1 is part of the book
+ln chapter_1  book         sys:part_of
+# a wheel is a part of a bicycle
+ln wheel      bicycle      sys:part_of
 ```
 
 Difference from `sys:is_a`:
@@ -226,17 +257,23 @@ Difference from `sys:is_a`:
 `sys:causes` expresses a cause-and-effect relationship.
 
 ```
-ln drought    famine     sys:causes    # drought causes famine
-ln exercise   fatigue    sys:causes    # exercise causes fatigue
-ln interest   debt       sys:causes    # interest causes debt to grow
+# drought causes famine
+ln drought    famine     sys:causes
+# exercise causes fatigue
+ln exercise   fatigue    sys:causes
+# interest causes debt to grow
+ln interest   debt       sys:causes
 ```
 
 `sys:requires` expresses a dependency or prerequisite relationship.
 
 ```
-ln fire       oxygen     sys:requires  # fire requires oxygen
-ln flight     engine     sys:requires  # flight requires an engine
-ln democracy  education  sys:requires  # democracy requires education
+# fire requires oxygen
+ln fire       oxygen     sys:requires
+# flight requires an engine
+ln flight     engine     sys:requires
+# democracy requires education
+ln democracy  education  sys:requires
 ```
 
 ---
@@ -335,10 +372,14 @@ ln jazz        dna:sound:rhythmic calc:associated_with
 Browsing the emotion and sensory lists:
 
 ```
-exp ns=emo                   # list the emo: namespace
-exp ns=sense                 # list the sense: namespace
-exp ns=dna                   # list the dna: namespace (colour, sound, scent, texture)
-al.find emo:%                # all aliases starting with "emo:"
+# list the emo: namespace
+exp ns=emo
+# list the sense: namespace
+exp ns=sense
+# list the dna: namespace (colour, sound, scent, texture)
+exp ns=dna
+# all aliases starting with "emo:"
+al.find emo:%
 ```
 
 ---
@@ -348,8 +389,10 @@ al.find emo:%                # all aliases starting with "emo:"
 The `log:` namespace expresses logical relations between propositions.
 
 ```
-ln fire_exists  oxygen_present  log:implies  # if fire exists, oxygen is present (implication)
-ln hot          cold            log:not      # hot is not cold (negation)
+# if fire exists, oxygen is present (implication)
+ln fire_exists  oxygen_present  log:implies
+# hot is not cold (negation)
+ln hot          cold            log:not
 ```
 
 Logical relations are used in the graph's inference layer (advanced usage). For everyday recording work, `sys:` and `emo:` cover the vast majority of cases.
@@ -361,9 +404,12 @@ Logical relations are used in the graph's inference layer (advanced usage). For 
 Domain-specific relation types are defined in the `.ak` files in `ontology/base1–3/` (the base packs). They are written with the `@` prefix.
 
 ```
-ln vitamins    immunity     @supports      # vitamins support immunity
-ln antibiotics bacteria     @prevents      # antibiotics prevent bacterial growth
-ln salt        flavor       @enhances      # salt enhances flavour
+# vitamins support immunity
+ln vitamins    immunity     @supports
+# antibiotics prevent bacterial growth
+ln antibiotics bacteria     @prevents
+# salt enhances flavour
+ln salt        flavor       @enhances
 ln thesis      antithesis   @contrasts_with
 ```
 
@@ -434,12 +480,18 @@ Terms such as `emo:awe`, `ref:before`, `sys:part_of`, and `set_op:intersection` 
 | Each `.ak` file in `ontology/base1–3/` (the base packs) | `@` | Domain-specific relations (supports / prevents / enables, etc.) |
 
 ```
-exp ns=ref          # ref: namespace — demonstratives, quantifiers, logical connectives
-exp ns=emo          # emo: namespace — emotions
-exp ns=sense        # sense: namespace — sensory experience
-s.ls leaf:set_op    # set_op: atoms — set-theoretic operations
-s.ls leaf:ref       # ref: atoms — the full set of reference primitives
-al.find ref:%       # all aliases starting with "ref:"
+# ref: namespace — demonstratives, quantifiers, logical connectives
+exp ns=ref
+# emo: namespace — emotions
+exp ns=emo
+# sense: namespace — sensory experience
+exp ns=sense
+# set_op: atoms — set-theoretic operations
+s.ls leaf:set_op
+# ref: atoms — the full set of reference primitives
+s.ls leaf:ref
+# all aliases starting with "ref:"
+al.find ref:%
 ```
 
 ---
@@ -447,8 +499,10 @@ al.find ref:%       # all aliases starting with "ref:"
 ### Managing Links
 
 ```
-ln.ls nile                            # list all links connected to nile
-ln.rm nile river sys:is_a             # remove the link (the Atom itself remains)
+# list all links connected to nile
+ln.ls nile
+# remove the link (the Atom itself remains)
+ln.rm nile river sys:is_a
 ```
 
 ---
@@ -524,17 +578,23 @@ For example, immediately after writing `w "The Nile flows through Africa"`, runn
 ### Basic Operations
 
 ```
-s.ls rivers                      # list the members of the Set
-s.rm rivers amazon               # remove from the Set (the Atom itself is not deleted)
-s.clear rivers                   # empty the Set (Atoms are not deleted)
+# list the members of the Set
+s.ls rivers
+# remove from the Set (the Atom itself is not deleted)
+s.rm rivers amazon
+# empty the Set (Atoms are not deleted)
+s.clear rivers
 ```
 
 ### Set Operations
 
 ```
-s.op union  result_set  source_a  source_b   # union (belongs to either)
-s.op isect  result_set  source_a  source_b   # intersection (belongs to both)
-s.op diff   result_set  source_a  source_b   # difference (in source_a but not in source_b)
+# union (belongs to either)
+s.op union  result_set  source_a  source_b
+# intersection (belongs to both)
+s.op isect  result_set  source_a  source_b
+# difference (in source_a but not in source_b)
+s.op diff   result_set  source_a  source_b
 ```
 
 For example, to extract Atoms that belong to the ancient world and are also rivers:
@@ -612,23 +672,29 @@ The `def` command is explained in detail in Chapter 1. For now, think of it as "
 Commands for browsing and navigating the Atoms you have written.
 
 ```
-hist                             # display recently written Atoms, newest first
-ls                               # same (abbreviated form)
-ls 20                            # specify a count
+# display recently written Atoms, newest first
+hist
+# same (abbreviated form)
+ls
+# specify a count
+ls 20
 ```
 
 ### dive — Expanding the Meaning Space
 
 ```
-dive nile                        # expand the area around "nile" (links, related words)
+# expand the area around "nile" (links, related words)
+dive nile
 ```
 
 While in dive mode, you can navigate by entering a number alone:
 
 ```
 dive nile
-> 2                              # navigate to the Atom at signpost 2
-> out                            # return to the level above
+# navigate to the Atom at signpost 2
+> 2
+# return to the level above
+> out
 ```
 
 ### tree — Link-Traversal Tree
@@ -670,9 +736,12 @@ A depth-1 tree shows only direct links. Depth-3 shows three levels of connected 
 Akasha comes with concept namespaces such as `emo:`, `geo:`, and `calc:` built in from the start.
 
 ```
-exp ns=emo                       # list Atoms in the emotion namespace
-exp ns=geo                       # the geography namespace
-al.find emo:%                    # all aliases starting with "emo:"
+# list Atoms in the emotion namespace
+exp ns=emo
+# the geography namespace
+exp ns=geo
+# all aliases starting with "emo:"
+al.find emo:%
 ```
 
 ### Meaning-Layer Search — Beyond Explicit Links
@@ -686,9 +755,12 @@ read-only.
 THIS"), not a typed phrase. The anchor is always excluded from its own results.
 
 ```
-sim nile                         # rivers / places semantically near the Nile
-sim nile limit=20                # widen the result list (default 10)
-search query="great river"       # free-text variant — search by a phrase instead of an Atom
+# rivers / places semantically near the Nile
+sim nile
+# widen the result list (default 10)
+sim nile limit=20
+# free-text variant — search by a phrase instead of an Atom
+search query="great river"
 ```
 
 **`node.sim` — Atoms connected the same way.** Structural similarity ("wired into the graph the
@@ -711,15 +783,18 @@ node.sim nile
 diving or moving your focus. The read-only "tell me about this one".
 
 ```
-view nile                        # or: cosmos nile
+# or: cosmos nile
+view nile
 ```
 
 **`emotion.find` — Atoms that *feel* an emotion.** The reverse of `emotion.profile`. Emotions are
 ontology Atoms (`emo:awe`, `emo:fear`, …).
 
 ```
-emotion.find emo=awe             # Atoms that link to awe
-emotion.profile nile             # the emotion vector of a single Atom
+# Atoms that link to awe
+emotion.find emo=awe
+# the emotion vector of a single Atom
+emotion.profile nile
 ```
 
 **`gap.scan` — what to enrich next.** Surfaces **important-but-thin** concepts: Atoms that are
@@ -728,8 +803,10 @@ signal for where your ontology is hollow — the entry point of the self-expandi
 (scan → fetch/weave → richer graph → scan again).
 
 ```
-gap.scan                         # top under-curated concepts
-gap.scan limit=50                # widen the report
+# top under-curated concepts
+gap.scan
+# widen the report
+gap.scan limit=50
 ```
 
 **`dream` — the affinity gap (sleep on it).** Where `sim`/`node.sim` rank what is *already* near,
@@ -738,10 +815,14 @@ after sleeping on a problem. It runs as a background job, so you call it twice, 
 a real link on its own.
 
 ```
-dream icarus                     # 1st call: submits the job → "incubating…"
-dream icarus                     # later: → status=ready, with numbered bridge candidates
-dream.confirm dst=lilienthal     # promote one bridge to a real link (or type its number)
-dream.forget all=yes             # discard the rest
+# 1st call: submits the job → "incubating…"
+dream icarus
+# later: → status=ready, with numbered bridge candidates
+dream icarus
+# promote one bridge to a real link (or type its number)
+dream.confirm dst=lilienthal
+# discard the rest
+dream.forget all=yes
 ```
 
 > **Human-in-the-loop by design.** A dreamed bridge is staged as a *tentative* link. Confirming it
@@ -756,8 +837,10 @@ dream.forget all=yes             # discard the rest
 Fetches articles from Wikipedia or a URL and stores them as Atoms. After retrieval, word decomposition (Weaver) runs automatically.
 
 ```
-fetch "Nile River"               # search for and retrieve "Nile River" from Wikipedia
-fetch "https://..."              # retrieve directly from a URL
+# search for and retrieve "Nile River" from Wikipedia
+fetch "Nile River"
+# retrieve directly from a URL
+fetch "https://..."
 ```
 
 Immediately after retrieval, the result is accessible via `$it`, so you can continue with aliasing and linking:
@@ -773,8 +856,10 @@ ln nile nile_wiki "described in"
 ## 0-7 Checking Status
 
 ```
-status                           # session, memory, and JCL queue status
-ping                             # check kernel responsiveness
+# session, memory, and JCL queue status
+status
+# check kernel responsiveness
+ping
 ```
 
 ---

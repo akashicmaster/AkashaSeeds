@@ -17,6 +17,9 @@ returns each hit's `fdc` + per-basis nutrition so the client can pin the ingredi
                     marked scope=personal, merged with the shared catalogue.
   FS4 paginate    — a broad query respects limit/max and returns count/has_more.
   FS5 guest read  — search is READ-level: a guest (no login) can browse foods.
+  FS6 runtime→guest — a food added at runtime via recipe.food (op_food) lands in the
+                    shared nucleus (universal), so a guest sees it too — not just the
+                    admin who wrote it (the shared-scope fix).
 
 Run:  python test/recipe_food_search_eval.py
 """
@@ -133,6 +136,23 @@ def main():
            and len(r5["result"]["results"]) >= 1)
     record("FS5 guest read", fs5,
            f"guest_results={len(r5.get('result', {}).get('results', [])) if 'result' in r5 else r5.get('error')}")
+
+    # FS6 — a food added at RUNTIME via recipe.food (op_food, catalog-manager) is written
+    # to the shared NUCLEUS, so a GUEST finds it via search. This is the shared-scope fix:
+    # before it, op_food wrote to the admin's private cortex, which no guest ever scans, so
+    # a runtime catalogue addition was invisible to everyone but the admin who wrote it.
+    net("recipe.food", atok, name="zzcatalogtestfruit", kcal="42", protein_g="1")
+    g6 = net("session.guest.create")
+    gtok6 = ((g6.get("result") or {}).get("binding_key")
+             or (g6.get("result") or {}).get("session_token"))
+    r6 = net("recipe.food.search", gtok6, q="zzcatalogtestfruit")
+    hit6 = next((x for x in r6.get("result", {}).get("results", [])
+                 if "zzcatalogtestfruit" in x["name"].lower()), None)
+    fs6 = (hit6 is not None and hit6["scope"] == "catalog"
+           and abs((hit6["per_basis"] or {}).get("kcal", 0) - 42.0) < 0.5)
+    record("FS6 runtime→guest", fs6,
+           f"guest_sees={hit6 is not None} scope={hit6 and hit6['scope']} "
+           f"kcal={hit6 and (hit6['per_basis'] or {}).get('kcal')}")
 
     passed = sum(1 for _, ok, _ in _results if ok)
     total = len(_results)

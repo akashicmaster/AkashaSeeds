@@ -74,7 +74,7 @@ Natural language (human notes, research memos)
   Cortex (knowledge graph)
 ```
 
-The **review gate** at the CSL layer is intentional. The human checks what the LLM understood before anything is written to the graph. `csl.dry` and `csl.explain` exist specifically to support this review.
+The **review gate** at the CSL layer is intentional. The human checks what the LLM understood before anything is written to the graph. `csl.check` (validate) and `csl.build` (compile to `.ak` without executing) exist specifically to support this review.
 
 ### 1.3 Core Principle
 
@@ -167,39 +167,24 @@ akasha csl check script.csl
 
 Performs token, grammar, and semantic validation. No execution. Outputs structured errors (see §11).
 
-### 3.4 Dry Run
+### 3.4 Compile (build to `.ak`)
 
 ```bash
-akasha csl dry-run script.csl
+akasha csl.build script="..."
 ```
 
-Outputs the compiled operations as JSON without executing them:
+Transpiles the script to `.ak` (the flat AkashaBackend instruction form) **without executing it**. This is the real compile verb and the primary **review** format — inspect exactly what the script will write before running it:
 
 ```json
-[
-  {
-    "method": "fact.source.add",
-    "params": {"kind": "newspaper", "title": "PM Speech", "credibility": 0.9},
-    "assigns_to": "src",
-    "source_line": 1
-  }
-]
+{
+  "ak": "def \"...\" \"...\"\nal ...\nln ... calc:associated_with",
+  "call_count": 2,
+  "source_lines": 4,
+  "out": null
+}
 ```
 
-This is the primary **LLM review** format: paste the output to an LLM for explanation before running.
-
-### 3.5 Explain
-
-```bash
-akasha csl explain script.csl
-```
-
-Produces a human-readable English summary of each operation:
-
-```
-Line 1: $src = fact.source.add(kind='newspaper', title='PM Speech', credibility=0.9)
-Line 2: fact.claim(speaker='PM', content='Carbon neutrality by 2050')
-```
+Pass `out=<path.ak>` to also write the transpiled `.ak` to a file. Compilation runs validation first, so any hard validation error blocks the build (see §6.4).
 
 ---
 
@@ -340,14 +325,16 @@ evidence=[$src1.source_id, $src2.source_id, "fixed-id-string"]
 Multi-line list example:
 
 ```
-cur.fold:
-    view_id = $view.view_id
-    competing_input_ids = [
-        $input_a.input_id,
-        $input_b.input_id,
-        $input_c.input_id
+intel.assess:
+    requirement_id = $req.requirement_id
+    assessment_type = situation
+    judgment = "Situation assessed as stable."
+    basis = [
+        $fact_a.fact_id,
+        $fact_b.fact_id,
+        $fact_c.fact_id
     ]
-    unresolved = true
+    confidence = 0.8
 ```
 
 ### 4.7 Inline Dictionaries
@@ -379,16 +366,17 @@ Comments run to the end of the line. They may appear:
 - At the end of a command line (after all parameters)
 - Inside block bodies
 
-Comments are preserved in the AST (`Command.comment` field) for use by `csl.explain`.
+Comments are preserved in the AST (`Command.comment` field) for documentation and review tooling.
 
 ### 4.9 Multi-line Strings
 
 Triple-quoted strings span multiple lines:
 
 ```
-cur.conclude:
-    view_id = $view.view_id
-    statement = """
+intel.assess:
+    requirement_id = $req.requirement_id
+    assessment_type = situation
+    judgment = """
         Under international law as of 1939, France retained de jure
         sovereignty over Alsace-Lorraine. German administration was
         de facto but not recognised by the Allied powers.
@@ -424,7 +412,7 @@ n.new / n.add / n.sec / n.read / n.rm ...
 log.new / log.cp / log.ann ...
 wb.new / wb.pin / wb.show ...
 intel.* / cur.* / ft.* / agg.* / synth.* / pres.*
-csl.run / csl.check / csl.dry / csl.explain
+csl / csl.run / csl.check / csl.build
 ```
 
 (See `lib/akasha/csl/validator.py:_KNOWN_KERNEL_METHODS` for the complete set.)
@@ -468,9 +456,9 @@ class ValidationError:
     {
       "line": 14,
       "col": 8,
-      "error": "Unknown method 'curation.view'",
+      "error": "Unknown method 'curation.narate'",
       "parameter": "",
-      "suggestion": "Did you mean: curation.view.run?",
+      "suggestion": "Did you mean: curation.narrate?",
       "level": "error"
     },
     {
@@ -487,7 +475,7 @@ class ValidationError:
 
 ### 6.4 Severity Semantics
 
-- **error** — blocks `csl.run` execution. `csl.check` reports all errors. `csl.dry` and `csl.explain` also block on errors.
+- **error** — blocks `csl.run` execution. `csl.check` reports all errors. `csl.build` also blocks on errors (it validates before compiling).
 - **warning** — does not block execution. Reported in `csl.check` output. Intended for LLM repair loops.
 
 **Numeric range parameters** (validated for [0, 1] range):
@@ -520,7 +508,7 @@ Variable references are **not resolved** by the compiler. They are stored as pla
 | `Variable("src")` | `{"__ref__": "$src"}` |
 | `FieldAccess("src", "source_id")` | `{"__ref__": "$src.source_id"}` |
 
-This keeps the compiler pure (no I/O, no session state) and makes `csl.dry` output inspectable.
+This keeps the compiler pure (no I/O, no session state) and makes `csl.build` output inspectable.
 
 ### 7.3 Runtime Variable Store
 
@@ -564,14 +552,16 @@ class ExecutionResult:
 
 ## 8. Kernel API
 
-Four endpoints are registered in the kernel:
+Four method names dispatch to the CSL handler (`csl` is an alias of `csl.run`):
 
 | Method | IAM | Description |
 |--------|-----|-------------|
+| `csl` | write | Alias of `csl.run` — parse, validate, compile, and execute |
 | `csl.run` | write | Parse, validate, compile, and execute a CSL script |
 | `csl.check` | read | Validate CSL without executing |
-| `csl.dry` | read | Compile to operations list (no execution) |
-| `csl.explain` | read | Human-readable summary of operations |
+| `csl.build` | write | Transpile to `.ak` (no execution); optional `out=` writes a file |
+
+There is **no** `csl.dry` or `csl.explain` endpoint — `csl.build` is the compile/preview verb and `csl.check` is the validate verb.
 
 ### 8.1 Request Format
 
@@ -603,36 +593,26 @@ Parameter key is `"script"` (or `"source"` as alias).
 }
 ```
 
-### 8.3 `csl.dry` Response
+### 8.3 `csl.build` Response
 
 ```json
 {
-  "operations": [
-    {
-      "method": "fact.source.add",
-      "params": {"kind": "newspaper", "title": "PM Speech", "credibility": 0.9},
-      "assigns_to": "src",
-      "source_line": 2
-    }
-  ]
+  "ak": "def \"...\" \"...\"\nal ...\nln src dst calc:associated_with",
+  "call_count": 2,
+  "source_lines": 4,
+  "out": null
 }
 ```
 
-### 8.4 `csl.explain` Response
+`ak` is the transpiled `.ak` text. If `out=<path>` was supplied, the same text is also written to that file and `out` echoes the path.
 
-```json
-{
-  "explanation": "Line 2: $src = fact.source.add(kind='newspaper', title='PM Speech', credibility=0.9)\nLine 3: fact.claim(speaker='PM', content='Carbon neutrality by 2050')"
-}
-```
-
-### 8.5 Router Aliases
+### 8.4 Method Dispatch
 
 ```
-csl.run     → method: csl.run
-csl.check   → method: csl.check
-csl.dry     → method: csl.dry
-csl.explain → method: csl.explain
+csl        → CSL handler (executes, same as csl.run)
+csl.run    → CSL handler (executes)
+csl.check  → CSL handler (validate only)
+csl.build  → CSL handler (transpile to .ak)
 ```
 
 ---
@@ -718,7 +698,7 @@ CSL is an intermediate language that compiles to Akasha kernel method calls.
 One CSL statement = one kernel call. Output is deterministically parseable.
 
 RULES:
-- Methods use dot notation: fact.source.add, cur.premise, intel.req
+- Methods use dot notation: fact.source.add, curation.new, intel.req
 - Parameters use key=value: title="text" credibility=0.8
 - Variables capture results: $src = fact.source.add ...
 - Field access: $src.source_id
@@ -731,17 +711,15 @@ RULES:
         key = value
 
 AVAILABLE METHODS (examples):
-fact.source.add   kind= title= credibility=
+fact.source.add   url= kind= title= credibility=
 fact.add          fact_type= content= source_id=
 fact.claim        speaker= content= source_id=
-cur.new           title=
-cur.premise       label= as_of= perspective= conflict_policy=
-cur.input         ref_id= role= premise_id= confidence=
-cur.view          premise_id= label=
-cur.conclude      view_id= statement= conclusion_type= confidence=
-intel.new         title=
+fact.absent       description= source_id=
+curation.new      title= set= rels= ids=
+curation.narrate  curation_id=
 intel.req         question= requirement_type= priority=
 intel.scan        requirement_id= target_id= scan_type= signal=
+intel.gap         requirement_id= description= gap_type= severity=
 intel.assess      requirement_id= assessment_type= judgment= confidence=
 intel.recommend   requirement_id= statement= recommended_option_id=
 [... add more as needed from the active concept registry ...]
@@ -754,14 +732,13 @@ VALIDATE BEFORE SUBMITTING: confidence/credibility/weight must be in [0, 1].
 ```
 1. Human provides: raw notes, data, research memo
 2. LLM generates: CSL script (using grammar above)
-3. Human reviews: csl.dry to see operations list
-                  csl.explain for plain-English summary
-                  csl.check for validation errors
+3. Human reviews: csl.check for validation errors
+                  csl.build to see the transpiled .ak (exactly what will be written)
 4. Human approves or edits the CSL script
 5. Human runs: csl.run to execute
 ```
 
-The `csl.dry` output (§8.3) is the recommended format for the human review step because it shows exactly what will be written to the graph, with no surprises.
+The `csl.build` output (§8.3) is the recommended format for the human review step because it shows exactly what will be written to the graph, with no surprises.
 
 ### 10.3 LLM Repair Loop
 
@@ -777,7 +754,7 @@ Validation errors (§11) are structured to feed back into an LLM:
 4. Repeat from step 1 until clean
 ```
 
-The `suggestion` field in `ValidationError` provides a close-match hint (e.g., `"Did you mean: curation.view.run?"`) that the LLM can use without needing to know the full method list.
+The `suggestion` field in `ValidationError` provides a close-match hint (e.g., `"Did you mean: curation.narrate?"`) that the LLM can use without needing to know the full method list.
 
 ---
 
@@ -939,39 +916,35 @@ fact.absent:
 ft.diagnose
 ```
 
-### 14.2 Curation — territorial dispute
+### 14.2 Curation — a narrative path over a set
+
+Curation (`curation` concept model) has **three** operators: `curation.new` (create a narrative
+path), `curation.narrate` (read it back), `curation.ls` (list). A curation interprets a *set* of
+atoms through the *relationships* among them, producing an ordered path — either derived from
+relation axes, or authored as an explicit order.
 
 ```csl
-# Curation: Alsace-Lorraine sovereignty 1871–1945
-cur.new title="Alsace-Lorraine sovereignty analysis"
+# Gather the atoms to interpret into a set first (any set.add flow)
+set.add name="alsace_dispute" id="alsace.sovereignty.1648"
+set.add name="alsace_dispute" id="alsace.occupation.1871"
+set.add name="alsace_dispute" id="alsace.dejure.1939"
+set.add name="alsace_dispute" id="alsace.defacto.1942"
 
-# Inputs (pointing to existing atoms — never copies)
-$i_fr = cur.input ref_id=<fr_sovereignty_id> role=sovereignty
-$i_de = cur.input ref_id=<de_admin_id>       role=administration
-$i_vt = cur.input ref_id=<versailles_id>     role=fact
+# Derive a narrative path by intersecting relation axes (time ∩ control):
+$c = curation.new title="Alsace sovereignty over time" set="alsace_dispute" rels="time:after,control:by" op=intersect alias="cur:alsace"
 
-# Premises
-$p_jure  = cur.premise label="de_jure_1939"  as_of="1939-09-01" perspective=de_jure  conflict_policy=perspective_preferred
-$p_facto = cur.premise label="de_facto_1942" as_of="1942-01-01" perspective=de_facto conflict_policy=most_recent
+# Or author the order explicitly (no rels): the path is taken as given
+curation.new title="Alsace timeline (authored)" ids="alsace.sovereignty.1648,alsace.occupation.1871,alsace.dejure.1939,alsace.defacto.1942"
 
-# Views
-$v_jure  = cur.view premise_id=$p_jure.premise_id  label="Alsace: de jure 1939"
-$v_facto = cur.view premise_id=$p_facto.premise_id label="Alsace: de facto 1942"
+# Read the resolved path (ordered atoms + grounds)
+curation.narrate curation_id=$c.curation_id
 
-# Fold inside the de facto view
-cur.fold:
-    view_id = $v_facto.view_id
-    resolution_scope = {entity=alsace, relation=controlled_by, time=1942, perspective=de_facto}
-    competing_input_ids = [$i_fr.input_id, $i_de.input_id]
-    winner_id = $i_de.input_id
-    rationale = {policy=most_recent, note="German administration atom more recent"}
-
-# Conclusions
-cur.conclude view_id=$v_facto.view_id statement="As of 1942, Alsace was under German de facto administration." conclusion_type=state confidence=0.85
-cur.conclude view_id=$v_jure.view_id  statement="France retained de jure sovereignty under international law." conclusion_type=state confidence=0.90
-
-cur.diagnose
+# List all curations
+curation.ls
 ```
+
+A curation carries `provenance=interpretation` — it shows its grounds (which relation axes /
+operation produced the path) but does not prove them.
 
 ### 14.3 Intelligence cycle
 

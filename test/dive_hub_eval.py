@@ -223,6 +223,59 @@ def main():
     nsd = rr2.get("namespace_desc") if isinstance(rr2, dict) else None
     record("H12 namespace surfacing", bool(nsd) and nsd.startswith("ingred —"), f"namespace_desc={nsd!r}")
 
+    # H13 — mega-hub primary fan-out is BOUNDED. A high-degree hub (a domain super-concept
+    #       like `ingredient`, or `lexeme` with every proto-word `sys:is_a` it) must not build
+    #       a signpost per edge — that is O(degree) reads and stalled the dive for seconds.
+    #       Build a hub with many direct children, force a low cap, and assert the dive builds
+    #       at most the cap and reports the rest as overflow (never a silent, unbounded scan).
+    d("def", {"name": "concept:bighub", "description": "A hub with many children."})
+    N_CHILDREN = 40
+    for i in range(N_CHILDREN):
+        d("def", {"name": f"concept:child_{i:02d}", "description": f"child {i}"})
+        d("ln", {"src": f"concept:child_{i:02d}", "dst": "concept:bighub", "rel": "sys:is_a"})
+    from lib.akasha.consciousness import ConsciousnessEngine
+    saved_cap = ConsciousnessEngine._MAGNETIC_DISPLAY_CAP
+    ConsciousnessEngine._MAGNETIC_DISPLAY_CAP = 8
+    try:
+        vh = d("view", {"id": "concept:bighub"})
+    finally:
+        ConsciousnessEngine._MAGNETIC_DISPLAY_CAP = saved_cap
+    if not isinstance(vh, dict) or "signposts" not in vh:
+        record("H13 mega-hub bounded", False, f"view error: {vh}")
+    else:
+        n_sp = len(vh["signposts"])
+        ov = vh.get("hub_overflow", 0)
+        record("H13 mega-hub bounded", n_sp <= 8 and ov >= N_CHILDREN - 8,
+               f"signposts={n_sp} (cap 8) hub_overflow={ov} of {N_CHILDREN} children")
+
+    # H14 — the associative/resonance pass (associate() → dive.look) is BOUNDED against a
+    #       mega-popular shared tag. A word tagged with a common emotion/concept that thousands
+    #       of atoms also link to would otherwise make _find_resonance scan every one of them
+    #       (get_chunk_raw + parse each) — an O(popularity) storm that took minutes. Build a tag
+    #       with far more incoming than the cap and assert resonance stays capped and fast.
+    from lib.akasha.composite import _RESONANCE_LIMIT, _RESONANCE_SCAN_CAP
+    import hashlib as _hl, time as _t
+    sess = k.manager.get_session("admin")
+    lc = sess.local_cortex.core
+    def _put(alias, desc):
+        key = _hl.sha256((alias + desc).encode()).hexdigest()
+        lc.put_chunk_raw(key, desc, "{}", "admin", "verified", 0.0); lc.put_alias(key, alias); return key
+    tag = _put("emo:cheer", "cheer")
+    n_tagged = _RESONANCE_SCAN_CAP + 1500          # comfortably past the scan cap
+    for i in range(n_tagged):
+        a = _put(f"note:cheer_{i:05d}", f"a cheerful note {i}")
+        lc.put_link_raw(a, tag, "calc:associated_with")
+    focal = _put("word:en:cheerful", "cheerful")
+    lc.put_link_raw(focal, tag, "calc:associated_with")
+    lc.conn.commit()
+    _t0 = _t.time()
+    res = sess.local_cortex.associate(focal, allowed_scopes=None)
+    dt_ms = (_t.time() - _t0) * 1000
+    n_res = len(res.get("resonance", []))
+    record("H14 resonance bounded",
+           n_res <= _RESONANCE_LIMIT and dt_ms < 2000,
+           f"resonance={n_res} (cap {_RESONANCE_LIMIT}) over {n_tagged} tagged, {dt_ms:.0f}ms")
+
     passed = sum(1 for _, ok, _ in _results if ok)
     total = len(_results)
     print(f"\n  {passed}/{total} passed\n")

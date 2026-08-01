@@ -24,6 +24,8 @@ and are written by ontology load / Weaver; this model only reads them.
 """
 
 import logging
+import re
+import urllib.parse
 from typing import Any, Dict, List, Optional
 
 from lib.akasha.concepts.base import BaseConcept
@@ -42,6 +44,14 @@ _REL_EXAMPLE   = "thesaurus:example_usage"
 _REL_AFFECTIVE = "thesaurus:affective"
 _REL_EXTERNAL  = "thesaurus:external_ref"
 
+# Cross-ref aliases the importers attach to atoms (external-refs-derivation-spec):
+#   <ns>:wd:Q<id>  Wikidata QID    <ns>:wc:<id>  Wikimedia Commons id (→ media:img:wc_<id>)
+#   <ns>:wp:<title> Wikipedia title.  A `wd:` alias whose tail is NOT a QID (e.g.
+# `cheese:wd:camembert`, an atom id) is ignored — only real Q-numbers become links.
+_WD_ALIAS = re.compile(r"(?:^|:)wd:(Q\d+)$")
+_WC_ALIAS = re.compile(r"(?:^|:)wc:(\w+)$")
+_WP_ALIAS = re.compile(r"(?:^|:)wp:(.+)$")
+
 # sys:* / calc:* fallbacks so a concept enriched only at the system level (common
 # right after ontology load, before thesaurus:* curation) still shows related terms.
 _SYN_RELS     = (_REL_SYNONYM, "sys:synonym", "sys:synonym_of")
@@ -50,9 +60,18 @@ _BROADER_RELS = (_REL_HYPERNYM, "sys:is_a", "sys:type_of")
 _NARROWER_RELS = (_REL_HYPONYM, "sys:has_type", "sys:includes")
 
 _SYS_PREFIXES = ("sys:", "scope:", "leaf:", "ns:", "lang:", "temp:",
-                 "ws:", "wf:", "set:", "thesaurus:ext:")
+                 "ws:", "wf:", "set:", "thesaurus:ext:",
+                 # value / machinery namespaces — not glossary concepts
+                 "score:", "admin_scale:")
 
-_ORDERS_IMPLEMENTED = ("alpha",)   # order= values with a real comparator; others fall back to alpha
+_ORDERS_IMPLEMENTED = ("alpha", "salience")   # order= values with a real comparator; others fall back to alpha
+
+# Default cap on how many candidates the un-namespaced glossary scan visits per request.
+# The full-graph "%" alias scan can surface tens of thousands of atoms; running the per-atom
+# work (check_access / salience / description) over all of them is the O(N) stall the shelf hit.
+# alpha fills the page from the alphabetically-sorted head, so it rarely approaches this; salience
+# ranks the first `scan` candidates ("top-N over the first scan" — a visual shelf, per the spec).
+_REFERENCE_SCAN_DEFAULT = 4000
 
 
 def _term_of(alias: Optional[str]) -> Optional[str]:
@@ -75,8 +94,8 @@ class ThesaurusConcept(BaseConcept):
             "action": "read",
             "cli":    "th.reference",
             "args":   ["order"],
-            "desc":   ("Glossary index of concepts, alphabetical: "
-                       "thesaurus reference [order=alpha] [ns=<prefix>] [initial=<letter>] [limit=N]"),
+            "desc":   ("Glossary index of concepts: thesaurus reference "
+                       "[order=alpha|salience] [ns=<prefix>] [initial=<letter>] [limit=N] [scan=N]"),
         },
         "explore": {
             "op":     "op_explore",
@@ -151,18 +170,29 @@ class ThesaurusConcept(BaseConcept):
     # ── Operators ─────────────────────────────────────────────────────────────
 
     def op_reference(self, order: str = "alpha", ns: str = "",
-                     initial: str = "", limit: int = 200) -> Dict[str, Any]:
+                     initial: str = "", limit: int = 200, scan: Any = "") -> Dict[str, Any]:
         """[thesaurus.reference] Glossary index of concepts.
 
         Enumerates named concepts (qualified aliases, system prefixes excluded) and
-        orders them for browsing. `order='alpha'` (default) sorts by headword. The
-        ordering axis is intentionally open — `lang:<code>` (locale collation),
-        `era` (chronological), and `assoc` (associative index) are recognised and
-        reserved; until each has a real comparator they fall back to alphabetical
-        (`order_applied` says which ran). `ns=` scopes to one namespace; `initial=`
-        keeps only headwords starting with that letter (glossary letter-jump).
+        orders them for browsing. `order='alpha'` (default) sorts by headword;
+        `order='salience'` ranks by salience (descending) — the "top concepts by score"
+        shelf feed. Other axes (`era`, `assoc`, `lang:<code>`) are reserved and fall back
+        to alpha (`order_applied` says which ran). `ns=` scopes to one namespace; `initial=`
+        keeps only headwords starting with that letter (glossary letter-jump); `scan=`
+        caps how many candidates the full-graph scan visits (default 4000).
+
+        Bounded reads: the enumerate + filter + sort is done on the cheap headword string
+        with NO per-atom graph reads; the expensive per-atom work (check_access, salience,
+        description) runs ONLY while filling the returned page — so an un-namespaced "%"
+        scan over the whole graph stays sub-second (same principle as the F1 dictionary fix).
         """
         limit = max(1, min(int(limit), 1000))
+        try:
+            scan_cap = int(scan) if str(scan).strip() else _REFERENCE_SCAN_DEFAULT
+        except (TypeError, ValueError):
+            scan_cap = _REFERENCE_SCAN_DEFAULT
+        scan_cap = max(limit, min(scan_cap, 50000))
+
         pattern = f"{ns}:%" if ns else "%"
         rows = self.cortex.get_aliases_by_pattern(pattern) or []
         nucleus = getattr(self.session, "nucleus", None)
@@ -174,7 +204,11 @@ class ThesaurusConcept(BaseConcept):
 
         scopes = self._scopes()
         initial_lc = initial.lower() if initial else ""
-        by_key: Dict[str, Dict[str, Any]] = {}
+        # ── Phase 1: CHEAP candidate build — headword string ops only, NO graph reads.
+        # Enumerate, apply the glossary filters, and keep the best (first qualified) alias
+        # per atom. Deferring check_access / salience / description to the page (Phase 2) is
+        # what bounds the full-graph scan; doing them here would be O(N) reads (the shelf stall).
+        cand: Dict[str, str] = {}                       # key -> best headword alias
         for r in rows:
             alias = r.get("alias") or ""
             key = r.get("key")
@@ -185,26 +219,64 @@ class ThesaurusConcept(BaseConcept):
             term = _term_of(alias) or ""
             if not term:
                 continue
+            # A glossary of concepts is a word list: keep headwords that begin with a
+            # letter (any script — Latin, CJK, accented), and drop the proto-word noise
+            # that otherwise floods the '#' bucket — bare numbers ("0.05", "1,220"),
+            # scores, and punctuation fragments ("'s", "+1", "/cbt", "--jonathan").
+            # Only in the default (unscoped) browse; an explicit ns= stays unfiltered
+            # so a power user can still enumerate a numeric/symbol namespace.
+            if not ns and not term[:1].isalpha():
+                continue
             if initial_lc and not term.lower().startswith(initial_lc):
                 continue
-            if scopes and not self.cortex.check_access(key, scopes):
-                continue
-            # First qualified alias per atom wins as its headword.
-            if key not in by_key or (":" in alias and ":" not in (by_key[key]["name"] or "")):
-                by_key[key] = {
-                    "key":         key,
-                    "name":        alias,
-                    "term":        term,
-                    "initial":     term[:1].upper(),
-                    "description": self._clean_description(key),
-                    "salience":    self._salience(key),
-                }
+            # First qualified (colon) alias per atom wins as its headword.
+            prev = cand.get(key)
+            if prev is None or (":" in alias and ":" not in prev):
+                cand[key] = alias
+        candidates = [((_term_of(a) or ""), a, k) for k, a in cand.items()]
 
-        concepts = list(by_key.values())
         order_applied = order if order in _ORDERS_IMPLEMENTED else "alpha"
-        # alpha (and, for now, every reserved axis) sorts by casefolded headword.
-        concepts.sort(key=lambda c: (c["term"].casefold(), c["term"]))
-        page = concepts[:limit]
+
+        def _visible(key: str) -> bool:
+            return (not scopes) or self.cortex.check_access(key, scopes)
+
+        def _row(term: str, alias: str, key: str, salience: float = None) -> Dict[str, Any]:
+            return {
+                "key":         key,
+                "name":        alias,
+                "term":        term,
+                "initial":     term[:1].upper(),
+                "description": self._clean_description(key),
+                "salience":    self._salience(key) if salience is None else salience,
+            }
+
+        # ── Phase 2: order + fill the page (per-atom reads bounded here).
+        if order_applied == "salience":
+            # Rank by salience descending over the first `scan_cap` visible candidates —
+            # "top-N over the first scan candidates", acceptable for a visual shelf.
+            scored = []
+            for term, alias, key in candidates[:scan_cap]:
+                if not _visible(key):
+                    continue
+                scored.append((self._salience(key), term, alias, key))
+            scored.sort(key=lambda t: (-t[0], t[1].casefold(), t[1]))
+            page = [_row(term, alias, key, salience=s) for s, term, alias, key in scored[:limit]]
+        else:
+            # alpha: true alphabetical head. Sort cheaply, then walk in order filling the
+            # page with visible atoms only — check_access + profile run for ~limit atoms
+            # (plus any denied ones skipped), never the whole candidate set.
+            candidates.sort(key=lambda c: (c[0].casefold(), c[0]))
+            page = []
+            walked = 0
+            for term, alias, key in candidates:
+                walked += 1
+                if not _visible(key):
+                    if walked >= scan_cap and not page:
+                        break                           # pathological deny-all guard
+                    continue
+                page.append(_row(term, alias, key))
+                if len(page) >= limit:
+                    break
 
         return {
             "order":         order,
@@ -212,7 +284,9 @@ class ThesaurusConcept(BaseConcept):
             "concepts":      page,
             # `entries` mirrors `concepts` for the archives projection normaliser.
             "entries":       page,
-            "total":         len(concepts),
+            # candidate count after the cheap glossary filters (pre-visibility); for the
+            # public glossary this equals the visible concept count.
+            "total":         len(candidates),
         }
 
     def op_explore(self, query: str = "", ns: str = "",
@@ -247,6 +321,98 @@ class ThesaurusConcept(BaseConcept):
         return {"query": query, "matches": matches, "results": matches,
                 "count": len(matches)}
 
+    def _collect_external_refs(self, key: str) -> List[Dict[str, Any]]:
+        """Every external reference reachable from a concept — the SINGLE surface that unifies
+        the two historically-separate reference systems so a URL is always present:
+
+          • curated refs      `thesaurus:external_ref` → atom(meta.type="thesaurus:ExternalRef",
+                              meta.url)
+          • fetched web refs  a Wikipedia/web auto-fetch writes the enriching atom with
+                              meta.type="fetch:<source>" (+ meta.url/title, provenance=external)
+                              and a `ref:web` URL exit-atom; either shape is recognised here.
+
+        Any atom in the concept's 1-hop neighbourhood (out or in, any relation) that carries a
+        URL as a web reference is included, normalised to {label, url, source}, deduped by URL.
+        Read-only and migration-free — it surfaces already-fetched references without touching
+        the write path. `source` lets the client distinguish a curated ref from a fetched one."""
+        refs: Dict[str, Dict[str, Any]] = {}      # url → ref (first-wins, dedupe by url)
+
+        def add(label: str, url: str, source: str) -> None:
+            url = (url or "").strip()
+            if url and url not in refs:
+                refs[url] = {"label": (label or url).strip(), "url": url, "source": source}
+
+        # 1) curated external references (the original op_concept behaviour).
+        for (dst, _w) in self.cortex.get_adjacent_links(key, _REL_EXTERNAL):
+            m = self.cortex.get_meta(dst) or {}
+            if m.get("type") == "thesaurus:ExternalRef":
+                add(m.get("label", ""), m.get("url") or self.cortex.get_chunk(dst), "curated")
+
+        # 2) fetched web references anywhere in the 1-hop neighbourhood (any relation).
+        for getter in (self.cortex.get_adjacent_links, self.cortex.get_incoming_links):
+            for (nbr, _rel) in (getter(key) or [])[:40]:
+                m = self.cortex.get_meta(nbr) or {}
+                t = str(m.get("type", ""))
+                url = m.get("url")
+                if not url:
+                    continue
+                if t == "ref:web":
+                    add(m.get("title", ""), url, "web")
+                elif t.startswith("fetch:") or m.get("provenance") == "external":
+                    add(m.get("title", ""), url, m.get("source") or "web")
+
+        # 3) DERIVED refs (external-refs-derivation-spec): read the importers' cross-ref
+        #    aliases + the linked media atom, so an atom's external identity always has a
+        #    URL. Deterministic, offline, read-only — writes nothing; add() dedupes by URL
+        #    so the curated refs above already win. No new namespace/relation is introduced.
+        aliases = self.cortex.get_aliases_by_key(key) or []
+
+        def _emit_media(media_key: str) -> None:
+            # media:img:* atoms store the image URL as their CONTENT (not meta.url), so
+            # step 2 misses them — resolve the atom and read its content directly.
+            content = (self.cortex.get_chunk(media_key) or "").strip()
+            if not content.startswith("http"):
+                return
+            malias = next((a for a in (self.cortex.get_aliases_by_key(media_key) or [])
+                           if a.startswith("media:img:")), "")
+            label = (malias.rsplit(":", 1)[-1] if malias
+                     else urllib.parse.unquote(content.rsplit("/", 1)[-1])) or "image"
+            add(label, content, "commons")
+
+        for al in aliases:
+            m_wd = _WD_ALIAS.search(al)
+            if m_wd:
+                qid = m_wd.group(1)
+                add(qid, f"https://www.wikidata.org/wiki/{qid}", "wikidata")
+                continue
+            m_wp = _WP_ALIAS.search(al)
+            if m_wp:
+                title = m_wp.group(1)
+                add(title.replace("_", " "),
+                    "https://en.wikipedia.org/wiki/" + urllib.parse.quote(title, safe=""),
+                    "wikipedia")
+
+        # Image: prefer the explicit media link (`media:*` relation → media:img:* atom);
+        # fall back to resolving the `<ns>:wc:<id>` cross-ref to `media:img:wc_<id>`.
+        media_seen = False
+        for (nbr, rel) in (self.cortex.get_adjacent_links(key) or []):
+            if str(rel).startswith("media:"):
+                _emit_media(nbr)
+                media_seen = True
+        if not media_seen:
+            for al in aliases:
+                m_wc = _WC_ALIAS.search(al)
+                if m_wc:
+                    mk = self.cortex.resolve_alias(f"media:img:wc_{m_wc.group(1)}")
+                    if mk:
+                        _emit_media(mk)
+
+        # If THIS atom is itself a media:img:* image, surface its own URL as a source badge.
+        if any(a.startswith("media:img:") for a in aliases):
+            _emit_media(key)
+
+        return list(refs.values())
+
     def op_concept(self, name: Optional[str] = None,
                    atom_id: Optional[str] = None) -> Dict[str, Any]:
         """[thesaurus.concept] Concept page: dive basic view + writer's related links.
@@ -278,12 +444,7 @@ class ThesaurusConcept(BaseConcept):
         examples = [{"text": self.cortex.get_chunk(dst) or "", "key": dst}
                     for (dst, _w) in self.cortex.get_adjacent_links(key, _REL_EXAMPLE)[:12]]
 
-        external_refs = []
-        for (dst, _w) in self.cortex.get_adjacent_links(key, _REL_EXTERNAL):
-            m = self.cortex.get_meta(dst) or {}
-            if m.get("type") == "thesaurus:ExternalRef":
-                external_refs.append({"label": m.get("label", ""),
-                                      "url": m.get("url") or self.cortex.get_chunk(dst)})
+        external_refs = self._collect_external_refs(key)
 
         # Everything else linked (out + in), flat, for the "related" cloud —
         # deduped against the categorised buckets above.

@@ -1,0 +1,29 @@
+# sky_dreamers.csl — the AUTHORED curation example (narrative-order-first).
+#
+# Curation = "an interpretation centred on the relationships among multiple Atoms,
+# expressed as a narrative path." This example shows the AUTHORED mode: the order is
+# a curator's thematic reading, not something derivable from one relation. (For the
+# DERIVED mode — auto path-discovery by intersecting relations — see the lineage in
+# ontology/curation/lineage_demo.ak and: curate "Succession" set=curation:demo:lineage
+# rels=chrono:before,lineage:begat.)
+#
+# The atoms it orders are defined in ontology/curation/sky_dreamers.ak (loaded first).
+# No burden of proof: this is an interpretation (provenance:interpretation); it shows
+# its grounds (an authored order over the sky_dreamers set) but proves nothing. To
+# verify a claim, cross-check the relevant `fact` atoms.
+#
+# The kernel scans curations/ at boot and runs each .csl. `alias=` makes curation.new
+# idempotent, so re-running on every boot returns the same curation (no duplicates).
+#
+# To run manually (e.g. after onto.reset):
+#   csl.dry  script="<paste this file>"     # preview without writing
+#
+# Then read the narrative back with:
+#   narrate curation:sky-dreamers
+
+$story = curation.new
+    title  = "空に憧れた人々 — 失墜と飛翔の系譜"
+    thesis = "The dream of flight read as a genealogy of falls and flights: myth foreshadows history, and each rise carries its fall."
+    mode   = "authored"
+    ids    = "sky:myth:icarus, sky:myth:daedalus, sky:pioneer:lilienthal, sky:pioneer:wright, sky:aviator:earhart, sky:aviator:saint_exupery"
+    alias  = "curation:sky-dreamers"

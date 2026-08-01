@@ -16,6 +16,8 @@ cognitive engine (lib/). All JSON-RPC 2.0 requests enter through `dispatch()`.
 """
 
 import os
+import re
+import sys
 import time
 import json
 import uuid
@@ -101,6 +103,7 @@ try:
         ContexaWebSource, ResponseIngestSink,
         SurveyAggregateSource, InterpretationSource,
         PresentTableSink, ScatterSink, NarrativeSink,
+        CurationPathSource, PresentationSink, PresentationSceneSource, ExportSink,
     )
 except ImportError:
     FileIO = None  # type: ignore
@@ -139,13 +142,14 @@ from lib.akasha.jcl import workflow_vocab as _wf
 
 try:
     from lib.akasha.jcl import JCLWorker, JCLJob, JCLStep
-    from lib.akasha.jcl.job import CLASS_BATCH_ATOM, CLASS_LINK
+    from lib.akasha.jcl.job import CLASS_BATCH_ATOM, CLASS_LINK, CLASS_MAINTENANCE
 except ImportError:
     JCLWorker = None  # type: ignore
     JCLJob    = None  # type: ignore
     JCLStep   = None  # type: ignore
     CLASS_BATCH_ATOM = "batch_atom"  # type: ignore
     CLASS_LINK       = "link"        # type: ignore
+    CLASS_MAINTENANCE = "maintenance"  # type: ignore
 
 try:
     from lib.akasha.concepts.human import HumanConcept as _HumanConcept
@@ -295,15 +299,38 @@ def _lemmatize_for_weave(text: str) -> List[tuple]:
     Falls back to (token, token, 'en', {}) when unavailable.
 
     Stopword/length/digit filtering is applied by the caller (_weave_atom).
+
+    Robustness gate — SpaCy is OPT-IN, regex is the DEFAULT (why the default flipped): the boot
+    weave runs UNATTENDED inside the single-writer daemon, and SpaCy's native pipeline
+    (thinc/blis/numpy C-extensions) can HARD-CRASH the process — a segfault is not a Python
+    exception, so the `try/except` below cannot catch it, and it takes the whole daemon down (the
+    silent, deterministic boot death seen on Python 3.14 while weaving the `lexicon` pack). The
+    weave is OPTIONAL background enrichment (the graph is fully usable without it), so it must not
+    be able to kill the writer. Therefore:
+      • Default: the stdlib regex floor — dependency-free, and it CANNOT crash the process. It
+        still produces valid `word:` links (surface forms), just without lemma normalization.
+      • `AKASHA_WEAVE_SPACY=1` opts INTO SpaCy lemmatization, for a deployment that has verified
+        its SpaCy/thinc/numpy stack is stable on its interpreter.
+      • Even with SpaCy enabled, MIXED / NON-LATIN text still bypasses it: the loaded model is
+        monolingual English, so CJK/mixed-script input (e.g. a `nsdef:` description carrying
+        `成果物`) yields garbage lemmas at best and is the crash trigger at worst — per CLAUDE.md's
+        multi-locale-NLP note (mixed zh+ja+en is unsupported), it degrades to the regex floor.
+      • `AKASHA_WEAVE_REGEX_ONLY=1` forces the floor even if the SpaCy opt-in is set.
     """
-    try:
-        from lib.harmonia.plugins.nlp import nlp_manager as _nlp
-        pairs = _nlp.lemmatize_tokens(text)
-        if pairs:
-            return pairs
-    except Exception:
-        pass
     import re as _re
+    _use_spacy = os.environ.get("AKASHA_WEAVE_SPACY", "").strip().lower() in (
+        "1", "yes", "true", "on")
+    _regex_only = os.environ.get("AKASHA_WEAVE_REGEX_ONLY", "").strip().lower() not in (
+        "", "0", "no", "false", "off")
+    _non_latin = any(ord(c) > 0x2FF for c in text)          # beyond Latin-1+combining → not English
+    if _use_spacy and not _regex_only and not _non_latin:
+        try:
+            from lib.harmonia.plugins.nlp import nlp_manager as _nlp
+            pairs = _nlp.lemmatize_tokens(text)
+            if pairs:
+                return pairs
+        except Exception:
+            pass
     seen: set = set()
     result = []
     for tok in _re.split(r"[\W_]+", text.lower()):
@@ -311,6 +338,59 @@ def _lemmatize_for_weave(text: str) -> List[tuple]:
             seen.add(tok)
             result.append((tok, tok, "en", {}))
     return result
+
+
+def _rss_mb():
+    """This process's resident memory in MB (Linux /proc, stdlib only), or None off-Linux.
+    Used by the boot memory heartbeat so a SILENT daemon death (OOM-killer SIGKILL / C-ext
+    segfault — no Python traceback) still leaves a self-diagnosis in the log: the RSS trajectory
+    right up to the last line tells OOM (RSS climbing to the host ceiling) apart from a hard
+    crash at flat RSS. Akasha owns its own diagnosis — the operator is never asked to run dmesg."""
+    try:
+        with open("/proc/self/status") as _f:
+            for _line in _f:
+                if _line.startswith("VmRSS:"):
+                    return int(_line.split()[1]) // 1024      # kB → MB
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
+
+def _autolearn_disabled_reason() -> Optional[str]:
+    """Decide whether the boot-time numpy autolearn (semantic + node embeddings) may run.
+    Returns a human-readable reason string when it must be SKIPPED, or None when allowed.
+
+    Same class of failure as the SpaCy weave gate in `_lemmatize_for_weave` — and the last
+    native code left on the boot path once weave defaults to the regex floor: the two autolearn
+    threads run numpy (PPMI+SVD, random-walk matrices) UNATTENDED inside the single-writer
+    daemon shortly after boot. A numpy/BLAS C-extension segfault is NOT a Python exception, so
+    the `try/except` in each `_run()` cannot catch it — it takes the whole writer down (the
+    silent, deterministic boot death reproduced on Python 3.14 *after* SpaCy weave was already
+    ruled out, and confirmed non-OOM: flat RSS, no dmesg OOM record). Autolearn is OPTIONAL
+    enrichment: without it, atoms still carry the stdlib feature-hashing FLOOR vector
+    (tensor.py), so semantic.search / dream / gap.scan degrade gracefully and never break.
+
+      • `AKASHA_NO_AUTOLEARN`      → always skip (explicit; unchanged).
+      • `AKASHA_FORCE_AUTOLEARN=1` → always run, overriding the interpreter gate below — for a
+        deployment that has VERIFIED its numpy/BLAS stack is stable on its interpreter.
+      • Default: RUN on Python < 3.14 (numpy wheels are mature there); SKIP on Python >= 3.14,
+        where the numpy/BLAS wheels are still immature and have hard-crashed the boot daemon.
+        The floor tier keeps the meaning layer usable until the stack is verified + forced on.
+
+    This mirrors the weave decision exactly: never let optional native ML kill the writer.
+    """
+    _env = os.environ.get("AKASHA_NO_AUTOLEARN", "").strip().lower()
+    if _env not in ("", "0", "no", "false", "off"):
+        return "AKASHA_NO_AUTOLEARN set"
+    _forced = os.environ.get("AKASHA_FORCE_AUTOLEARN", "").strip().lower() in (
+        "1", "yes", "true", "on")
+    if _forced:
+        return None
+    if sys.version_info >= (3, 14):
+        return ("Python %d.%d — numpy/BLAS boot autolearn is default-off here (a native segfault "
+                "in the learn thread would crash the writer); set AKASHA_FORCE_AUTOLEARN=1 once "
+                "the numpy stack is verified stable on this interpreter" % sys.version_info[:2])
+    return None
 
 
 # Axis filter map shared between _handle_associate and _handle_associate_unwritten
@@ -490,9 +570,10 @@ class _NucleusWriteCtx:
         """Write link to nucleus."""
         return self._nuc.put_link(src, dst, rel, w=w, author=author)
 
-    def set_alias(self, key, name):
-        """Register alias in nucleus with proto-word auto-creation."""
-        return self._nuc.set_alias(key, name)
+    def set_alias(self, key, name, force=False):
+        """Register alias in nucleus with proto-word auto-creation. force=True bypasses
+        first-wins (authoritative ontology re-import superseding a prior nucleus atom)."""
+        return self._nuc.set_alias(key, name, force=force)
 
     def add_to_set(self, name, key):
         """Add key to a named set in nucleus."""
@@ -595,9 +676,65 @@ class KernelDispatcher:
         import time as _time
         import hashlib as _hl
         import shlex as _shlex
+        from lib.akasha import lifecycle
 
         if not JCLJob or not JCLStep:
             return  # JCL imports failed at module load
+
+        # Serve-only worker (spawned by akasha.py alongside the loader main process):
+        # the MAIN process is the SOLE nucleus writer (it runs this boot-load + the
+        # learn daemons). The uvicorn worker boots its own gateway against the SAME
+        # nucleus; if it ALSO ran the boot-load, two processes would import the ontology
+        # into the one store at once — a single-writer violation that kills the worker
+        # on first boot ("Dead (Check logs)"), which is exactly what a slow full re-import
+        # (bigger than the launcher's sentinel wait) triggered. Skip it here; the worker
+        # only serves reads while main loads (WAL → concurrent readers are safe).
+        if os.environ.get("AKASHA_SERVE_ONLY", "").strip().lower() not in ("", "0", "no", "false", "off"):
+            logger.info("[Kernel] AKASHA_SERVE_ONLY — skipping ontology boot load (serve-only worker)")
+            return
+
+        # Boot memory heartbeat — self-diagnosis for a SILENT daemon death during the load
+        # (OOM-killer SIGKILL / C-ext segfault leave NO Python traceback, so the process just
+        # stops logging). This logs RSS every few seconds until the load finishes or shutdown,
+        # so the LAST line before a silent death shows whether RSS was climbing to the host
+        # ceiling (→ OOM) or flat (→ a hard crash, e.g. a C-extension on a bleeding-edge
+        # interpreter). No operator dmesg needed — Akasha reports its own memory. Off with
+        # AKASHA_NO_BOOTWATCH=1.
+        if (os.environ.get("AKASHA_NO_BOOTWATCH", "").strip().lower() in ("", "0", "no", "false", "off")
+                and not getattr(self, "_bootwatch_running", False)):
+            self._bootwatch_running = True            # one heartbeat per process, not per reload
+            def _bootwatch():
+                _t0 = _time.time(); _peak = 0; _idle = 0
+                _CAP = 900.0                                    # bounded to the boot window (~15min)
+                while not lifecycle.is_shutting_down() and _time.time() - _t0 < _CAP:
+                    rss = _rss_mb()
+                    if rss is not None:
+                        _peak = max(_peak, rss)
+                        # name the JCL job in flight, if any — ties an RSS spike to a phase.
+                        _cur = ""
+                        try:
+                            _jobs = self.jcl_worker.list_jobs() if self.jcl_worker else []
+                            _run = [j for j in _jobs if getattr(j, "status", "") == "RUNNING"]
+                            if _run:
+                                _cur = getattr(_run[0], "label", "") or ""
+                        except Exception:
+                            _cur = ""
+                        logger.info("[BootWatch] rss=%dMB peak=%dMB t=%.0fs job=%s",
+                                    rss, _peak, _time.time() - _t0, _cur or "-")
+                        # Once the load has been quiet (no running job) for a while, stop — the
+                        # boot window is over; no need to heartbeat steady-state forever.
+                        _idle = _idle + 1 if not _cur else 0
+                        if _idle >= 10:                         # ~30s idle after the load settled
+                            logger.info("[BootWatch] load settled — heartbeat off (peak=%dMB)", _peak)
+                            self._bootwatch_running = False
+                            return
+                    for _ in range(6):                          # ~3s, but wake promptly on shutdown
+                        if lifecycle.is_shutting_down():
+                            return
+                        _time.sleep(0.5)
+                self._bootwatch_running = False
+            import threading as _thr_bw
+            _thr_bw.Thread(target=_bootwatch, name="boot-memwatch", daemon=True).start()
 
         # Wait briefly so the JCL worker threads are fully started
         _time.sleep(0.5)
@@ -700,9 +837,26 @@ class KernelDispatcher:
             #          time the link job runs every atom is guaranteed to be in
             #          nucleus, so alias resolution cannot fail on ordering.
 
-            # Manifest hash: sha256 of (basename:size) for all files.
-            # Detects both new/removed files and content edits that change file size.
-            # Uses stat (no file reads) so it is fast even for large ontologies.
+            # Manifest hash: sha256 of (basename:size) for all files. Stat-only (no file
+            # reads), so it is fast even for large ontologies, and it gates the PACK-LEVEL
+            # phases (load / reconcile / csl / curations) — "did this pack's content change?"
+            #
+            # ⚠️ mtime is DELIBERATELY EXCLUDED. The seed self-extractor (python akasha_seeds_*.py)
+            # is the supported deploy/recovery path, and unzip stamps EVERY extracted file with a
+            # fresh mtime (it does not restore the source time). An mtime-inclusive manifest
+            # therefore flipped every pack's hash on every re-extraction → every one of the ~25
+            # packs re-entered load AND re-materialised its def-keys for reconcile (the heavy pass
+            # that OOM-killed the Cell daemon; see the per-pack reconcile fix). That made the
+            # per-pack incremental gating a no-op for the ONE path users actually deploy through.
+            # Keying on (basename:size) is stable across re-extraction, so a deploy reloads ONLY
+            # the packs whose content genuinely changed (different file list or byte size).
+            #
+            # A size-preserving edit (same byte count, changed bytes) is invisible to THIS gate,
+            # but it is still caught downstream: the global-relations phase gates each file by a
+            # full CONTENT hash and re-applies changed al/ln/set; the per-file atom sentinel is
+            # likewise size-keyed, so mtime never bought an atom re-import here in the first place.
+            # NOTE: re-import is ADDITIVE (content-addressed) — it applies additions and edits but
+            # does not purge atoms deleted from the ontology; wipe <data>/central for a clean slate.
             def _manifest_hash(files: List[str]) -> str:
                 parts = []
                 for f in sorted(files):
@@ -952,6 +1106,7 @@ class KernelDispatcher:
                     _p1_start = _time.time()
                     while _time.time() - _p1_start < pack_max_wait:
                         _time.sleep(5)
+                        if lifecycle.is_shutting_down(): return
                         if admin_session.local_cortex.get_aliases_by_pattern(atoms_alias):
                             logger.info("[Kernel] Pack '%s': phase-1 done in %.1fs",
                                         pack_name, _time.time() - _p1_start)
@@ -991,6 +1146,7 @@ class KernelDispatcher:
                 _p2_start = _time.time()
                 while _time.time() - _p2_start < pack_max_wait:
                     _time.sleep(5)
+                    if lifecycle.is_shutting_down(): return
                     if admin_session.local_cortex.get_aliases_by_pattern(done_alias):
                         _write_sent(pack_name, pmhash)
                         logger.info("[Kernel] Pack '%s': phase-2 done in %.1fs",
@@ -1003,15 +1159,38 @@ class KernelDispatcher:
                 # Phase 3 — Weave: link each atom's description tokens to nucleus protowords.
                 # Runs as a single LOW-priority JCL job after phases 1 and 2 are done.
                 # Idempotent: duplicate put_link calls are silently ignored by the backend.
+                # Resilience valve: the weave is OPTIONAL background enrichment ("while
+                # sleeping") — the graph is fully usable without it (dive/explore/read work off
+                # the atoms + relations already loaded). If a weave is ever the thing taking the
+                # daemon down (e.g. a fragile NLP C-extension on a bleeding-edge interpreter, or
+                # memory pressure), AKASHA_NO_BOOT_WEAVE=1 keeps the writer alive by skipping it.
+                # The word-level links can be (re)built later with `onto.reload`.
+                _skip_weave = os.environ.get("AKASHA_NO_BOOT_WEAVE", "").strip().lower() not in (
+                    "", "0", "no", "false", "off")
                 _p3_queued = False
-                if all_atom_defs and self.jcl_worker and JCLJob and JCLStep:
+                if _skip_weave and all_atom_defs:
+                    logger.info("[Kernel] Pack '%s': AKASHA_NO_BOOT_WEAVE — skipping the weave "
+                                "(%d atoms); graph is usable, word-links deferred.",
+                                pack_name, len(all_atom_defs))
+                if not _skip_weave and all_atom_defs and self.jcl_worker and JCLJob and JCLStep:
+                    # Chunk the weave into many steps (not one monolithic step): the job then
+                    # reports visible progress (k/M) and the single JCL worker can YIELD to
+                    # higher-priority ready jobs (e.g. canon normalization) at every chunk
+                    # boundary. Weave is background enrichment ("while sleeping"), so it runs at
+                    # the IDLE (maintenance) class — the structural canon pass, which populates
+                    # the reading surfaces, is NORMAL class and therefore runs ahead of it.
+                    _WEAVE_CHUNK = 400
+                    _weave_steps = [
+                        JCLStep(method="sys.weaver.weave_batch",
+                                params={"items": all_atom_defs[_wi:_wi + _WEAVE_CHUNK]})
+                        for _wi in range(0, len(all_atom_defs), _WEAVE_CHUNK)
+                    ]
                     self.harmonia.submit_job(JCLJob(
                         owner="admin",
                         label=f"sys.weaver.batch:{pack_name}",
-                        steps=[JCLStep(method="sys.weaver.weave_batch",
-                                       params={"items": all_atom_defs})],
+                        steps=_weave_steps,
                         fail_fast=False,
-                    ))
+                    ), job_class=CLASS_MAINTENANCE)
                     _p3_queued = True
 
                 _total = _time.time() - _pack_start
@@ -1087,29 +1266,95 @@ class KernelDispatcher:
                     if os.path.isdir(_d):
                         _active_dirs.append(_d)
 
+                # FILE-LEVEL incremental (was: re-read EVERY file and re-apply EVERY al/ln/set
+                # whenever one GLOBAL relations hash changed — so adding one small .ak file to a
+                # big pack re-applied the entire ontology's relations). Now each .ak file carries
+                # its own CONTENT-HASH sentinel: a file whose content is unchanged is skipped
+                # entirely (not read, its relations not re-applied), and only NEW/CHANGED files'
+                # relations are collected + applied. Adding one file touches only that file.
+                # Correctness holds: targets in unchanged files were aliased on a prior boot (their
+                # aliases already resolve), and within this batch the ordered al→ln→set guarantees
+                # a changed file's links/sets resolve names defined in the same batch.
                 _al_steps: List[dict] = []
                 _ln_steps: List[dict] = []
                 _set_steps: List[dict] = []
+                _relfile_sentinels: List[tuple] = []      # (sentinel_name, filehash) to write on success
+
+                def _setadd_in_nucleus(_content_bytes) -> bool:
+                    """True if this file has NO set.add, or a representative set.add member is
+                    present in its target set IN THE NUCLEUS. False when it carries set.add whose
+                    sampled members are NOT in the nucleus set — the guest-invisible bug where a
+                    prior boot routed the membership into the writer's private cortex (a local
+                    'Conceptual hub' shadowed the nucleus atom). Nucleus-only on purpose: local
+                    membership is exactly what we must re-route. Lets the relations phase RE-APPLY
+                    such a file even though its content hash is unchanged, self-healing stuck
+                    cuisine/pairing sets on the next boot (the routing fix then lands them in the
+                    nucleus)."""
+                    _nuc = getattr(admin_session, "nucleus", None)
+                    if _nuc is None:
+                        return True
+                    _sampled = 0
+                    try:
+                        for _rw in _content_bytes.decode("utf-8", "replace").splitlines():
+                            _ss = _parse_ak_line(_rw)
+                            if not _ss or _ss["method"] != "set.add":
+                                continue
+                            _nm = _ss["params"].get("name", ""); _idv = _ss["params"].get("id", "")
+                            if not _nm or not _idv:
+                                continue
+                            _k = _nuc.core.get_key_by_alias(_idv) or _idv
+                            _mem = set(_nuc.core.get_collection_members(_nm) or [])
+                            if _k in _mem or _idv in _mem:
+                                return True                # a member is in the nucleus set → trust it
+                            _sampled += 1
+                            if _sampled >= 5:
+                                return False
+                    except Exception:
+                        return True                        # never force churn on a read/parse error
+                    return _sampled == 0                   # no set.add → OK; had some, none in nucleus → re-apply
+
                 for _d in _active_dirs:
+                    _pn_r = os.path.basename(_d)
                     for _fp in _collect_from_dir(_d, ".ak"):
+                        _bn_r = os.path.basename(_fp)
                         try:
-                            with open(_fp, "r", encoding="utf-8") as _f:
-                                for _raw in _f:
-                                    _s = _parse_ak_line(_raw)
-                                    if not _s:
-                                        continue
-                                    if _s["method"] == "alias":
-                                        _al_steps.append(_s)
-                                    elif _s["method"] == "kernel.memory.link":
-                                        _ln_steps.append(_s)
-                                    elif _s["method"] == "set.add":
-                                        _set_steps.append(_s)
+                            _content_r = open(_fp, "rb").read()
+                        except OSError as _exc:
+                            logger.warning("[Kernel] Global relations read %s: %s", _fp, _exc)
+                            continue
+                        _fh_r = _hl.sha256(_content_r).hexdigest()[:16]
+                        _sname_r = "_relfile_" + (_pn_r + "__" + _bn_r).replace(
+                            os.sep, "_").replace(".", "_").replace(":", "_")
+                        if _sent_exists(_sname_r, _fh_r):
+                            # Unchanged file → its relations are normally already applied. But if it
+                            # carries set.add whose members are NOT in the nucleus set (routed to a
+                            # private cortex on a prior boot → guest-invisible), re-apply so the
+                            # nucleus-first routing in _handle_set_add lands them where guests read.
+                            if _setadd_in_nucleus(_content_r):
+                                continue
+                            logger.info("[Kernel] Global relations: '%s' is sentinel'd but its set.add "
+                                        "members are not in the nucleus — re-applying (self-heal).", _bn_r)
+                        try:
+                            for _raw in _content_r.decode("utf-8", "replace").splitlines():
+                                _s = _parse_ak_line(_raw)
+                                if not _s:
+                                    continue
+                                if _s["method"] == "alias":
+                                    _al_steps.append(_s)
+                                elif _s["method"] == "kernel.memory.link":
+                                    _ln_steps.append(_s)
+                                elif _s["method"] == "set.add":
+                                    _set_steps.append(_s)
                         except Exception as _exc:
                             logger.warning("[Kernel] Global relations scan %s: %s", _fp, _exc)
+                            continue                       # do NOT sentinel a file we failed to parse
+                        _relfile_sentinels.append((_sname_r, _fh_r))
 
                 # Ordered: aliases first (so ln/set can resolve short names), then links,
                 # then set memberships. Single FIFO job guarantees the order.
                 _rel_steps = _al_steps + _ln_steps + _set_steps
+                if not _rel_steps and not _relfile_sentinels:
+                    logger.info("[Kernel] Global relations: no changed .ak files — skipping")
                 if _rel_steps:
                     _sig = "\n".join(
                         f"{_s['method']}|{_s['params'].get('id','')}|"
@@ -1117,16 +1362,14 @@ class KernelDispatcher:
                         f"{_s['params'].get('dst','')}|{_s['params'].get('rel','')}"
                         for _s in _rel_steps)
                     _rhash = _hl.sha256(_sig.encode()).hexdigest()[:16]
-                    if _sent_exists("_relations", _rhash):
-                        logger.info("[Kernel] Global relations already applied (sentinel) — skipping")
-                    else:
+                    if True:
                         _rel_text  = "[ont:ak] Global relations (al/ln/set) applied"
-                        _rel_key   = _hl.sha256(_rel_text.encode()).hexdigest()
+                        _rel_key   = _hl.sha256((_rel_text + _rhash).encode()).hexdigest()
                         _rel_alias = f"ont:ak:relations:all:{_rhash}"
                         logger.info("[Kernel] Global relations phase: %d aliases + %d links + "
-                                    "%d set.add across %d packs…",
+                                    "%d set.add across %d CHANGED file(s)…",
                                     len(_al_steps), len(_ln_steps), len(_set_steps),
-                                    len(_active_dirs))
+                                    len(_relfile_sentinels))
                         _job_steps = [JCLStep(method=_s["method"], params=_s.get("params", {}))
                                       for _s in _rel_steps]
                         _job_steps.append(JCLStep(method="write",
@@ -1141,16 +1384,157 @@ class KernelDispatcher:
                         _r_start = _time.time()
                         while _time.time() - _r_start < _rel_wait:
                             _time.sleep(5)
+                            if lifecycle.is_shutting_down(): return
                             if admin_session.local_cortex.get_aliases_by_pattern(_rel_alias):
-                                _write_sent("_relations", _rhash)
+                                # Job applied every changed file's relations → gate each changed
+                                # file at its content hash, so an unchanged next boot skips it.
+                                for _sn, _fh in _relfile_sentinels:
+                                    _write_sent(_sn, _fh)
                                 logger.info("[Kernel] Global relations phase done in %.1fs",
                                             _time.time() - _r_start)
                                 break
                         else:
                             logger.warning("[Kernel] Global relations phase timeout after %.1fs",
                                            _time.time() - _r_start)
+                elif _relfile_sentinels:
+                    # Changed files that carried NO al/ln/set (def-only) — nothing to apply, but
+                    # they must still be gated so they are not re-scanned every boot.
+                    for _sn, _fh in _relfile_sentinels:
+                        _write_sent(_sn, _fh)
+                    logger.info("[Kernel] Global relations: %d changed def-only file(s) gated",
+                                len(_relfile_sentinels))
             except Exception as _exc:
                 logger.warning("[Kernel] Global relations phase error: %s", _exc)
+
+            # ── Canonical normalization phase — derive the Product·Component·Method
+            # structure (sys:is_a role, :all / :with_recipe sets, sys:method_of + product
+            # mint-up, sys:made_from) AUTOMATICALLY from what every pack just loaded. Runs
+            # after all atoms + relations exist, once per content change (sentinel-gated),
+            # as a background JCL job. No pack authors these links by hand and no user ever
+            # runs a migration command — the law lives in lib/akasha/canon.py and is applied
+            # at every ingestion (this boot path also fires on onto.reload / onto.pack.enable).
+            try:
+                # Gate on "did any .ak file change this boot?" — the normalizer's role/method/
+                # lexeme plan is GRAPH-derived (stable), but its link canonicalization reads the
+                # links ingested this boot (`_ln_steps`, now file-incremental). On an UNCHANGED
+                # restart that link set is empty, which would shift the plan hash and re-run canon
+                # every boot; gating on a real change keeps the unchanged restart a true no-op,
+                # while an incremental add still (re)derives roles for the new atoms + canonicalises
+                # the new links.
+                _files_changed_this_boot = bool(locals().get("_relfile_sentinels"))
+                from lib.akasha.ontology_normalize import OntologyNormalizer as _Norm
+                _cores = [getattr(admin_session.local_cortex, "core", None),
+                          getattr(getattr(admin_session, "nucleus", None), "core", None)]
+                _canon_steps = (_Norm(_cores).plan(link_steps=locals().get("_ln_steps", []))
+                                if _files_changed_this_boot else [])
+                if not _files_changed_this_boot:
+                    logger.info("[Kernel] Canonical normalization: no changed .ak files — skipping")
+                if _canon_steps:
+                    _csig = "\n".join(
+                        f"{_s['method']}|{_s['params'].get('name','')}|{_s['params'].get('src','')}|"
+                        f"{_s['params'].get('dst','')}|{_s['params'].get('rel','')}|"
+                        f"{_s['params'].get('id','')}" for _s in _canon_steps)
+                    _chash = _hl.sha256(_csig.encode()).hexdigest()[:16]
+                    if _sent_exists("_canon", _chash):
+                        logger.info("[Kernel] Canonical normalization already applied (sentinel) — skipping")
+                    else:
+                        _ctext  = "[ont:ak] Canonical Product/Component/Method normalization applied"
+                        _ckey   = _hl.sha256(_ctext.encode()).hexdigest()
+                        _calias = f"ont:ak:canon:{_chash}"
+                        logger.info("[Kernel] Canonical normalization phase: %d steps…",
+                                    len(_canon_steps))
+                        _cjs = [JCLStep(method=_s["method"], params=_s.get("params", {}))
+                                for _s in _canon_steps]
+                        _cjs.append(JCLStep(method="write",
+                                            params={"text": _ctext, "scope": "universal"}))
+                        _cjs.append(JCLStep(method="alias", params={"id": _ckey, "name": _calias}))
+                        # NORMAL class so the structural pass (which populates the reading
+                        # surfaces — meal:all / drink:all / made_from / method_of) runs AHEAD of
+                        # the IDLE-class background weave. Its 43k+ steps already yield between
+                        # steps, so higher-priority work is never starved.
+                        self.harmonia.submit_job(JCLJob(
+                            owner="admin", label="ont.ak.canon:normalize",
+                            steps=_cjs, fail_fast=False), job_class=CLASS_BATCH_ATOM)
+                        _cwait = max(3600, len(_canon_steps))
+                        _c0 = _time.time()
+                        while _time.time() - _c0 < _cwait:
+                            _time.sleep(5)
+                            if lifecycle.is_shutting_down(): return
+                            if admin_session.local_cortex.get_aliases_by_pattern(_calias):
+                                _write_sent("_canon", _chash)
+                                logger.info("[Kernel] Canonical normalization done in %.1fs",
+                                            _time.time() - _c0)
+                                break
+                        else:
+                            logger.warning("[Kernel] Canonical normalization phase timeout")
+            except Exception as _exc:
+                logger.warning("[Kernel] Canonical normalization phase error: %s", _exc)
+
+            # ── Ontology reconciliation phase — retire atoms a pack no longer contributes
+            # (the data-side analog of the seed CODE prune). Additive re-import handles adds +
+            # edits; this adds the missing REMOVAL half so a retired concept doesn't linger
+            # forever in an operation-mode server without a data wipe. Fenced so it can NEVER
+            # touch user knowledge: provenance="ontology" + no user access scope + no still-owning
+            # pack (ref-counted). Soft-evict only (recoverable); hard drop is superuser-only via
+            # onto.reconcile compact=yes. Sentinel-gated (runs once per ontology content change)
+            # and idempotent. Default ON for load_all/server tiers; AKASHA_ONTO_RECONCILE
+            # overrides. Spec: docs/for-llm/ontology-reconciliation-spec.md.
+            try:
+                _recon_on = os.environ.get(
+                    "AKASHA_ONTO_RECONCILE", "1" if _load_all else "0"
+                ).strip().lower() not in ("0", "no", "false", "off", "")
+                if _recon_on:
+                    from lib.akasha.ontology_reconcile import OntologyReconciler as _Recon
+                    _R = _Recon(admin_session.nucleus)
+                    _recon_packs: List[str] = []
+                    for _pkg in _read_registry():
+                        _pn = _pkg.get("name", "")
+                        if not _pn or _pn in RESERVED_DIRS:
+                            continue
+                        if not _pkg.get("autoload", False) and not _load_all and _pn not in _enabled:
+                            continue
+                        if os.path.isdir(os.path.join(ont_dir, _pn)):
+                            _recon_packs.append(_pn)
+                    # PER-PACK gating (was ONE GLOBAL sentinel over every pack's manifest). The
+                    # global sentinel meant ANY single pack change invalidated it and re-ran the
+                    # reconcile for ALL packs — re-materialising each pack's def-keys AND re-stamping
+                    # them on top of the fully-resident graph. On an incremental add (one small file
+                    # dropped into a big pack) that peak OOM-killed the Cell daemon mid-reload. Now
+                    # each pack is gated by its OWN manifest sentinel, exactly like the load phase:
+                    # only a pack whose .ak content actually changed is reconciled, so an incremental
+                    # add touches ONE pack, never all 25. The reconcile itself retires only
+                    # (old_ledger − new_keys), so an additive-only change (nothing dropped) retires
+                    # nothing and stays bounded to that single pack.
+                    _total_retired = 0
+                    _reconciled_n = 0
+                    for _pn in _recon_packs:
+                        try:
+                            _pmh = _manifest_hash(_collect_from_dir(os.path.join(ont_dir, _pn), ".ak"))
+                            if _sent_exists("_reconcile_" + _pn, _pmh):
+                                continue                        # unchanged since last reconcile → skip
+                            _keys, _names = self._pack_def_keys(admin_session, _pn)
+                            if not _names:
+                                # empty / failed parse — do NOT write a sentinel (retry next boot),
+                                # and never let an empty new_keys wipe the ledger via reconcile.
+                                continue
+                            _R.stamp_provenance(_pn, list(_keys))
+                            _rep = _R.reconcile(_pn, _keys, dry_run=False)
+                            if _rep["retired"]:
+                                _total_retired += len(_rep["retired"])
+                                logger.info("[Kernel] Reconcile '%s': retired %d atom(s): %s",
+                                            _pn, len(_rep["retired"]), _rep["retired"][:10])
+                            _write_sent("_reconcile_" + _pn, _pmh)   # gate THIS pack at THIS manifest
+                            _reconciled_n += 1
+                        except Exception as _pe:
+                            # DEGRADE, never crash the daemon: a pack that fails to reconcile is left
+                            # as-is (no sentinel → retried next boot); the process stays alive so the
+                            # rest of the ontology still serves. (Same posture as the dive OOM fix.)
+                            logger.warning("[Kernel] Reconcile '%s' degraded (skipped): %s", _pn, _pe)
+                    if _reconciled_n:
+                        logger.info("[Kernel] Ontology reconcile done — %d atom(s) retired across "
+                                    "%d changed pack(s)", _total_retired, _reconciled_n)
+            except Exception as _exc:
+                logger.warning("[Kernel] Ontology reconcile phase error: %s", _exc)
 
             # ── .csl files (concept graph) ─────────────────────────────────────
             _csl_files_probe = _collect(".csl")
@@ -1185,6 +1569,18 @@ class KernelDispatcher:
                             logger.warning("[Kernel] boot-load .csl: could not queue %s: %s",
                                            os.path.basename(fpath), exc)
                     logger.info("[Kernel] .csl boot load queued (%d files)", len(csl_files))
+                else:
+                    # No ontology .csl (e.g. a minimal seeds series without the thesaurus
+                    # pack). The ont:csl sentinel is normally written by the last .csl job;
+                    # with zero .csl jobs it would never fire, so the curations phase below
+                    # would wait out its full timeout and skip. Queue a sentinel-only job —
+                    # it runs AFTER the already-queued .ak atom jobs (same class, FIFO), so
+                    # it still marks "atoms are loaded" and the curations phase proceeds.
+                    _submit_file_job("(no ontology csl)", [
+                        {"method": "write", "params": {"text": _SENT_TEXT, "scope": "universal"}},
+                        {"method": "alias", "params": {"id": _SENT_KEY, "name": _SENT_ALIAS}},
+                    ], "ont.csl.boot:sentinel-only")
+                    logger.info("[Kernel] no ontology .csl — ont:csl sentinel queued directly")
 
             # ── curations/ (thesaurus enrichments) ────────────────────────────
             # Loaded automatically AFTER ontology .csl sentinel is set.
@@ -1215,6 +1611,7 @@ class KernelDispatcher:
                     _max_wait = 3600  # 1 hour ceiling for curation load gate
                     while _time.time() - _wait_start < _max_wait:
                         _time.sleep(5)
+                        if lifecycle.is_shutting_down(): return
                         csl_done = admin_session.local_cortex.get_aliases_by_pattern(_SENT_ALIAS)
                         if csl_done:
                             break
@@ -1260,7 +1657,9 @@ class KernelDispatcher:
         self-heals a previously-persisted stunted model by re-learning when the corpus has
         grown far beyond what that model was trained on. This is the 'startup makes Akasha
         an order smarter' hook: the graph learns from itself."""
-        if os.environ.get("AKASHA_NO_AUTOLEARN"):
+        _skip = _autolearn_disabled_reason()
+        if _skip:
+            logger.info("[Kernel] Auto semantic.learn skipped — %s", _skip)
             return
         try:
             from lib.akasha.semantic_learn import OntologyLearner, tokens, get_shared_model, store_model
@@ -1280,16 +1679,34 @@ class KernelDispatcher:
                 # corpus immediately would learn a stunted model on the few hundred atoms
                 # present at that instant and persist it forever. Wait for the whole atom
                 # set to exist first.
+                from lib.akasha import lifecycle
                 import glob as _glob
                 sent_dir = os.path.join(self.base_dir, "central", "sentinels")
                 deadline = time.time() + 7200
                 while time.time() < deadline:
+                    if lifecycle.is_shutting_down():
+                        return
                     if _glob.glob(os.path.join(sent_dir, "_relations_*.done")):
                         break
                     time.sleep(5)
+                if lifecycle.is_shutting_down():
+                    return                     # don't start a numpy learn during teardown
 
                 import json as _json
-                chunks = nucleus.core.get_all_chunks() or []
+                # BOUND the read. `get_all_chunks()` with no cap preads EVERY atom's value
+                # into RAM — on the disk-value store (chosen precisely because the host can't
+                # hold the corpus in memory) that is the boot-time OOM that silently kills the
+                # daemon during the background learn. The learn + bake already only USE the
+                # first `_cap` atoms, so capping the READ is behaviour-preserving and turns an
+                # unbounded allocation into a bounded one. Tunable for tight hosts via
+                # AKASHA_AUTOLEARN_MAX (lower it, or AKASHA_NO_AUTOLEARN=1 to skip entirely).
+                try:
+                    _cap = max(0, int(os.environ.get("AKASHA_AUTOLEARN_MAX", "40000")))
+                except (TypeError, ValueError):
+                    _cap = 40000
+                if _cap == 0:
+                    return
+                chunks = nucleus.core.get_all_chunks(limit=_cap) or []
                 # Learn only from CURATED content — external (fetched) atoms carry
                 # provenance=external and are excluded so unvetted web text cannot
                 # poison the learned model (ASI06).
@@ -1301,7 +1718,7 @@ class KernelDispatcher:
                     if _is_external(row.get("meta")):
                         continue
                     docs.append(tokens(content))
-                    if len(docs) >= 40000:
+                    if len(docs) >= _cap:
                         break
 
                 # Self-heal: keep an existing model only if it was trained on a corpus
@@ -1349,7 +1766,7 @@ class KernelDispatcher:
                         row.get("author", "system"), row.get("status", "verified"),
                         row.get("created_at") or time.time())
                     baked += 1
-                    if baked >= 40000:
+                    if baked >= _cap:
                         break
                 if baked:
                     logger.info("[Kernel] Learned vectors baked into %d atoms", baked)
@@ -1369,7 +1786,9 @@ class KernelDispatcher:
         graph — the deferred GLOBAL relations phase — so it waits for that phase's
         completion sentinel (`_relations`) before learning, never a fixed timeout, so
         a slow host does not learn on a half-built graph."""
-        if os.environ.get("AKASHA_NO_AUTOLEARN"):
+        _skip = _autolearn_disabled_reason()
+        if _skip:
+            logger.info("[Kernel] Auto node.learn skipped — %s", _skip)
             return
         try:
             from lib.akasha.semantic_learn import (NodeWalkLearner, get_node_model,
@@ -1394,20 +1813,33 @@ class KernelDispatcher:
                 # from the model. Gate on the authoritative completion signal instead —
                 # the `_relations` filesystem sentinel that _boot_load_ontology writes
                 # when the relations phase finishes. Only then is the graph whole.
+                from lib.akasha import lifecycle
                 import glob as _glob
                 sent_dir = os.path.join(self.base_dir, "central", "sentinels")
                 gated = False
                 deadline = time.time() + 7200               # generous ceiling (slow hosts)
                 while time.time() < deadline:
+                    if lifecycle.is_shutting_down():
+                        return
                     if _glob.glob(os.path.join(sent_dir, "_relations_*.done")):
                         gated = True
                         break
                     time.sleep(5)
+                if lifecycle.is_shutting_down():
+                    return                     # don't start a numpy learn during teardown
                 if not gated:
                     logger.info("[Kernel] Auto node.learn: relations-complete sentinel not "
                                 "seen within ceiling — learning best-effort on current links")
+                # Bound the link read (env-tunable), same rationale as the content learn:
+                # never materialize an unbounded link set into RAM at boot on a tight host.
                 try:
-                    links = nucleus.core.get_all_links(limit=200000) or []
+                    _lcap = max(0, int(os.environ.get("AKASHA_AUTOLEARN_LINK_MAX", "200000")))
+                except (TypeError, ValueError):
+                    _lcap = 200000
+                if _lcap == 0:
+                    return
+                try:
+                    links = nucleus.core.get_all_links(limit=_lcap) or []
                 except Exception:
                     links = []
                 if len(links) < 50:
@@ -1560,7 +1992,9 @@ class KernelDispatcher:
                 return _err(rid, -32601, f"Method not found: {method}")
             action = method
         try:
-            authorized = self.iam.authorize(role, action, data)
+            # Effective policy = base role ⊕ attached grants (capability-delegation-iam-spec).
+            # Additive: with no grants this is exactly self.iam.authorize(role, action, data).
+            authorized = self.iam.authorize_effective(client_id, role, action, data)
         except PermissionError as quota_err:
             return _err(rid, -32001, str(quota_err))
 
@@ -1749,6 +2183,8 @@ class KernelDispatcher:
             return self._handle_onto_export(rid, data, ctx)
         if method == "onto.reload":
             return self._handle_onto_reload(rid, data, session, scopes)
+        if method == "onto.reconcile":
+            return self._handle_onto_reconcile(rid, data, session, scopes)
         if method == "onto.reset":
             return self._handle_onto_reset(rid, data, session, scopes)
         if method == "onto.pack.list":
@@ -1761,6 +2197,19 @@ class KernelDispatcher:
             return self._handle_onto_report(rid, data, ctx)
         if method == "onto.status":
             return self._handle_onto_status(rid, data, session, scopes)
+
+        # ── Service lifecycle (Supervisor RPC — P3: the daemon is the sole respawner) ──
+        # A client's `svc start/restart` is a REQUEST delivered here; the kernel (running in
+        # the Cell daemon that hosts the Supervisor) performs the spawn from the persisted
+        # recipe. `svc ls`/`svc stop` also work directly on the run-dir client-side, but the
+        # RPC path lets any front operate the plane uniformly and is where a delegation grant
+        # check will slot in (service-extension-and-delegation-spec §3.2).
+        if method in ("svc.ls", "svc.start", "svc.stop", "svc.restart"):
+            return self._handle_svc_rpc(rid, method, data, session)
+
+        # ── Capability delegation (grants compose on top of the base role) ──
+        if method in ("iam.grant", "iam.revoke", "iam.grants"):
+            return self._handle_iam_grant(rid, method, data, session)
         if method == "onto.genesis.redo":
             return self._handle_onto_genesis_redo(rid, data, session, scopes)
         if method == "onto.scope.drop":
@@ -1828,44 +2277,9 @@ class KernelDispatcher:
         if method in ("set.op",):
             return self._handle_set_op(rid, data, ctx)
 
-        # ── Notes ─────────────────────────────────────────────────────
-        if NoteConcept:
-            if method == "note.new":       return self._handle_note_new(rid, data, session)
-            if method == "note.add":       return self._handle_note_add(rid, data, session)
-            if method == "note.section":   return self._handle_note_section(rid, data, session)
-            if method == "note.paragraph": return self._handle_note_paragraph(rid, data, session)
-            if method == "note.toc":       return self._handle_note_toc(rid, data, session)
-            if method == "note.read":      return self._handle_note_read(rid, data, session)
-            if method == "note.list":      return self._handle_note_list(rid, data, session)
-            if method == "note.edit":      return self._handle_note_edit(rid, data, session)
-            if method == "note.move":      return self._handle_note_move(rid, data, session)
-            if method == "note.undo":      return self._handle_note_undo(rid, data, session)
-            if method == "note.redo":      return self._handle_note_redo(rid, data, session)
-            if method == "note.restore":   return self._handle_note_restore(rid, data, session)
-            if method == "note.rename":    return self._handle_note_rename(rid, data, session)
-            if method == "note.rm":        return self._handle_note_rm(rid, data, session)
-            if method == "note.ls":        return self._handle_note_ls(rid, ctx, client_id)
-            if method == "note.open":      return self._handle_note_open(rid, data, session, ctx)
-            if method == "note.export":    return self._handle_note_export(rid, session)
-            if method == "note.import":    return self._handle_note_import(rid, data, session)
-            if method == "note.clone":     return self._handle_note_clone(rid, session)
-            # Loom — same operations, isolated under namespace="loom"
-            if method == "loom.note.new":     return self._handle_note_new(rid, data, session, namespace="loom")
-            if method == "loom.note.add":     return self._handle_note_add(rid, data, session, namespace="loom")
-            if method == "loom.note.read":    return self._handle_note_read(rid, data, session, namespace="loom")
-            if method == "loom.note.list":    return self._handle_note_list(rid, data, session, namespace="loom")
-            if method == "loom.note.rm":      return self._handle_note_rm(rid, data, session, namespace="loom")
-            if method == "loom.note.edit":    return self._handle_note_edit(rid, data, session, namespace="loom")
-            if method == "loom.note.move":    return self._handle_note_move(rid, data, session, namespace="loom")
-            if method == "loom.note.undo":    return self._handle_note_undo(rid, data, session, namespace="loom")
-            if method == "loom.note.redo":    return self._handle_note_redo(rid, data, session, namespace="loom")
-            if method == "loom.note.restore": return self._handle_note_restore(rid, data, session, namespace="loom")
-            if method == "loom.note.rename":  return self._handle_note_rename(rid, data, session, namespace="loom")
-            if method == "loom.note.ls":      return self._handle_note_ls(rid, ctx, client_id)
-            if method == "loom.note.open":    return self._handle_note_open(rid, data, session, ctx, namespace="loom")
-            if method == "loom.note.export":  return self._handle_note_export(rid, session, namespace="loom")
-            if method == "loom.note.import":  return self._handle_note_import(rid, data, session, namespace="loom")
-            if method == "loom.note.clone":   return self._handle_note_clone(rid, session, namespace="loom")
+        # Notes (note.* / loom.note.*) now dispatch through the ONE concept registry
+        # (NoteConcept + CONCEPT_NAMESPACES) below — the hand-wired handler block was
+        # retired in #50 Stage 2.
 
         # ── JCL ───────────────────────────────────────────────────────
         if method == "job.submit": return self._handle_job_submit(rid, data, session)
@@ -1898,28 +2312,9 @@ class KernelDispatcher:
                     session.last_written_id = _reg_payload["key"]
                 return _reg_result
 
-        # ── FieldNote ─────────────────────────────────────────────────
-        if FieldNoteConcept:
-            if method == "fieldnote.new":    return self._handle_fieldnote_new(rid, data, session)
-            if method == "fieldnote.ls":     return self._handle_fieldnote_ls(rid, session)
-            if method == "fieldnote.open":   return self._handle_fieldnote_open(rid, data, session)
-            if method == "fieldnote.add":    return self._handle_fieldnote_add(rid, data, session)
-            if method == "fieldnote.read":   return self._handle_fieldnote_read(rid, session)
-            if method == "fieldnote.rm":     return self._handle_fieldnote_rm(rid, session)
-            if method == "fieldnote.export": return self._handle_fieldnote_export(rid, session)
-            if method == "fieldnote.import": return self._handle_fieldnote_import(rid, data, session)
-
-        # ── Survey ────────────────────────────────────────────────────
-        if SurveyConcept:
-            if method == "survey.new":     return self._handle_survey_new(rid, data, session)
-            if method == "survey.open":    return self._handle_survey_open(rid, data, session)
-            if method == "survey.ls":      return self._handle_survey_ls(rid, session)
-            if method == "survey.q.add":   return self._handle_survey_add_question(rid, data, session)
-            if method == "survey.opt.add": return self._handle_survey_add_option(rid, data, session)
-            if method == "survey.res.add": return self._handle_survey_add_respondent(rid, data, session)
-            if method == "survey.ans":     return self._handle_survey_add_response(rid, data, session)
-            if method == "survey.list":    return self._handle_survey_list(rid, session)
-            if method == "survey.rm":      return self._handle_survey_rm(rid, session)
+        # FieldNote (fieldnote.*) and Survey (survey.*) now dispatch through the ONE concept
+        # registry above (FieldNoteConcept / SurveyConcept); their hand-wired handler blocks
+        # were retired in #50 Stage 2 (they were already dead — the registry ran first).
 
         # ── Associate ─────────────────────────────────────────────────
         if method == "kernel.associate":
@@ -2000,6 +2395,14 @@ class KernelDispatcher:
             return self._handle_dream_confirm(rid, data, session, ctx, scopes, history)
         if method in ("dream.forget", "dream.reject"):
             return self._handle_dream_forget(rid, data, session, ctx, scopes, history)
+        if method == "nebula":
+            return self._handle_nebula(rid, data, session, ctx, scopes, history)
+        if method == "nebula.run":                      # internal background step
+            return self._handle_nebula_run(rid, data, session, ctx, scopes)
+        if method in ("nebula.confirm", "nebula.approve"):
+            return self._handle_nebula_confirm(rid, data, session, ctx, scopes, history)
+        if method in ("nebula.forget", "nebula.reject"):
+            return self._handle_nebula_forget(rid, data, session, ctx, scopes, history)
 
         # ── Contexa — the client session's INPUT side ─────────────────
         if method in ("contexa.fetch", "fetch"):
@@ -2010,6 +2413,10 @@ class KernelDispatcher:
         # ── Jataka — the client session's OUTPUT side ─────────────────
         if method in ("jataka.present", "present"):
             return self._handle_jataka_present(rid, data, session, ctx, scopes, client_id)
+        if method in ("curation.project", "cur.project"):
+            return self._handle_curation_project(rid, data, session, ctx, scopes, client_id)
+        if method in ("pres.export", "presentation.export"):
+            return self._handle_pres_export(rid, data, session, ctx, scopes, client_id)
 
         if method in ("image.profile", "img.profile", "vision.classify"):
             return self._handle_image_profile(rid, data, session, ctx, scopes, client_id)
@@ -2584,27 +2991,31 @@ class KernelDispatcher:
     # ------------------------------------------------------------------
 
     def _handle_ping(self, rid: str, client_id: str) -> dict:
-        # Try to attach session context if client is known; degrade gracefully
-        session = None
-        try:
-            role = self.iam.authenticate(client_id)
-            session = self.manager.get_session(client_id)
-        except (PermissionError, Exception):
-            pass
-
-        if session:
-            return _ok(rid, session.consciousness.ping(session))
-
-        # Kernel alive but no session: report via any available consciousness
-        if self.manager.sessions:
-            first_session = next(iter(self.manager.sessions.values()))
-            return _ok(rid, first_session.consciousness.ping(None))
-
+        # CONSTANT-TIME LIVENESS ONLY. sys.ping is the reachability probe the portal /
+        # CLI client (cell_ipc.ping) uses to decide "is the Cell daemon there?" — it only
+        # needs "the daemon answered", nothing more. It therefore touches NO iam / manager /
+        # session / consciousness / DB: those calls run on the same GIL as the writer, so a
+        # heavy dive (mega-hub fan-out) or boot-time index/cache warming holding the CPU could
+        # otherwise stall this probe past its timeout and be MISREAD as "writer unreachable",
+        # fail-closing the write-forwarding path even though the daemon is alive but busy.
+        # Keeping it O(1) means once the probe gets a GIL slice it returns instantly.
+        # The rich cogito view (consciousness.ping) is served by _handle_status_full / sys.status.
         return _ok(rid, {
             "status": "kernel_online",
             "series": self.series,
             "timestamp": time.time(),
-            "note": "No sessions active; full cogito unavailable without a session."
+            "alive": True,
+            # Running-code fingerprint (stamped by the launcher at daemon boot). A re-extracted
+            # seed / pulled repo boots argument-less → attaches to THIS daemon over the socket;
+            # if its on-disk code differs from what this daemon is running, the client replaces
+            # the daemon instead of running new tests on stale code. Constant-time env read.
+            # Prefer the CODE-CONTENT fingerprint (AKASHA_HANDSHAKE_BUILD) for the replace
+            # handshake — it is identical for identical code however the daemon was launched (seed
+            # vs plain `python akasha.py`). AKASHA_BUILD_ID may be a git-SHA display label the seed
+            # stamped, which differs from a plain reconnect's content hash and would wrongly trigger
+            # a daemon-replace (the silent no-trace daemon kill + boot loop). Fall back to it only
+            # for a daemon booted before this field existed.
+            "build": os.environ.get("AKASHA_HANDSHAKE_BUILD") or os.environ.get("AKASHA_BUILD_ID", ""),
         })
 
     def _handle_status(self, rid: str) -> dict:
@@ -2768,9 +3179,36 @@ class KernelDispatcher:
             admin_name = n.vault_retrieve("system", "admin_name")
             akasha_name = n.vault_retrieve("system", "akasha_name") or "AKASHA"
         except Exception:
-            admin_name, akasha_name = None, "AKASHA"
+            n, admin_name, akasha_name = None, None, "AKASHA"
+        # `initialized` requires BOTH an admin name AND a usable passphrase credential — not just
+        # the name. A crash mid-genesis (or the old Silica read-fd race aborting a genesis write)
+        # can leave a HALF-WRITTEN genesis vault: `system/admin_name` persisted but the matching
+        # credential (`iam/user:<name>` / `iam/user:admin` / legacy `system/passphrase_hash`) did
+        # not. With the old `admin_name is not None` test that reads as initialized, so the console
+        # shows a login prompt that can NEVER succeed (no credential to verify against) — a soft
+        # brick. Treating "name present, no credential" as NOT initialized lets the local console
+        # re-run the genesis ceremony and re-establish the admin, WITHOUT touching the graph
+        # (genesis only overwrites the genesis vault + admin record; every ontology/user atom is
+        # preserved). Safe: genesis_rite is local-console-only (TRUST_LOCAL), so this never opens a
+        # network admin land-grab. Reads the durable vault directly (not the cache), so it reflects
+        # ground truth, not a boot-timing gap.
+        credential_present = False
+        if n is not None and admin_name:
+            try:
+                rec = (n.vault_retrieve("iam", f"user:{admin_name}")
+                       or n.vault_retrieve("iam", "user:admin"))
+                if isinstance(rec, dict) and rec.get("passphrase_hash"):
+                    credential_present = True
+                elif n.vault_retrieve("system", "passphrase_hash"):
+                    credential_present = True          # legacy single-hash genesis vault entry
+            except Exception:
+                credential_present = False
+            if not credential_present:
+                logger.warning("[IAM] auth.status: admin_name=%r present but NO usable passphrase "
+                               "credential in the vault — reporting uninitialized so the local "
+                               "console can re-run genesis (graph is preserved).", admin_name)
         return _ok(rid, {
-            "initialized": admin_name is not None,
+            "initialized": bool(admin_name is not None and credential_present),
             "akasha_name": akasha_name,
         })
 
@@ -3014,7 +3452,21 @@ class KernelDispatcher:
         meta = {"type": "hub", "name": name, "role": "concept", "canonical": True}
         write_scopes = [f"owner:user_{client_id}", f"view:user_{client_id}"]
         key = ctx.put_chunk(content=hub_content, meta=meta, author=client_id, scopes=write_scopes)
-        ctx.set_alias(key, name)
+        # Authoritative ontology re-import (scope=universal) must UPDATE a changed def, not
+        # silently keep the stale atom. Content-addressing gives edited text a NEW key, so
+        # plain first-wins would leave the alias on the old atom and orphan the new content
+        # (the release's fix never reaches the user). When the incumbent lives in the NUCLEUS
+        # it is pack/ontology content (users can't write there) → rebind is safe and the
+        # collision is logged for onto.report. A user cell atom holding the alias keeps
+        # first-wins untouched. Ordinary (non-universal) user defines are unaffected.
+        _force = False
+        if str(data.get("scope", "")) == "universal":
+            _nuc = getattr(session, "nucleus", None)
+            if _nuc is not None:
+                _prev = _nuc.core.get_key_by_alias(name)
+                if _prev and _prev != key:
+                    _force = True
+        ctx.set_alias(key, name, force=_force)
 
         session.set_context("last_written_id", key)
 
@@ -3741,16 +4193,22 @@ class KernelDispatcher:
         # When ctx is _NucleusWriteCtx, resolve_alias already preferred nucleus
         # keys, so no extra alias lookup is needed.
         nucleus = getattr(session, 'nucleus', None)
+        # A 64-char hex value is a raw atom key ($var.key expansions, or the
+        # canon normalizer's proto-word roll-up which targets an exact key to
+        # avoid alias ambiguity) — never a proto-word to mint. Guard both write
+        # branches so a raw key is used verbatim, not content-addressed into a
+        # new atom whose text is the hash string.
+        _is_hex = lambda v: len(v) == 64 and all(c in '0123456789abcdef' for c in v)
         if isinstance(ctx, _NucleusWriteCtx):
             # Late-binding: auto-create proto-words for any unresolved alias.
             # Using the bare segment (last ':'-delimited token) as the universal
             # anchor means ordering and repeated execution are both irrelevant.
             # When the qualified atom is later defined, it links back to the
             # same proto-word via 'specializes', making the graph path traversable.
-            if _src_alias_resolved is None:
+            if _src_alias_resolved is None and not _is_hex(src):
                 bare_src = src.rsplit(":", 1)[-1] if ":" in src else src
                 src_key = nucleus._ensure_protoword(bare_src)
-            if _dst_alias_resolved is None:
+            if _dst_alias_resolved is None and not _is_hex(dst):
                 bare_dst = dst.rsplit(":", 1)[-1] if ":" in dst else dst
                 dst_key = nucleus._ensure_protoword(bare_dst)
             ctx.put_link(src_key, dst_key, rel, w=w, author=client_id)
@@ -4197,6 +4655,12 @@ class KernelDispatcher:
             return _err(rid, -32001, "No nucleus available for this session")
 
         _PREFIXES = [
+            "ont:ak:f:",            # ⚠️ per-file atom sentinel — MUST be cleared or the re-load is
+                                    # a silent no-op. Phase 1 skips any file whose ont:ak:f:* alias
+                                    # is still present (kernel.py ~1052), so leaving these behind
+                                    # means the pack re-enters but re-writes NO atoms — the exact
+                                    # failure that left recipe-content chunks empty and un-healable
+                                    # by onto.reload (docs/handoff/recipe-body-empty-content-chunk.md).
             "ont:ak:atoms:loaded:",
             "ont:ak:loaded:",
             "ont:csl:loaded:",
@@ -4230,6 +4694,107 @@ class KernelDispatcher:
             "sentinels_cleared": removed,
             "sentinel_files_removed": _removed_files,
             "message": "Ontology reload started in background.",
+        })
+
+    def _pack_def_keys(self, session, pack_name: str):
+        """The atom keys a pack's .ak files currently define — parse each `def <name>` and
+        resolve the name to its (loaded) nucleus key. Requires the pack to be loaded (aliases
+        resolvable). Returns (keys:set, names:list)."""
+        import shlex as _shlex
+        _kernel_dir  = os.path.dirname(os.path.abspath(__file__))
+        _project_dir = os.path.dirname(os.path.dirname(_kernel_dir))
+        pack_dir = os.path.join(_project_dir, "ontology", pack_name)
+        keys, names = set(), []
+        if not os.path.isdir(pack_dir):
+            return keys, names
+        nucleus = getattr(session, "nucleus", None)
+        resolver = nucleus if nucleus else session.local_cortex
+        for _root, _dirs, _files in os.walk(pack_dir):
+            for fn in sorted(_files):
+                if not fn.endswith(".ak"):
+                    continue
+                try:
+                    with open(os.path.join(_root, fn), encoding="utf-8", errors="ignore") as _f:
+                        for raw in _f:
+                            line = raw.strip()
+                            if not line or line[:4].lower() != "def ":
+                                continue
+                            try:
+                                parts = _shlex.split(line)
+                            except ValueError:
+                                continue
+                            if len(parts) >= 2 and parts[1]:
+                                names.append(parts[1])
+                                k = resolver.resolve_alias(parts[1])
+                                if k:
+                                    keys.add(k)
+                except Exception:
+                    pass
+        return keys, names
+
+    def _active_reconcile_packs(self, session, explicit: str = ""):
+        """Packs to reconcile: an explicit `pack=` if given, else every pack that already has a
+        member-ledger (`ont:pack:members:<name>`) — i.e. one we have tracked on a prior load."""
+        if explicit:
+            return [explicit]
+        nucleus = getattr(session, "nucleus", None)
+        core = nucleus.core if nucleus else session.local_cortex.core
+        out = []
+        try:
+            for nm in (core.get_distinct_collection_names("ont:pack:members:") or []):
+                p = nm[len("ont:pack:members:"):]
+                if p:
+                    out.append(p)
+        except Exception:
+            pass
+        return sorted(set(out))
+
+    def _handle_onto_reconcile(self, rid, data, session, scopes) -> dict:
+        """[onto.reconcile] Retire ontology atoms a pack no longer contributes — the data-side
+        analog of the seed code prune. Fenced to provenance=ontology + no user scope + cross-pack
+        ref-count; soft-evict (recoverable) by default. `dry=yes` (default) reports without
+        mutating; `apply=yes` retires; `compact=yes` (superuser) hard-drops evicted orphans.
+        Requires role:librarian. Spec: docs/for-llm/ontology-reconciliation-spec.md."""
+        if "role:librarian" not in scopes:
+            return _err(rid, -32601, "onto.reconcile requires role:librarian")
+        nucleus = getattr(session, "nucleus", None)
+        if not nucleus:
+            return _err(rid, -32001, "No nucleus available for this session")
+        from lib.akasha.ontology_reconcile import OntologyReconciler
+        R = OntologyReconciler(nucleus)
+
+        def _truthy(v):
+            return str(v).strip().lower() in ("yes", "true", "1", "on")
+
+        if _truthy(data.get("compact")):
+            if "role:superuser" not in scopes and "scope:sys:admin" not in scopes:
+                return _err(rid, -32601, "onto.reconcile compact=yes requires role:superuser")
+            res = R.compact(scopes)
+            return _ok(rid, {"status": "compacted", "dropped_count": len(res.get("dropped", [])),
+                             "dropped": res.get("dropped", [])[:50]})
+
+        apply = _truthy(data.get("apply"))
+        dry = not apply
+        pack = (data.get("pack") or "").strip()
+        packs = self._active_reconcile_packs(session, pack)
+        reports = []
+        for pn in packs:
+            keys, names = self._pack_def_keys(session, pn)
+            if not names:
+                continue                         # pack absent / not loaded → nothing to diff
+            R.stamp_provenance(pn, list(keys))
+            rep = R.reconcile(pn, keys, dry_run=dry)
+            reports.append(rep)
+        total_retired = sum(len(r["retired"]) for r in reports)
+        total_warn = sum(len(r["user_ref_warnings"]) for r in reports)
+        return _ok(rid, {
+            "status": "dry_run" if dry else "applied",
+            "packs": [r["pack"] for r in reports],
+            "retired_total": total_retired,
+            "user_ref_warning_total": total_warn,
+            "reports": reports,
+            "hint": ("Preview only — re-run with apply=yes to retire (soft-evict, recoverable)."
+                     if dry else "Retired via soft-evict; re-add the pack to restore."),
         })
 
     def _handle_onto_reset(self, rid, data, session, scopes) -> dict:
@@ -4584,6 +5149,106 @@ class KernelDispatcher:
         ]
         return _ok(rid, {"overwrites": overwrites, "leaf_skips": leaf_skips, "entries": entries})
 
+    def _handle_iam_grant(self, rid, method, data, session) -> dict:
+        """Admin composes per-client authority as grants (capability-delegation-iam-spec §4.1).
+        `iam.grant`/`iam.revoke` are IAM_MANAGE-gated (enforced by METHOD_TO_ACTION); `iam.grants`
+        lists a principal's grants (own, or any for an admin). The bounded sub-admin
+        request→approve flow (§4.2) and enterprise signing are staged."""
+        iam = self.iam
+        client_id = getattr(session, "client_id", "")
+        role = getattr(session, "role", None)
+        if method == "iam.grants":
+            target = (data.get("grantee") or data.get("id") or client_id).strip()
+            # A non-admin may only list its OWN grants.
+            if target != client_id:
+                from lib.akasha.identity import Capability
+                pol = iam._policies.get(role)
+                if not (pol and pol.has(Capability.IAM_MANAGE)):
+                    return _err(rid, -32001, "listing another principal's grants requires admin")
+            return _ok(rid, {"grantee": target, "grants": iam.grants_list(target)})
+        if method == "iam.revoke":
+            grantee = (data.get("grantee") or "").strip()
+            gid = (data.get("grant_id") or data.get("id") or "").strip()
+            if not grantee or not gid:
+                return _err(rid, -32602, "iam.revoke requires grantee= and grant_id=")
+            ok = iam.grant_revoke(grantee, gid)
+            return _ok(rid, {"revoked": ok, "grantee": grantee, "grant_id": gid})
+        # iam.grant
+        grantee = (data.get("grantee") or "").strip()
+        capability = (data.get("capability") or data.get("cap") or "").strip().lower()
+        resource = (data.get("resource") or "*").strip()
+        if not grantee or not capability:
+            return _err(rid, -32602, "iam.grant requires grantee= and capability=")
+        # Fail-closed: only known, delegable capabilities may be granted.
+        from lib.akasha.identity import Capability
+        try:
+            Capability(capability)
+        except ValueError:
+            return _err(rid, -32602, f"unknown capability '{capability}'")
+        # Reserved-unit safety for service grants: a grant selector may never cover the
+        # writer/root or job units (service-extension-and-delegation-spec §5).
+        if capability == Capability.SVC_OPERATE.value:
+            if resource in ("*", "svc:*") or resource.startswith(("svc:cell", "job:")):
+                return _err(rid, -32003,
+                            "svc_operate grant selector may not cover svc:cell/job:* "
+                            "(use svc:app:<operator>:* — never the writer/root)")
+        verbs = data.get("verbs") or "*"
+        expires = data.get("expires")
+        grant = iam.grant_add(grantor=client_id, grantee=grantee, capability=capability,
+                              resource=resource, verbs=verbs, expires=expires)
+        return _ok(rid, {"granted": grant})
+
+    # svc.ls fields that are safe to reveal to a plain READ caller (e.g. a network guest on
+    # a deployment that exposes the RPC, like thesaurus08). The respawn RECIPE (argv/env), the
+    # pid, filesystem log paths, and deps are internal machinery — shown only to a holder of
+    # SVC_OPERATE (operators/admin), never leaked to a reader.
+    _SVC_LS_PUBLIC_FIELDS = ("id", "kind", "state", "engine", "host", "port",
+                             "live", "restart", "substrate", "trust", "serve_only", "detail")
+
+    def _handle_svc_rpc(self, rid, method, data, session) -> dict:
+        """Operate the Supervisor plane over RPC. `svc ls` lists the run-dir; `svc
+        start/restart` respawn from the persisted recipe (P1) — spawned HERE, in the daemon
+        that hosts the Supervisor (P3), never by the client. Authz (svc.read / svc.operate)
+        is enforced by the dispatcher via METHOD_TO_ACTION before this handler runs."""
+        try:
+            from lib.harmonia import supervisor as sv
+            from lib.akasha.identity import Capability
+        except Exception as exc:
+            return _err(rid, -32603, f"supervisor unavailable: {exc}")
+        sup = sv.Supervisor(self.base_dir)
+        if method == "svc.ls":
+            units = sv.list_units(self.base_dir)
+            # Only an operator (base SVC_OPERATE — admin today) sees the full descriptor;
+            # a plain reader gets a redacted operational view with no recipe/pid/paths.
+            pol = self.iam._policies.get(getattr(session, "role", None))
+            if not (pol and pol.has(Capability.SVC_OPERATE)):
+                units = [{k: u[k] for k in self._SVC_LS_PUBLIC_FIELDS if k in u} for u in units]
+            return _ok(rid, {"units": units})
+        unit_id = (data.get("id") or data.get("name") or "").strip()
+        if not unit_id:
+            return _err(rid, -32602, "svc requires id=<unit>")
+        if not unit_id.startswith(("svc:", "job:")):
+            unit_id = f"svc:{unit_id}"
+        # Reserved units are never client-operable via this path (writer/root + jobs).
+        if method in ("svc.start", "svc.restart") and unit_id == "svc:cell":
+            return _err(rid, -32003, "svc:cell is the daemon root — not restartable via RPC")
+        if unit_id.startswith("job:"):
+            return _err(rid, -32003, "job units are executor-owned, not svc-operable")
+        try:
+            if method == "svc.start":
+                result = sup.start(unit_id)
+            elif method == "svc.restart":
+                result = sup.restart(unit_id)
+            elif method == "svc.stop":
+                result = sup.stop(unit_id)
+            else:
+                return _err(rid, -32601, f"unknown svc method {method}")
+        except Exception as exc:
+            return _err(rid, -32603, f"svc {method} failed: {exc}")
+        if isinstance(result, dict) and result.get("error"):
+            return _err(rid, -32003, result["error"])
+        return _ok(rid, result)
+
     def _handle_onto_status(self, rid, data, session, scopes) -> dict:
         """Ontology status: nucleus counts, REGISTRY packages, and sentinel files."""
         import json as _json
@@ -4608,6 +5273,12 @@ class KernelDispatcher:
         if os.path.isdir(_sent_dir):
             sent_names = sorted(os.path.basename(f) for f in _glob.glob(os.path.join(_sent_dir, "*.done")))
 
+        # A pack's atom-load is complete when its phase-2 sentinel file exists
+        # ({pack}_{hash}.done). Present-on-disk packs without one are still loading
+        # (or not yet reached). Use the sentinel basenames already globbed above.
+        def _pack_loaded(pname: str) -> bool:
+            return any(s.startswith(pname + "_") and s.endswith(".done") for s in sent_names)
+
         # REGISTRY summary
         reg_path = os.path.join(ont_dir, "REGISTRY.json")
         registry_packages = []
@@ -4622,9 +5293,61 @@ class KernelDispatcher:
                         "autoload":   pkg.get("autoload", False),
                         "file_count": fcount,
                         "exists":     os.path.isdir(pdir),
+                        "loaded":     _pack_loaded(pname),
                     })
         except Exception:
             pass
+
+        # ── Load-progress summary — one-glance "still loading / done" ──────────────
+        # The boot load is a background daemon; a fresh seed re-extract re-imports
+        # everything on the next boot (mtime-changed manifest hash). This tells the
+        # operator whether that pass is still running, without having to eyeball the
+        # sentinel list. Phase markers: _relations_*.done = all atoms+links loaded (the
+        # definitive core-complete signal the portal/learn daemons gate on); curations
+        # complete is a DB alias (ont:curation:loaded:*), CSL likewise.
+        def _phase_done(prefix: str) -> bool:
+            return any(s.startswith(prefix) and s.endswith(".done") for s in sent_names)
+
+        def _alias_phase_done(pattern: str) -> bool:
+            try:
+                return bool(nucleus and nucleus.core.get_aliases_by_pattern(pattern))
+            except Exception:
+                return False
+
+        # A pack that exists but ships 0 .ak files has nothing to load — it never gets a
+        # sentinel, so counting it as "present" would pin the summary at IN PROGRESS
+        # forever (the archaeology/biology/literature/medicine placeholders do this).
+        _present = [p for p in registry_packages if p["exists"] and p.get("file_count", 0) > 0]
+        _present_loaded = [p for p in _present if p["loaded"]]
+        _pending = [p["name"] for p in _present if not p["loaded"]]
+        _relations_done = _phase_done("_relations_")
+        _has_curations = os.path.isdir(os.path.join(_project_dir, "curations"))
+        _curations_done = (not _has_curations) or _alias_phase_done("ont:curation:loaded:")
+        # "complete" = the CORE graph is loaded (all atoms + links = _relations_done, and no
+        # present pack still pending). Curations and reconcile are OPTIONAL layers that do NOT
+        # gate core completeness: curations are example ENRICHMENTS (not every tier runs them —
+        # the seeds tier would otherwise pin complete=False forever), and reconcile only runs on
+        # load_all tiers. Both are reported separately below. The portal/learn daemons already
+        # gate on _relations_done, not on these, so this matches what the system treats as ready.
+        _complete = bool(_relations_done and not _pending)
+        load_summary = {
+            "complete":        _complete,
+            "in_progress":     not _complete,
+            "packs_present":   len(_present),
+            "packs_loaded":    len(_present_loaded),
+            "packs_pending":   _pending,
+            "relations_done":  _relations_done,     # atoms + all links loaded
+            "canon_done":      _phase_done("_canon_"),
+            "reconcile_done":  _phase_done("_reconcile_"),   # load_all tiers only; informational
+            "curations_done":  _curations_done,              # optional enrichment; does not gate 'complete'
+            # atoms count keeps climbing while loading — poll onto.status to watch it move.
+            "atoms":           atom_count,
+            "hint": (("ontology core load complete."
+                      + ("" if _curations_done else " (curation enrichments still loading in the background.)"))
+                     if _complete else
+                     "ontology still loading — safe to exit; unfinished packs re-load on the "
+                     "next boot (content-addressed, no data loss). Re-run onto.status to watch."),
+        }
 
         enabled_packs = []
         try:
@@ -4634,6 +5357,7 @@ class KernelDispatcher:
             pass
 
         return _ok(rid, {
+            "load": load_summary,
             "nucleus": {
                 "atoms":   atom_count,
                 "links":   link_count,
@@ -5138,10 +5862,25 @@ class KernelDispatcher:
 
         _meta = set() if self._meta_scope_flag(data) else self._meta_scope_keys(ctx)
         import json as _json
+        # The searchable corpus is the SHARED ONTOLOGY, which lives in the nucleus — not
+        # in the session's private cell. Streaming only ctx.stream() searched an isolated
+        # guest cell (near-empty) and returned a handful of stray atoms; the ingredients /
+        # concepts a guest MCP "read-first" client wants were invisible. Union the nucleus
+        # candidates (deduped), exactly like discover_atoms/explore. Every candidate still
+        # passes ctx.check_access(key, scopes), so isolation is unchanged — the nucleus holds
+        # shared ground-truth only, never another user's private cell atoms.
+        _rows = list(ctx.stream(limit=scan) or [])
+        if nucleus is not None and nucleus is not ctx:
+            # NucleusEngine has no stream() wrapper — go straight to the backend primitive.
+            _rows += list(nucleus.core.fetch_stream(scan) or [])
+        _seen_keys: set = set()
         scored = []
-        for row in (ctx.stream(limit=scan) or []):
+        for row in _rows:
             key = row.get("key")
-            if not key or key == anchor_key or key in _meta or (scopes and not ctx.check_access(key, scopes)):
+            if not key or key in _seen_keys:
+                continue
+            _seen_keys.add(key)
+            if key == anchor_key or key in _meta or (scopes and not ctx.check_access(key, scopes)):
                 continue
             content = row.get("content") or ""
             if tier == "learned":
@@ -5225,7 +5964,21 @@ class KernelDispatcher:
           depth=  traversal depth (default 2, capped 1–5)
           follow= relation type filter (empty = all outgoing)
           format= rich | ascii (default rich)
+          concept= yes → the CONCEPT tree (sys:is_a subset/superset only), delegated to
+                   the concept navigator (concept.tree) — ignores every other link type + sets
         """
+        # Concept-hierarchy mode: `tree <c> concept=yes` walks the sys:is_a up/down lattice only.
+        if str(data.get("concept", "")).strip().lower() in ("yes", "true", "1", "y") \
+                and _concept_registry:
+            r = _concept_registry.dispatch_if_handled(
+                "concept.tree", session,
+                {"root": data.get("target") or data.get("id") or "",
+                 "depth": data.get("depth", ""), "limit": data.get("limit", ""),
+                 "leaves": data.get("leaves", "")},
+                rid)
+            if r is not None:
+                return r
+
         target = (data.get("target") or data.get("id") or "").strip()
         depth  = int(data.get("depth", 2))
         follow = (data.get("follow") or "").strip()
@@ -5374,14 +6127,32 @@ class KernelDispatcher:
         if name.startswith("ws:") or name.startswith("wf:"):
             return _err(rid, -32602,
                         f"Set name prefix '{name.split(':', 1)[0]}:' is reserved for internal use.")
-        key = ctx.resolve_alias(target) or target
-        # If key belongs to nucleus, track the set membership there so all cells see it.
         nucleus = getattr(session, 'nucleus', None)
+        # An ontology / shared-set membership MUST live in the nucleus so EVERY session — guests
+        # included — can see it. resolve_alias() is local-first, so when a spurious local
+        # "Conceptual hub" proto-word shadows the real nucleus content atom for the same alias
+        # (e.g. a cross-file set.add whose target is defined in another pack), the membership
+        # would land in the writer's PRIVATE cortex: visible to admin (all-scope/librarian read)
+        # but invisible to guests, which merge scoped-local + UNSCOPED-NUCLEUS only — the empty
+        # cuisine/pairing sets. For an ONTOLOGY writer (librarian: boot pack-load, onto.reload),
+        # resolve the target against the NUCLEUS first and, if it's a real nucleus atom, add
+        # there. Regular users keep local-first (their set.add targets their own cell atoms, and
+        # they cannot write the nucleus anyway).
+        _is_onto_writer = "role:librarian" in (getattr(session, "active_scopes", None) or [])
+        key = None
+        if _is_onto_writer and nucleus:
+            _nk = nucleus.core.get_key_by_alias(target)
+            if _nk and nucleus.core.get_chunk_raw(_nk):
+                key = _nk
+                nucleus.add_to_set(name, key)
+        if key is None:
+            key = ctx.resolve_alias(target) or target
+            _in_nucleus = bool(nucleus and nucleus.core.get_chunk_raw(key))
+            if _in_nucleus:
+                nucleus.add_to_set(name, key)
+            else:
+                ctx.add_to_set(name, key)
         _in_nucleus = bool(nucleus and nucleus.core.get_chunk_raw(key))
-        if _in_nucleus:
-            nucleus.add_to_set(name, key)
-        else:
-            ctx.add_to_set(name, key)
         # Weave the Atom's own content through the unified post-write hook.
         # (Atom may have been bulk-imported without prior weaving; this is idempotent
         # if it was already weaved at write time.)
@@ -5471,246 +6242,6 @@ class KernelDispatcher:
             return _err(rid, -32602, "set.op 'op' must be union|isect|diff")
         members = ctx.set_operation(op, res, a, b)
         return _ok(rid, {"result_set": res, "members": members})
-
-    # ------------------------------------------------------------------
-    # Notes
-    # ------------------------------------------------------------------
-
-    def _note_concept(self, session, namespace=None):
-        return NoteConcept(session, namespace=namespace)
-
-    def _handle_note_new(self, rid, data, session, namespace=None) -> dict:
-        title = data.get("title") or data.get("name", "")
-        if not title:
-            return _err(rid, -32602, "note.new requires 'title'")
-        concept = self._note_concept(session, namespace)
-        try:
-            res = concept.op_new(title=title)
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, res)
-
-    def _handle_note_add(self, rid, data, session, namespace=None) -> dict:
-        text = data.get("text") if data.get("text") is not None else data.get("content", "")
-        concept = self._note_concept(session, namespace)
-        if not concept.concept_id:
-            return _err(rid, -32002, "No active note. Use note.new first.")
-        try:
-            res = concept.op_add_chunk(text=text)
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, res)
-
-    def _handle_note_section(self, rid, data, session, namespace=None) -> dict:
-        title = data.get("title", "")
-        role  = data.get("role", "section")
-        if not title:
-            return _err(rid, -32602, "note.section requires 'title'")
-        concept = self._note_concept(session, namespace)
-        if not concept.concept_id:
-            return _err(rid, -32002, "No active note. Use note.new first.")
-        try:
-            res = concept.op_section(title=title, role=role)
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, res)
-
-    def _handle_note_paragraph(self, rid, data, session, namespace=None) -> dict:
-        category = data.get("category", "memo")
-        concept = self._note_concept(session, namespace)
-        if not concept.concept_id:
-            return _err(rid, -32002, "No active note. Use note.new first.")
-        try:
-            res = concept.op_paragraph(category=category)
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, res)
-
-    def _handle_note_toc(self, rid, data, session, namespace=None) -> dict:
-        concept = self._note_concept(session, namespace)
-        if not concept.concept_id:
-            return _err(rid, -32002, "No active note. Use note.new first.")
-        try:
-            toc = concept.op_toc()
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, toc)
-
-    def _handle_note_read(self, rid, data, session, namespace=None) -> dict:
-        concept = self._note_concept(session, namespace)
-        if not concept.concept_id:
-            return _err(rid, -32002, "No active note. Use note.new first.")
-        try:
-            seq = concept.op_get_sequential_text()
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, seq)
-
-    def _handle_note_list(self, rid, data, session, namespace=None) -> dict:
-        concept = self._note_concept(session, namespace)
-        if not concept.concept_id:
-            return _err(rid, -32002, "No active note. Use note.new first.")
-        try:
-            res = concept.op_list_chunks(head_len=data.get("head_len", 80) if data else 80)
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, res)
-
-    def _handle_note_edit(self, rid, data, session, namespace=None) -> dict:
-        chunk_id = data.get("chunk_id") or data.get("id", "")
-        text = data.get("text", "")
-        if not chunk_id:
-            return _err(rid, -32602, "note.edit requires 'chunk_id'")
-        concept = self._note_concept(session, namespace)
-        if not concept.concept_id:
-            return _err(rid, -32002, "No active note. Use note.new first.")
-        try:
-            res = concept.op_edit_chunk(chunk_id=chunk_id, text=text)
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, res)
-
-    def _handle_note_move(self, rid, data, session, namespace=None) -> dict:
-        chunk_id = data.get("chunk_id") or data.get("id", "")
-        after    = data.get("after")
-        if not chunk_id:
-            return _err(rid, -32602, "note.move requires 'chunk_id'")
-        concept = self._note_concept(session, namespace)
-        if not concept.concept_id:
-            return _err(rid, -32002, "No active note. Use note.new first.")
-        try:
-            res = concept.op_move_chunk(chunk_id=chunk_id, after=after)
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, res)
-
-    def _handle_note_undo(self, rid, data, session, namespace=None) -> dict:
-        concept = self._note_concept(session, namespace)
-        if not concept.concept_id:
-            return _err(rid, -32002, "No active note. Use note.new first.")
-        try:
-            res = concept.op_undo_edit()
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, res)
-
-    def _handle_note_redo(self, rid, data, session, namespace=None) -> dict:
-        concept = self._note_concept(session, namespace)
-        if not concept.concept_id:
-            return _err(rid, -32002, "No active note. Use note.new first.")
-        try:
-            res = concept.op_redo_edit()
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, res)
-
-    def _handle_note_restore(self, rid, data, session, namespace=None) -> dict:
-        concept = self._note_concept(session, namespace)
-        if not concept.concept_id:
-            return _err(rid, -32002, "No active note. Use note.new first.")
-        try:
-            res = concept.op_restore_original()
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, res)
-
-    def _handle_note_rename(self, rid, data, session, namespace=None) -> dict:
-        title = data.get("title", "")
-        if not title:
-            return _err(rid, -32602, "note.rename requires 'title'")
-        concept = self._note_concept(session, namespace)
-        if not concept.concept_id:
-            return _err(rid, -32002, "No active note. Use note.new first.")
-        try:
-            res = concept.op_rename(title=title)
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, res)
-
-    def _handle_note_rm(self, rid, data, session, namespace=None) -> dict:
-        concept = self._note_concept(session, namespace)
-        if not concept.concept_id:
-            return _err(rid, -32002, "No active note. Use note.new first.")
-        try:
-            res = concept.op_delete()
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, res)
-
-    def _handle_note_export(self, rid, session, namespace=None) -> dict:
-        """Export the active note as an Akasha capsule file."""
-        concept = self._note_concept(session, namespace)
-        if not concept.concept_id:
-            return _err(rid, -32002, "No active note. Use note.new or note.open first.")
-        try:
-            from .capsule import KnowledgeCapsule
-            doc_type   = f"{namespace}:note" if namespace else "note"
-            set_name   = f"set:note:{concept.concept_id}"
-            capsule_json = KnowledgeCapsule(session).encapsulate_document(
-                concept_id = concept.concept_id,
-                set_name   = set_name,
-                doc_type   = doc_type,
-                scopes     = session.active_scopes,
-            )
-            return _ok(rid, {"capsule": capsule_json,
-                              "doc_type": doc_type,
-                              "concept_id": concept.concept_id})
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-
-    def _handle_note_import(self, rid, data, session, namespace=None) -> dict:
-        """Import a note from an Akasha capsule.  Atoms land in a pending isolation scope."""
-        capsule_json = (data or {}).get("capsule", "")
-        if not capsule_json:
-            return _err(rid, -32602, "note.import requires 'capsule' (Akasha capsule JSON string)")
-        try:
-            from .capsule import KnowledgeCapsule
-            result = KnowledgeCapsule(session).decapsulate(capsule_json)
-            return _ok(rid, result)
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-
-    def _handle_note_clone(self, rid, session, namespace=None) -> dict:
-        """Duplicate the active note as a new user-owned document."""
-        concept = self._note_concept(session, namespace)
-        if not concept.concept_id:
-            return _err(rid, -32002, "No active note. Use note.open first.")
-        try:
-            return _ok(rid, concept.op_clone())
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-
-    def _handle_note_ls(self, rid, ctx, client_id: str) -> dict:
-        rows = ctx.fetch_by_meta_field("concept", "note", author=client_id)
-        notes = []
-        for row in rows:
-            try:
-                meta = json.loads(row.get("meta") or "{}")
-            except Exception:
-                meta = {}
-            if meta.get("role") == "document":
-                notes.append({
-                    "note_id":    row["key"],
-                    "title":      meta.get("title", ""),
-                    "created_at": meta.get("created_at", 0),
-                })
-        notes.sort(key=lambda x: x["created_at"], reverse=True)
-        return _ok(rid, {"notes": notes})
-
-    def _handle_note_open(self, rid, data, session, ctx, namespace=None) -> dict:
-        note_id = data.get("note_id", "").strip()
-        if not note_id:
-            return _err(rid, -32602, "note.open requires 'note_id'")
-        try:
-            meta = ctx.get_meta(note_id)
-        except Exception:
-            meta = {}
-        if not meta or meta.get("concept") != "note":
-            return _err(rid, -32002, f"Note '{note_id[:12]}' not found")
-        ns = f"{namespace}:" if namespace else ""
-        session.set_context(f"{ns}active_note_root", note_id)
-        session.set_context(f"{ns}active_container_id", note_id)
-        return _ok(rid, {"status": "opened", "note_id": note_id, "title": meta.get("title", "")})
 
     # ------------------------------------------------------------------
     # JCL (job.*)
@@ -6117,117 +6648,6 @@ class KernelDispatcher:
         })
 
     # ------------------------------------------------------------------
-    # FieldNote (fieldnote.*)
-    # ------------------------------------------------------------------
-
-    def _handle_fieldnote_new(self, rid, data, session) -> dict:
-        title = data.get("title") or data.get("name", "")
-        if not title:
-            return _err(rid, -32602, "fieldnote.new requires 'title'")
-        try:
-            res = FieldNoteConcept(session).op_new(
-                title   = title,
-                project = data.get("project") or None,
-                region  = data.get("region")  or None,
-                season  = data.get("season")  or None,
-            )
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, res)
-
-    def _handle_fieldnote_ls(self, rid, session) -> dict:
-        try:
-            res = FieldNoteConcept(session).op_list()
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, res)
-
-    def _handle_fieldnote_open(self, rid, data, session) -> dict:
-        fieldnote_id = data.get("fieldnote_id", "").strip()
-        if not fieldnote_id:
-            return _err(rid, -32602, "fieldnote.open requires 'fieldnote_id'")
-        try:
-            res = FieldNoteConcept(session).op_open(fieldnote_id)
-        except RuntimeError as e:
-            return _err(rid, -32002, str(e))
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, res)
-
-    def _handle_fieldnote_add(self, rid, data, session) -> dict:
-        text = data.get("text") or data.get("observation", "")
-        if not text:
-            return _err(rid, -32602, "fieldnote.add requires 'text'")
-        concept = FieldNoteConcept(session)
-        if not concept.concept_id:
-            return _err(rid, -32002, "No active fieldnote. Use fieldnote.new or fieldnote.open first.")
-        role       = data.get("role", "observation")
-        period     = data.get("period") or None
-        confidence = data.get("confidence")
-        if confidence is not None:
-            try:
-                confidence = max(0.0, min(1.0, float(confidence)))
-            except (TypeError, ValueError):
-                confidence = None
-        try:
-            res = concept.op_add(text=text, role=role, period=period, confidence=confidence)
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, res)
-
-    def _handle_fieldnote_read(self, rid, session) -> dict:
-        concept = FieldNoteConcept(session)
-        if not concept.concept_id:
-            return _err(rid, -32002, "No active fieldnote. Use fieldnote.new or fieldnote.open first.")
-        try:
-            sequence = concept.op_read()
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, {"observations": sequence, "count": len(sequence)})
-
-    def _handle_fieldnote_rm(self, rid, session) -> dict:
-        concept = FieldNoteConcept(session)
-        if not concept.concept_id:
-            return _err(rid, -32002, "No active fieldnote. Use fieldnote.new or fieldnote.open first.")
-        try:
-            res = concept.op_delete()
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, res)
-
-    def _handle_fieldnote_export(self, rid, session) -> dict:
-        """Export the active fieldnote as an Akasha capsule file."""
-        concept = FieldNoteConcept(session)
-        if not concept.concept_id:
-            return _err(rid, -32002, "No active fieldnote. Use fieldnote.new or fieldnote.open first.")
-        try:
-            from .capsule import KnowledgeCapsule
-            set_name     = f"set:fieldnote:{concept.concept_id}"
-            capsule_json = KnowledgeCapsule(session).encapsulate_document(
-                concept_id = concept.concept_id,
-                set_name   = set_name,
-                doc_type   = "fieldnote",
-                scopes     = session.active_scopes,
-            )
-            return _ok(rid, {"capsule": capsule_json,
-                              "doc_type": "fieldnote",
-                              "concept_id": concept.concept_id})
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-
-    def _handle_fieldnote_import(self, rid, data, session) -> dict:
-        """Import a fieldnote from an Akasha capsule.  Atoms land in a pending isolation scope."""
-        capsule_json = (data or {}).get("capsule", "")
-        if not capsule_json:
-            return _err(rid, -32602, "fieldnote.import requires 'capsule' (Akasha capsule JSON string)")
-        try:
-            from .capsule import KnowledgeCapsule
-            result = KnowledgeCapsule(session).decapsulate(capsule_json)
-            return _ok(rid, result)
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-
-    # ------------------------------------------------------------------
     # Onboarding (sys.onboarding.*)
     # ------------------------------------------------------------------
 
@@ -6244,132 +6664,6 @@ class KernelDispatcher:
         result = SeedManager(seeds_root).seed_app(session, app_name)
         self.iam.mark_onboarded(session.client_id, app_name)
         return _ok(rid, result)
-
-    # ------------------------------------------------------------------
-    # Survey (survey.*)
-    # ------------------------------------------------------------------
-
-    def _handle_survey_new(self, rid, data, session) -> dict:
-        title = data.get("title", "").strip()
-        if not title:
-            return _err(rid, -32602, "survey.new requires 'title'")
-        try:
-            res = SurveyConcept(session).op_new(
-                title=title,
-                description=data.get("description") or None,
-            )
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, res)
-
-    def _handle_survey_open(self, rid, data, session) -> dict:
-        survey_id = data.get("survey_id", "").strip()
-        if not survey_id:
-            return _err(rid, -32602, "survey.open requires 'survey_id'")
-        try:
-            res = SurveyConcept(session).op_open(survey_id)
-        except RuntimeError as e:
-            return _err(rid, -32002, str(e))
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, res)
-
-    def _handle_survey_ls(self, rid, session) -> dict:
-        try:
-            res = SurveyConcept(session).op_surveys()
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, res)
-
-    def _handle_survey_add_question(self, rid, data, session) -> dict:
-        text = data.get("text", "").strip()
-        if not text:
-            return _err(rid, -32602, "survey.q.add requires 'text'")
-        concept = SurveyConcept(session)
-        if not concept.concept_id:
-            return _err(rid, -32002, "No active survey. Use survey.new or survey.open first.")
-        try:
-            res = concept.op_add_question(
-                text=text,
-                qtype=data.get("qtype", "free_text"),
-                order=data.get("order"),
-            )
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, res)
-
-    def _handle_survey_add_option(self, rid, data, session) -> dict:
-        question_id = data.get("question_id", "").strip()
-        label       = data.get("label", "").strip()
-        if not question_id or not label:
-            return _err(rid, -32602, "survey.opt.add requires 'question_id' and 'label'")
-        concept = SurveyConcept(session)
-        if not concept.concept_id:
-            return _err(rid, -32002, "No active survey.")
-        try:
-            res = concept.op_add_option(
-                question_id=question_id,
-                label=label,
-                value=data.get("value") or None,
-            )
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, res)
-
-    def _handle_survey_add_respondent(self, rid, data, session) -> dict:
-        respondent_id = data.get("respondent_id", "").strip()
-        if not respondent_id:
-            return _err(rid, -32602, "survey.res.add requires 'respondent_id'")
-        concept = SurveyConcept(session)
-        if not concept.concept_id:
-            return _err(rid, -32002, "No active survey.")
-        try:
-            res = concept.op_add_respondent(
-                respondent_id=respondent_id,
-                attributes=data.get("attributes"),
-            )
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, res)
-
-    def _handle_survey_add_response(self, rid, data, session) -> dict:
-        question_id     = data.get("question_id", "").strip()
-        respondent_atom = data.get("respondent_atom", "").strip()
-        answer          = data.get("answer")
-        if not question_id or not respondent_atom or answer is None:
-            return _err(rid, -32602, "survey.ans requires 'question_id', 'respondent_atom', 'answer'")
-        concept = SurveyConcept(session)
-        if not concept.concept_id:
-            return _err(rid, -32002, "No active survey.")
-        try:
-            res = concept.op_add_response(
-                question_id=question_id,
-                respondent_atom=respondent_atom,
-                answer=answer,
-            )
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, res)
-
-    def _handle_survey_list(self, rid, session) -> dict:
-        concept = SurveyConcept(session)
-        if not concept.concept_id:
-            return _err(rid, -32002, "No active survey.")
-        try:
-            res = concept.op_list()
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, res)
-
-    def _handle_survey_rm(self, rid, session) -> dict:
-        concept = SurveyConcept(session)
-        if not concept.concept_id:
-            return _err(rid, -32002, "No active survey.")
-        try:
-            res = concept.op_delete()
-        except Exception as e:
-            return _err(rid, -32603, str(e))
-        return _ok(rid, res)
 
     # ------------------------------------------------------------------
     # Log (log.*)
@@ -6965,6 +7259,226 @@ class KernelDispatcher:
         session.set_context(f"dream:{src}", None)
         return _ok(rid, {"status": "forgotten", "src": src, "dropped": dropped})
 
+    # ── nebula — the cartographer: inductive concept-model discovery ──────────────────────
+    #
+    # The third explorer (assoc=local, dream=pairwise, nebula=global). Surveys the whole
+    # meaning-universe for REGIONS becoming a concept model — dense clumps of atoms that
+    # independently grew the SAME schema (shared relation signature) — and PROPOSES them
+    # with an inferred salient-rel profile. Like dream it runs as a LOW-priority background
+    # job ("the surveyor of the universe") and only PROPOSES: a human confirms + names, which
+    # plants the cluster set + rel:salient profile and emits a concept-model skeleton to review.
+    # Proposals live in the nucleus vault (focus-less — nebula has no single anchor atom).
+
+    def _nebula_cartographer(self, ctx):
+        from lib.akasha.nebula import NebulaCartographer
+        node_vec = None
+        try:
+            from lib.akasha.semantic_learn import get_node_model
+            nucleus = getattr(self.manager, "shared_nucleus", None)
+            nm = get_node_model(nucleus) if nucleus else None
+            if nm is not None:
+                node_vec = nm.node_vector
+        except Exception:
+            node_vec = None
+        return NebulaCartographer(ctx, node_vec=node_vec)
+
+    def _nebula_vault_key(self, session) -> str:
+        return getattr(session, "client_id", "system")
+
+    def _nebula_store(self, session, payload) -> None:
+        try:
+            self._nucleus().vault_store("nebula", self._nebula_vault_key(session), payload)
+        except Exception:
+            pass
+
+    def _nebula_load(self, session):
+        try:
+            return self._nucleus().vault_retrieve("nebula", self._nebula_vault_key(session)) or {}
+        except Exception:
+            return {}
+
+    def _nebula_survey(self, ctx, session, scopes, params) -> list:
+        cands = self._nebula_cartographer(ctx).survey(scopes=scopes, params=params)
+        self._nebula_store(session, {"candidates": cands, "params": params})
+        return cands
+
+    def _handle_nebula(self, rid, data, session, ctx, scopes, history) -> dict:
+        """nebula [again=yes] [ns=] [limit=] [min_size=] [threshold=] [scan=] — survey the
+        accumulated atoms for regions that are becoming a concept model (dense clumps sharing
+        a relation schema), asynchronously. First call submits a background survey and returns
+        status="surveying"; call again to get status="ready" with ranked candidate regions,
+        each with an inferred salient-rel profile. Confirm one with `nebula.confirm id=`. The
+        machine only proposes — a human names + plants the concept. Degrades to a synchronous
+        run when JCL is unavailable."""
+        again = str(data.get("again", "")).lower() in ("yes", "true", "1")
+        params = {
+            "scan":       int(data.get("scan", 4000)),
+            "cluster_cap": int(data.get("cluster_cap", 600)),
+            "min_size":   int(data.get("min_size", 4)),
+            "limit":      int(data.get("limit", 8)),
+            "threshold":  float(data.get("threshold", 0.34)),
+            "salience":   float(data.get("salience", 0.0)),
+        }
+
+        # Poll an in-flight survey.
+        job_id = session.get_context("nebula:job")
+        job = self.jcl_worker.get_job(job_id) if (job_id and self.jcl_worker) else None
+        if job and job.status in ("PENDING", "RUNNING") and not again:
+            elapsed = round(time.time() - (job.started_at or job.submitted_at), 1)
+            return _ok(rid, {"kind": "nebula", "status": "surveying", "job_id": job_id, "elapsed_s": elapsed,
+                             "hint": "still mapping the universe — come back with `nebula` later"})
+
+        # A finished survey: read candidates back from the vault.
+        if not again:
+            stored = self._nebula_load(session)
+            cands = stored.get("candidates") if isinstance(stored, dict) else None
+            if cands:
+                return _ok(rid, {"kind": "nebula", "status": "ready", "candidates": cands, "count": len(cands),
+                                 "hint": "plant one with `nebula.confirm id=<neb:…> name=<concept>`, "
+                                         "or drop it with `nebula.forget id=`"})
+            if job and job.status == "FAILED":
+                session.set_context("nebula:job", None)
+                return _ok(rid, {"kind": "nebula", "status": "failed", "error": job.error})
+
+        # Submit a fresh survey (background), or run synchronously if JCL is unavailable.
+        if self.harmonia and self.jcl_worker and JCLJob and JCLStep:
+            job = JCLJob(owner=session.client_id, label="nebula:survey",
+                         steps=[JCLStep(method="nebula.run", params=params)])
+            self.harmonia.submit_job(job, job_class=CLASS_LINK)
+            session.set_context("nebula:job", job.job_id)
+            return _ok(rid, {"kind": "nebula", "status": "surveying", "job_id": job.job_id,
+                             "hint": "surveying… come back with `nebula` to see candidate regions"})
+        cands = self._nebula_survey(ctx, session, scopes, params)
+        return _ok(rid, {"kind": "nebula", "status": "ready", "candidates": cands, "count": len(cands),
+                         "note": "computed synchronously (JCL unavailable)"})
+
+    def _handle_nebula_run(self, rid, data, session, ctx, scopes) -> dict:
+        """nebula.run — the background survey (JCL-dispatched, internal). Not for direct use."""
+        params = {k: data.get(k) for k in
+                  ("scan", "cluster_cap", "min_size", "limit", "threshold", "salience")}
+        cands = self._nebula_survey(ctx, session, scopes, params)
+        return _ok(rid, {"status": "surveyed", "candidates": len(cands)})
+
+    def _handle_nebula_forget(self, rid, data, session, ctx, scopes, history) -> dict:
+        """nebula.forget [id=] [all=yes] — drop a proposed region (or all) from the survey."""
+        cid = (data.get("id") or "").strip()
+        stored = self._nebula_load(session)
+        cands = stored.get("candidates", []) if isinstance(stored, dict) else []
+        drop_all = str(data.get("all", "")).lower() in ("yes", "true", "1") or not cid
+        if drop_all:
+            self._nebula_store(session, {"candidates": [], "params": stored.get("params", {})})
+            session.set_context("nebula:job", None)
+            return _ok(rid, {"status": "forgotten", "dropped": len(cands)})
+        kept = [c for c in cands if c.get("id") != cid]
+        self._nebula_store(session, {"candidates": kept, "params": stored.get("params", {})})
+        return _ok(rid, {"status": "forgotten", "dropped": len(cands) - len(kept)})
+
+    def _handle_nebula_confirm(self, rid, data, session, ctx, scopes, history) -> dict:
+        """nebula.confirm id=<neb:…> [name=<concept>] — the human's approval of a proposed
+        region. Names the emerging concept, materialises its set (members + sys:is_a spine),
+        plants the inferred salient-rel profile (reldef + rel:salient) so `resolve_salient_rels`
+        picks it up, and returns a concept-model SKELETON (Python class + .ak lexicon block) to
+        review and place. The machine never writes the skeleton file itself."""
+        cid = (data.get("id") or "").strip()
+        if not cid:
+            return _err(rid, -32602, "nebula.confirm requires 'id' (a neb:… candidate id)")
+        stored = self._nebula_load(session)
+        cands = stored.get("candidates", []) if isinstance(stored, dict) else []
+        cand = next((c for c in cands if c.get("id") == cid), None)
+        if not cand:
+            return _err(rid, -32002, "no such nebula candidate — run `nebula` and use its id")
+        raw_name = (data.get("name") or cand.get("name") or "concept").strip().lower()
+        name = re.sub(r"[^a-z0-9_]+", "_", raw_name).strip("_") or "concept"
+        author = getattr(session, "client_id", "system")
+
+        planted = {"set": name, "members": 0, "salient_rels": []}
+        set_proto = None
+        try:
+            for mk in cand.get("members", []):
+                ctx.add_to_set(name, mk)
+                planted["members"] += 1
+            set_proto = ctx.resolve_alias(name)
+        except Exception as exc:
+            log.debug("[nebula] set materialise partial: %s", exc)
+        # sys:is_a spine + rel:salient profile (best-effort; the skeleton is returned regardless).
+        if set_proto:
+            for mk in cand.get("members", []):
+                try:
+                    ctx.put_link(mk, set_proto, "sys:is_a", author=author)
+                except Exception:
+                    pass
+            for rel in cand.get("salient_rels", []):
+                try:
+                    reldef_key = self._nebula_ensure_reldef(ctx, rel, author)
+                    if reldef_key:
+                        ctx.put_link(set_proto, reldef_key, "rel:salient", author=author)
+                        planted["salient_rels"].append(rel)
+                except Exception:
+                    pass
+
+        # Remove the confirmed candidate from the survey.
+        self._nebula_store(session, {"candidates": [c for c in cands if c.get("id") != cid],
+                                     "params": stored.get("params", {})})
+        skeleton = self._nebula_scaffold(name, cand)
+        return _ok(rid, {"status": "planted", "name": name, "planted": planted,
+                         "kind": cand.get("kind"), "skeleton": skeleton,
+                         "hint": "review the skeleton, then drop the .py into lib/akasha/concepts/ "
+                                 "and the .ak block into ontology/lexicon/ (onto.csl.transpile if CSL)"})
+
+    def _nebula_ensure_reldef(self, ctx, rel, author):
+        """Ensure a reldef:<rel> atom exists (aliased, in the `rels` set); return its key."""
+        alias = f"reldef:{rel}"
+        key = ctx.resolve_alias(alias)
+        if not key:
+            desc = f"{rel} — '{rel}' relation asserted between two atoms."
+            key = ctx.put_chunk(content=desc, meta={"type": "lexicon:reldef", "rel": rel},
+                                author=author)
+            ctx.set_alias(key, alias)
+        try:
+            ctx.add_to_set("rels", key)
+        except Exception:
+            pass
+        return key
+
+    def _nebula_scaffold(self, name: str, cand: dict) -> dict:
+        """Generate the concept-model skeleton (Python class + .ak lexicon block) as TEXT —
+        the inductive→deductive bridge. Reviewed and placed by the human; never auto-written."""
+        cls = "".join(p.capitalize() for p in name.split("_")) + "Concept"
+        rels = cand.get("salient_rels", [])
+        aliases = cand.get("member_aliases", [])[:8]
+        py = (
+            f'# lib/akasha/concepts/{name}.py — nebula-proposed skeleton (#52). REVIEW before use.\n'
+            f'# Discovered region: {cand.get("size")} members, dominant ns "{cand.get("dominant_ns")}",\n'
+            f'# kind={cand.get("kind")}, score={cand.get("score")}. Examples: {", ".join(aliases)}\n'
+            f'from lib.akasha.concepts.base import BaseConcept\n\n'
+            f'class {cls}(BaseConcept):\n'
+            f'    CONCEPT_PREFIX = "{name}"\n'
+            f'    CONCEPT_LABEL  = "{name} — nebula-discovered concept (rename me)"\n'
+            f'    # Inferred salient relations (shared across members): {", ".join(rels) or "(none)"}\n'
+            f'    CONCEPT_METHODS = {{\n'
+            f'        "new": {{"op": "op_new", "action": "write"}},\n'
+            f'        "ls":  {{"op": "op_list", "action": "read"}},\n'
+            f'        "get": {{"op": "op_get", "action": "read"}},\n'
+            f'    }}\n\n'
+            f'    def op_new(self, title):\n'
+            f'        """Create a {name}."""\n'
+            f'        ...\n\n'
+            f'    def op_list(self):\n'
+            f'        """List {name} instances."""\n'
+            f'        ...\n\n'
+            f'    def op_get(self, id):\n'
+            f'        """Read one {name}."""\n'
+            f'        ...\n'
+        )
+        ak_lines = [f'# ontology/lexicon — nebula-proposed salient-rels for "{name}"']
+        for i, rel in enumerate(rels):
+            ak_lines.append(f'def "reldef:{rel}" "{rel} — \'{rel}\' relation asserted between two atoms."')
+            ak_lines.append(f'set.add name="rels" id="reldef:{rel}"')
+        for rel in rels:                       # author most-important-first (link order = priority)
+            ak_lines.append(f'ln {name} reldef:{rel} rel:salient')
+        return {"python": py, "ak": "\n".join(ak_lines),
+                "salient_rels": rels, "class_name": cls}
+
     # ------------------------------------------------------------------
     # Contexa
     # ------------------------------------------------------------------
@@ -7400,10 +7914,11 @@ class KernelDispatcher:
             return _err(rid, -32002, f"export failed: {str(exc)[:140]}")
 
     def _handle_io_project(self, rid, data, session, ctx, scopes, client_id) -> dict:
-        """io.project src= [model=table] [into=] [depth=] — project an in-graph source (a set,
-        or an atom/alias tree root) into a concept model through the lens pipeline
-        (LensScanSource -> ConceptCastSink). This is the base of the general "project into any
-        concept model" path and of model->model chaining; today `table` is the working target
+        """io.project src= [model=table|rec] [into=] [depth=] — project an in-graph source (a set,
+        an atom/alias tree root, or an Exportable model instance such as a survey) into a concept
+        model through the lens pipeline (LensScanSource -> ConceptCastSink). This is the base of the
+        general "project into any concept model" path and of model->model chaining; targets today are
+        `table` (schema-first) and `rec` (schema-free universal fallback); survey is Exportable
         (other models are a per-model follow-up — issue #43). Admin/librarian only; write."""
         err = self._assert_admin(session)
         if err:
@@ -7649,6 +8164,162 @@ class KernelDispatcher:
             return _err(rid, -32602, str(exc))
         except Exception as exc:
             return _err(rid, -32002, f"present failed: {str(exc)[:140]}")
+
+    def _handle_curation_project(self, rid, data, session, ctx, scopes, client_id) -> dict:
+        """curation.project id=<cur>|name= as=presentation [title=] — HOP A: project a curation's
+        narrative path into a PRIVATE working presentation deck (1 frame per path atom, in order).
+        run_pipeline(CurationPathSource → PresentationSink). Idempotent: if the curation already
+        has a projected presentation (curation:projected_as), returns it. CLI: cur.project."""
+        as_fmt = (data.get("as") or "presentation").strip().lower()
+        if as_fmt != "presentation":
+            return _err(rid, -32602, "curation.project supports as=presentation "
+                                     "(as=table|scatter → jataka.present)")
+        cur = (data.get("id") or data.get("curation_id") or data.get("name") or "").strip()
+        if not cur:
+            return _err(rid, -32602, "curation.project requires 'id' (or name=)")
+        dispatch = self._io_dispatch(session, rid)
+        # Idempotency: reuse a prior projection if linked.
+        try:
+            cur_key = ctx.resolve_alias(cur) or cur
+            for (dst, _rel) in (ctx.get_adjacent_links(cur_key, "curation:projected_as") or []):
+                if (ctx.get_meta(dst) or {}).get("concept") == "presentation":
+                    return _ok(rid, {"status": "exists", "presentation_id": dst,
+                                     "source": f"curation:{cur_key}", "reused": True})
+        except Exception:
+            cur_key = cur
+        try:
+            result = run_pipeline(CurationPathSource(dispatch, cur),
+                                  PresentationSink(dispatch, title=(data.get("title") or "").strip() or None))
+        except (ValueError, RuntimeError) as exc:
+            return _err(rid, -32602, str(exc))
+        except Exception as exc:
+            return _err(rid, -32002, f"project failed: {str(exc)[:140]}")
+        pres_id = result.get("presentation_id")
+        if pres_id:
+            try:
+                ctx.put_link(cur_key, pres_id, "curation:projected_as", author=client_id)
+            except Exception:
+                pass
+        result["status"] = "projected"
+        return _ok(rid, result)
+
+    def _handle_pres_export(self, rid, data, session, ctx, scopes, client_id) -> dict:
+        """pres.export id=<pres> as=scroll|kamishibai [inline=true | publish=<slug>] — HOP B:
+        resolve each frame's ref atom into a full self-contained card and render the export
+        object (§6). inline=true (default) returns it in-band (+ a CLI text rendering); publish=
+        <slug> (librarian) writes the frozen artifact to archives/curation/exports/<slug>.<fmt>.json
+        and returns its URL. Format-only, no graph write. CLI: pr.export."""
+        pres_id = (data.get("id") or data.get("pres_id") or data.get("presentation_id") or "").strip()
+        if not pres_id:
+            return _err(rid, -32602, "pres.export requires 'id'")
+        pres_id = ctx.resolve_alias(pres_id) or pres_id
+        fmt = (data.get("as") or data.get("format") or "scroll").strip().lower()
+        if fmt not in ("scroll", "kamishibai"):
+            return _err(rid, -32602, "pres.export as= must be scroll|kamishibai")
+        publish = (data.get("publish") or "").strip()
+        dispatch = self._io_dispatch(session, rid)
+
+        def _get_links(key, rel):
+            return [(l[0], l[1]) for l in (ctx.get_adjacent_links(key, rel) or [])]
+
+        try:
+            source = PresentationSceneSource(dispatch, pres_id, fmt,
+                                             lambda k: ctx.get_meta(k) or {}, _get_links)
+            result = run_pipeline(source, ExportSink(fmt))
+        except (ValueError, RuntimeError) as exc:
+            return _err(rid, -32602, str(exc))
+        except Exception as exc:
+            return _err(rid, -32002, f"export failed: {str(exc)[:140]}")
+        export = result.get("export") or {}
+
+        if publish:
+            # Publishing writes a PUBLIC static artifact → librarian-gated (it exposes a snapshot).
+            if "role:librarian" not in scopes:
+                return _err(rid, -32601, "pres.export publish=<slug> requires role:librarian")
+            if not self.fileio:
+                return _err(rid, -32001, "FileIO unavailable in this environment.")
+            import re as _re
+            slug = _re.sub(r"[^a-z0-9._-]+", "-", publish.lower()).strip("-") or "export"
+            _kernel_dir  = os.path.dirname(os.path.abspath(__file__))
+            _project_dir = os.path.dirname(os.path.dirname(_kernel_dir))
+            exports_dir  = os.path.join(_project_dir, "archives", "curation", "exports")
+            try:
+                os.makedirs(exports_dir, exist_ok=True)
+                self.fileio.add_root(exports_dir)        # allow-list this public archives dir
+                rel_path = os.path.join(exports_dir, f"{slug}.{fmt}.json")
+                # FileIO.serialize(payload,"json") dumps the payload directly → the file is the
+                # RAW export object (self-contained, renderable with zero graph access).
+                self.fileio.write(rel_path, export, "json")
+                # Maintain a published-exhibits index so the archives Exhibition Room can
+                # list and link exhibits (it can't know a slug otherwise). Upsert by slug,
+                # tracking which formats exist. Non-fatal — a bad index never fails a publish.
+                try:
+                    import json as _json, time as _t
+                    idx_path = os.path.join(exports_dir, "index.json")
+                    by_slug = {}
+                    if os.path.exists(idx_path):
+                        with open(idx_path, "r", encoding="utf-8") as _f:
+                            for e in (_json.load(_f) or {}).get("exhibits", []):
+                                if e.get("slug"):
+                                    by_slug[e["slug"]] = e
+                    entry = by_slug.get(slug, {"slug": slug})
+                    entry.update({"slug": slug, "title": export.get("title", ""),
+                                  "thesis": export.get("thesis", ""),
+                                  "count": export.get("count", 0), "updated_at": _t.time()})
+                    entry["formats"] = sorted(set(entry.get("formats") or []) | {fmt})
+                    by_slug[slug] = entry
+                    with open(idx_path, "w", encoding="utf-8") as _f:
+                        _json.dump({"exhibits": sorted(by_slug.values(),
+                                    key=lambda e: e.get("updated_at", 0), reverse=True)},
+                                   _f, ensure_ascii=False, indent=2)
+                except Exception as _iexc:
+                    logger.warning("[pres.export] exhibits index update failed: %s", _iexc)
+            except Exception as exc:
+                return _err(rid, -32002, f"publish failed: {str(exc)[:140]}")
+            return _ok(rid, {"status": "published", "format": fmt, "slug": slug,
+                             "url": f"/curation/exports/{slug}.{fmt}.json",
+                             "scenes": export.get("count", 0)})
+
+        # inline (default): return the export + a CLI text rendering.
+        return _ok(rid, {"status": "exported", "format": fmt, "export": export,
+                         "text": self._render_export_text(export)})
+
+    @staticmethod
+    def _render_export_text(export: dict) -> str:
+        """A plain-text rendering of an export object for the CLI — the same scenes the archives
+        page draws, as a readable 紙芝居/scroll transcript (headword, description, caption, refs,
+        links per scene). Degradation-first: a headword-only scene still prints."""
+        lines: List[str] = []
+        title = export.get("title") or "(untitled)"
+        fmt = export.get("format", "scroll")
+        lines.append(f"╔═ {title}  [{fmt}]")
+        if export.get("thesis"):
+            lines.append(f"║  {export['thesis']}")
+        lines.append(f"╚═ {export.get('count', 0)} scene(s)")
+        for sc in export.get("scenes") or []:
+            n = sc.get("scene")
+            lines.append("")
+            lines.append(f"── [{n}] {sc.get('headword') or '(no headword)'} ──"
+                         + (f"   {sc['href']}" if sc.get("href") else ""))
+            desc = (sc.get("description") or "").strip()
+            if desc:
+                lines.append(desc if len(desc) <= 400 else desc[:400] + "…")
+            if sc.get("caption"):
+                lines.append(f"  ⟨caption⟩ {sc['caption']}")
+            img = sc.get("image") or None
+            if isinstance(img, dict) and img.get("url"):
+                lines.append(f"  ⟨image⟩ {img['url']}"
+                             + (f"  ({img.get('source')})" if img.get("source") else ""))
+            for rf in (sc.get("refs") or [])[:6]:
+                lines.append(f"  → {rf.get('label') or rf.get('url')}  [{rf.get('source','')}] "
+                             f"{rf.get('url','')}")
+            links = sc.get("links") or []
+            if links:
+                lines.append("  related: " + ", ".join(l.get("name", "") for l in links[:8]))
+            for blk in (sc.get("blocks") or []):
+                lines.append(f"    · {blk.get('region','')}/{blk.get('role','')}: "
+                             f"{(blk.get('headword') or blk.get('body') or '')[:60]}")
+        return "\n".join(lines)
 
     def _handle_web_search(self, rid, data, session, ctx, scopes, client_id) -> dict:
         """

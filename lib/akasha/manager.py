@@ -40,6 +40,14 @@ class AkashaSession:
         self.client_id = client_id
         self.role = role
 
+        # Last time this session served (or was refreshed for) a request. The
+        # AkashaManager idle-sweeper reaps authenticated sessions idle past
+        # AKASHA_SESSION_TTL, closing their cortex to bound server-side retention.
+        # Reaping is transparent: the token stays valid, so get_session() lazily
+        # recreates the session on the next call.
+        import time as _t
+        self.last_active = _t.time()
+
         # [IAM SCOPES] Injected by the IdentityManager upon authentication
         self.base_scopes = allowed_scopes
 
@@ -265,6 +273,18 @@ class AkashaManager:
             on_reclaim=self._reset_guest_slot,
         )
 
+        # Authenticated-session idle sweeper. Unlike guests (reclaimed by the pool
+        # above), admin/user sessions were retained for the whole process life —
+        # created lazily per identity, never freed without an explicit logout, so a
+        # long-running multi-user server accumulated open cortex handles and crept
+        # toward the session cap. This daemon reaps any non-guest, non-system session
+        # idle past AKASHA_SESSION_TTL (default 1800s), closing its cortex. It is
+        # transparent: the akt: token stays valid, so get_session() recreates the
+        # session on the next request. Set AKASHA_SESSION_TTL=0 to disable.
+        self._sess_ttl = int(_os.environ.get("AKASHA_SESSION_TTL", "1800"))
+        if self._sess_ttl > 0:
+            self._start_session_sweeper()
+
     def get_session(self, client_id: str, requested_role: str = "admin") -> AkashaSession:
         """
         Retrieves or creates a session for the client.
@@ -301,12 +321,68 @@ class AkashaManager:
             else:
                 self.sessions[client_id].base_scopes = allowed_scopes
                 self.sessions[client_id].refresh_group_engines(grp_engines)
-            return self.sessions[client_id]
+            sess = self.sessions[client_id]
+            import time as _t
+            sess.last_active = _t.time()   # activity marker for the idle-sweeper
+            return sess
 
         return self._session_wq.submit(_create_or_update)
 
     def close_session(self, client_id: str):
         self._session_wq.submit(lambda: self.sessions.pop(client_id, None))
+
+    # ── Authenticated-session idle sweeper ─────────────────────────────────────
+    def _start_session_sweeper(self) -> None:
+        """Daemon that reaps idle authenticated sessions (see __init__)."""
+        import threading, time as _t
+        interval = max(60, self._sess_ttl // 4)
+
+        from lib.akasha import lifecycle
+        def _loop() -> None:
+            while True:
+                if lifecycle.wait_or_shutdown(interval):   # wakes at once on shutdown
+                    return
+                try:
+                    self._sweep_sessions()
+                except Exception as exc:            # never let the sweeper die
+                    logger.warning("[Session] idle sweep error: %s", exc)
+
+        threading.Thread(target=_loop, daemon=True, name="session-sweeper").start()
+
+    def _sweep_sessions(self) -> None:
+        """Find non-guest, non-system sessions idle past the TTL and reap them.
+        Guests are reclaimed by the GuestPool; system/bootstrap ids are never reaped."""
+        import time as _t
+        deadline = _t.time() - self._sess_ttl
+        stale = []
+        for cid, sess in list(self.sessions.items()):     # snapshot; read-only
+            if sess.role == Role.GUEST:
+                continue
+            if cid.startswith("sys:") or self.iam.is_system_identity(cid):
+                continue
+            if getattr(sess, "last_active", 0.0) < deadline:
+                stale.append(cid)
+        for cid in stale:
+            self._reap_session(cid)
+
+    def _reap_session(self, client_id: str) -> None:
+        """Pop + close one idle session, serialized through the session queue so it
+        cannot race get_session(). Re-checks last_active under the queue: a request
+        that touched the session just before reaping wins and the reap is skipped."""
+        def _do() -> None:
+            import time as _t
+            sess = self.sessions.get(client_id)
+            if sess is None:
+                return
+            if getattr(sess, "last_active", 0.0) >= _t.time() - self._sess_ttl:
+                return                                # touched since the sweep — keep it
+            self.sessions.pop(client_id, None)
+            try:
+                sess.local_cortex.close()
+            except Exception as exc:
+                logger.warning("[Session] cortex close failed for %s: %s", client_id, exc)
+            logger.info("[Session] reaped idle session %s (idle > %ss)", client_id, self._sess_ttl)
+        self._session_wq.submit(_do)
 
     def purge_client_cell(self, client_id: str) -> bool:
         """Erase a client's entire private cell (its l_cortex.db and everything in it —

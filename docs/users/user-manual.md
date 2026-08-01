@@ -202,14 +202,12 @@ Signposts (links):
   --> bartlett.finding          [sys:evidenced_by]
   --> memory.incompatible       [sys:implies]
 
-# Step 7: Explore the graph by BFS from the hub
+# Step 7: Filter-search for the atoms you just named
 
-akasha/user $ exp reconstructive_memory 2
-[Depth 0] reconstructive_memory
-  [Depth 1] memory.constructive       (@supports --> bartlett.finding)
-  [Depth 1] bartlett.finding          (@illustrates --> memory.incompatible)
-  [Depth 1] memory.incompatible
-  [Depth 2] ... (further neighbors)
+akasha/user $ exp pat=memory%
+  memory.constructive    "Memory is not a recording device..."
+  memory.incompatible    "This means two people can remember..."
+  reconstructive_memory  [Hub]
 
 # Step 8: View the tree structure
 
@@ -309,7 +307,7 @@ akasha/user $ run my_notes.ak
 Job submitted: job_id=jcl-8841
 ```
 
-You can then monitor progress with `job.st jcl-8841`.
+You can then monitor progress with `job.stat jcl-8841`.
 
 ### `<cmd> > <file>`
 
@@ -324,18 +322,21 @@ Output written to recent_atoms.json
 
 Lists all registered background services and their current status. Available to all authenticated users.
 
-Columns: **name**, **status** (Active / Dead), **engine** (thread / uvicorn / httpd), **address or PID**, **uptime**.
+Columns: **name**, **status** (Active / Dead), **engine** (httpd / uvicorn / cell-daemon), **address or PID**, **uptime**.
 
 ```
 akasha/user $ svc ls
 
   name                   status   engine   address / pid          uptime
   ────────────────────────────────────────────────────────────────────────
-  http_portal            Active   thread   http://0.0.0.0:8000    42s
+  svc:web-portal         Active   httpd    PID=4310               42s
   cosmos_visualizer      Active   uvicorn  PID=12345               120s
 ```
 
-The `http_portal` entry is the main JSON-RPC web gateway. Thread-based services show a URL; subprocess-based services show their OS process ID.
+The `svc:web-portal` entry is the main JSON-RPC web gateway. It is **not** a thread inside the
+CLI — it runs as its own OS subprocess (`python -m api.portals.web_worker`, engine `httpd` or
+`uvicorn`), managed by the Harmonia Supervisor, so it survives a CLI disconnect. All units show
+their OS process ID.
 
 ### `svc stop <name>`
 
@@ -348,12 +349,14 @@ akasha/user $ svc stop cosmos_visualizer
 
 ### `svc restart <name>`
 
-Stops and restarts the named service. **Admin only.** For thread-based services such as `http_portal`, the old HTTP server is shut down cleanly and a new one is started on the same port.
+Stops and restarts the named service **from its persisted recipe**. **Admin only.** For the web
+portal (`svc:web-portal`), the old subprocess is stopped cleanly and a fresh one is spawned from
+the saved `argv`/`env`/`cwd` on the same port.
 
 ```
-akasha/user $ svc restart http_portal
-  Restarting http_portal…
-  ✓ http_portal restarted
+akasha/user $ svc restart web-portal
+  Restarting web-portal…
+  ✓ svc:web-portal restarted (PID 5561)
 ```
 
 > **Note:** `svc stop` and `svc restart` require admin or `su root` privileges. Attempting them as a regular user prints `Permission denied`.
@@ -642,7 +645,7 @@ Macro context: [parent hubs and cluster summary]
 
 #### `tree [id] [depth]` — Hierarchical Link Tree
 
-Renders the outbound link tree from an atom down to a given depth. Defaults: `$it`, depth 3.
+Renders the outbound link tree from an atom down to a given depth. Defaults: `$it`, depth 2 (capped 1–5).
 
 ```
 akasha/user $ tree silk_road_trade 2
@@ -653,22 +656,22 @@ silk_road_trade
     └── (no further outbound links)
 ```
 
-#### `exp <id> [depth]` — BFS Graph Exploration
+#### `exp` (`explore`) — Filter Search
 
-Performs a breadth-first search from the given atom, expanding outward to the specified depth (default 2). Useful for discovering how far an idea extends into the graph.
+`explore` is a **filter search**, not a graph traversal: it lists atoms matching one or more
+filters — `ns=` (namespace prefix), `set=` (set membership), `type=`, and `pat=` (alias/text
+pattern). A bare positional argument is treated as `pat=`. `limit=` caps the result count. Use it
+to find atoms by attribute; use `tree` for outward link traversal and `dive` for a single atom's
+neighbourhood.
 
 ```
-akasha/user $ exp reconstructive_memory 3
-[D0] reconstructive_memory
-[D1]   memory.constructive       (via sys:is_a)
-[D1]   bartlett.finding          (via sys:evidenced_by)
-[D1]   memory.incompatible       (via sys:implies)
-[D2]     (atoms linked from memory.constructive...)
-[D2]     (atoms linked from bartlett.finding...)
-[D3]     ...
+akasha/user $ exp ns=emo                 # all atoms in the emo: namespace
+akasha/user $ exp set:memory_cluster     # members of a named set
+akasha/user $ exp pat=memory%            # aliases/text matching a pattern
+akasha/user $ exp ns=word:en limit=20    # combine filters + cap results
 ```
 
-> **CSL equivalents:** `dive id="..."` · `look id="..."` (legacy) · `out` · `explore id="..." depth=<n>`  
+> **CSL equivalents:** `dive id="..."` · `look id="..."` (legacy) · `out` · `explore ns="..." set="..." type="..." pat="..."`  
 > **→** [`docs/csl-manual.md §4.5`](csl-manual.md#45-exploring-the-graph)
 
 #### Navigation Modes — Mode Prompt and Numeric Input
@@ -1259,7 +1262,7 @@ The table below shows the most common operations in both forms. You can use eith
 | `al.find <pattern>` | `alias.find name="pattern"` | Search names |
 | `dive <id>` | `dive id="id"` | Dive into atom — meaning space + signposts |
 | `look <id>` | `look id="id"` | Legacy alias for dive |
-| `exp <id> <depth>` | `explore id="id" depth=2` | Explore the graph |
+| `exp ns=<p>` | `explore ns="p" set="s" pat="…"` | Filter-search atoms (ns/set/type/pat) |
 | `s.add <name> <id>` | `set.add name="name" id="id"` | Add to set |
 | `s.ls <name>` | `set.ls name="name"` | List set members |
 | `s.op union <r> <a> <b>` | `set.op op=union result="r" set_a="a" set_b="b"` | Union of two sets |
@@ -1297,7 +1300,7 @@ From the Akasha shell, you can run a whole CSL script in one go:
 
 ```
 akasha/user $ csl.check script="..."   # validate without executing
-akasha/user $ csl.dry   script="..."   # preview every operation
+akasha/user $ csl.build   script="..."   # preview every operation
 akasha/user $ csl.run   script="..."   # execute
 ```
 
@@ -1340,8 +1343,8 @@ akasha/user $ ln.ls $1
 # (processed as a batch in a .ak script)
 akasha/user $ meta $0:5 reviewed true
 
-# Find all atoms semantically near 'nostalgia'
-akasha/user $ exp ~emo:nostalgia 2
+# Filter-search atoms in the emo namespace
+akasha/user $ exp ns=emo
 
 # Link to the current GPS location anchor
 akasha/user $ ln $0 @here @recorded_at
@@ -1404,36 +1407,36 @@ These are invisible in the sense that they require no loading step — they are 
 
 ### 9.2 Acquired Ontology (.ak files)
 
-Acquired ontology files are `.ak` scripts stored in the `ontology/` directory. They extend the graph with domain-specific knowledge: emotional spectrums, narrative archetypes, vocabulary corpora, and more. They are written in the same command language as user scripts.
+Acquired ontology is organised as **namespace packs**: one directory per pack under
+`ontology/<name>/`, each holding `.ak` scripts plus a `PACK.json` manifest. Every pack is
+listed in `ontology/REGISTRY.json`, which records its load order and whether it autoloads at
+startup. Packs extend the graph with domain-specific knowledge: emotional spectrums, narrative
+archetypes, vocabulary corpora, recipes, and more. They are written in the same `.ak` command
+language as user scripts.
 
-Current acquired ontology files (loaded alphabetically at login):
+**Autoload packs** — the packs that load on every fresh boot (the core layer) are:
 
-| File | Contents |
+| Pack | Contents |
 |---|---|
-| `a_emotions_27.ak` | 21 compound emotions extending the 8 DNA primaries |
-| `b_polti_36.ak` | Polti's 36 Dramatic Situations as hub atoms |
-| `c_vocab_core1–9.ak` | ~823 English word atoms (basic vocabulary corpus) |
-| `d_community_gaming.csl` | Online / gaming culture vocabulary |
-| `e_business_core.csl` | Business & commerce concepts |
-| `f_writing_authorship.csl` | Writing craft, roles, and structure |
-| `g_writing_screen_stage.csl` | Screen, stage, and cinema concepts |
-| `h_public_governance.csl` | Civic governance and policy concepts |
-| `i_entertainment_fantasy.csl` | Fantasy subgenres and tropes |
-| `j_narrative_typology.csl` | Narrative structure, archetypes, story curves |
-| `k_narrative_typology2.csl` | Abstract narrative mode types (quest, tragedy, etc.) |
-| `l_system_architecture.csl` | System design and architecture concepts |
+| `lexicon` | Relation / namespace definitions (`reldef:` / `nsdef:`) — the defined vocabulary |
+| `base1` | Core super-concepts and structural primitives |
+| `base2` | Core word, feeling, and domain atoms |
+| `base3` | The knowledge canopy — higher-level concept scaffolding |
+| `curation` | Curated views and premise-bound constructions |
+| `recipe` | The food/drink product-dictionary seed layer |
 
-**Seed ontology** files in `ontology/seeds/` provide foundational narrative and conceptual scaffolding:
-
-| File | Contents |
-|---|---|
-| `a_ quotes.ak` | Curated quotations as atoms |
-| `b_ semantics.ak` | Semantic primitives and relation exemplars |
-| `c_ narrative.ak` | Grand narrative archetypes and story structure |
+All other packs (liberal-arts discipline packs like `world`, `tech`, `law`, `art`, `wine`, …
+and deep reference layers) are **not autoloaded by default** — they are bundled per release and
+enabled explicitly with `onto.pack.enable <name>`, or autoloaded in bulk on the thesaurus /
+server tiers. Use `onto.pack.list` to see which packs are available and which are loaded.
 
 ### Loading Acquired Ontology
 
-Ontology files in `ontology/` are loaded **automatically at first startup**. Boot sentinels (`ont:ak:loaded`, `ont:csl:loaded`, `ont:curation:loaded`) prevent double-loading on subsequent starts.
+The autoload packs are loaded **automatically at first startup**, in the order given by
+`REGISTRY.json`. The boot load runs in named phases, each guarded by its own sentinel so nothing
+double-loads on a subsequent start: **load** (atoms) → **relations** → **canon** →
+**reconcile** → **curations**. Per-file sentinels (keyed by a manifest hash of each pack's
+files) skip any pack whose files are unchanged.
 
 To re-trigger loading after modifying ontology files (LIBRARIAN role required):
 
@@ -1442,10 +1445,10 @@ akasha/user $ onto.reload
 {"status": "reload_triggered", "sentinels_cleared": [...]}
 ```
 
-To load a single script file manually:
+To load a single pack script file manually:
 
 ```
-akasha/admin $ run ontology/common/a_emotions_27.ak
+akasha/admin $ run ontology/base2/philosophy.ak
 Job submitted: job_id=jcl-9011
 ```
 
@@ -1456,11 +1459,11 @@ akasha/user $ r emo:nostalgia
 "[emo:nostalgia]\nA sentimental longing or wistful affection for the past."
 
 akasha/user $ ln $0 emo:nostalgia ~evokes
-akasha/user $ exp emo:awe 2
-[D0] emo:awe
-[D1]   emo:surprise  (via sys:is_a)
-[D1]   emo:fear      (via sys:is_a)
-[D1]   word:en:sun   (via calc:associated_with)
+akasha/user $ exp ns=emo
+  emo:awe        "..."
+  emo:surprise   "..."
+  emo:fear       "..."
+  emo:nostalgia  "A sentimental longing..."
 ```
 
 ### Writing Your Own Ontology Files
@@ -1541,7 +1544,10 @@ akasha/user $ onto.report
 
 #### `onto.reload` — Soft reload (LIBRARIAN only)
 
-Removes the four boot sentinels and re-triggers the full ontology boot sequence in the background. Existing atoms are idempotent — same content means same key, so nothing changes unless the file changed. New or modified `.ak`/`.csl`/curations files will be picked up.
+Clears the boot phase sentinels (**load** → **relations** → **canon** → **reconcile** →
+**curations**) and re-triggers the full ontology boot sequence in the background. Existing atoms
+are idempotent — same content means same key, so nothing changes unless the file changed. New or
+modified pack files will be picked up.
 
 ```
 akasha/user $ onto.reload
@@ -1622,40 +1628,32 @@ Job submitted: job_id=jcl-9100
 ### Monitoring Progress
 
 ```
-akasha/user $ job.st jcl-9100
+akasha/user $ job.stat jcl-9100
 Job:    jcl-9100
 Script: field_notes_may.ak
 Status: RUNNING
-Progress: 8 / 14 operations
+Progress: 8 / 14 steps
 Started: 2026-05-25 16:04:12
 
-akasha/user $ job.st jcl-9100
+akasha/user $ job.stat jcl-9100
 Job:    jcl-9100
 Status: DONE
-Operations: 14 / 14
+step_done: 14 / 14
 Completed: 2026-05-25 16:04:13
 ```
 
-### Reviewing the Evidence Log
+### Checking Job Status
+
+There is no per-operation log command. To inspect a job, use `job.stat <job_id>`
+(its status and `step_done` progress) or `job.ls` (the list of your jobs):
 
 ```
-akasha/user $ job.log jcl-9100
-[16:04:12] JOB jcl-9100 START (field_notes_may.ak)
-[16:04:12] def @"site:samarkand_b7"  ->  fa3c...7801  OK
-[16:04:12] meta site:samarkand_b7 location ...  OK
-[16:04:12] meta site:samarkand_b7 season ...  OK
-[16:04:12] w "Excavation of Unit B7..."  ->  1b9a...cc12  OK
-[16:04:12] al 1b9a... note.b7.day1.layer1  OK
-[16:04:12] ln note.b7.day1.layer1 -> site:samarkand_b7 [sys:part_of]  OK
-[16:04:12] w "Layer at 0.5–1.2m..."  ->  2d3e...7f01  OK
-[16:04:12] al 2d3e... note.b7.day1.layer2  OK
-[16:04:12] ln note.b7.day1.layer1 -> note.b7.day1.layer2 [@overlies]  OK
-[16:04:12] w "Ceramic shard B7-144..."  ->  8c77...a320  OK
-[16:04:12] al 8c77... artifact.B7_144  OK
-[16:04:12] ln artifact.B7_144 -> note.b7.day1.layer2 [@found_in]  OK
-[16:04:13] meta artifact.B7_144 catalog_ref B7-144  OK
-[16:04:13] meta artifact.B7_144 material ceramic  OK
-[16:04:13] JOB jcl-9100 DONE (14 ops, 0 errors)
+akasha/user $ job.stat jcl-9100
+Job:    jcl-9100
+Script: field_notes_may.ak
+Status: DONE
+step_done: 14 / 14
+Completed: 2026-05-25 16:04:13
 ```
 
 ### Exploring the Imported Data
@@ -1734,11 +1732,11 @@ akasha/team_member $ al $it b7.bedrock_depth
 The collective scope (`scope:sys:universal`) is the shared knowledge commons. Ontology atoms — emotion definitions, narrative archetypes, vocabulary — live here. All users can read collective atoms. Only LIBRARIANs and ADMINs can write to the collective scope.
 
 ```
-# LIBRARIAN loads a new ontology module into collective scope
-akasha/librarian $ run ontology/b_polti_36.ak
-Job submitted: job_id=jcl-9200
+# LIBRARIAN enables an optional ontology pack into collective scope
+akasha/librarian $ onto.pack.enable world
+{"status": "enabled", "pack": "world", "load": "triggered"}
 
-# All users can now reference Polti situations
+# All users can now reference the newly loaded atoms
 akasha/guest $ r polti:09
 "Situation: Daring Enterprise. A bold attempt to achieve a difficult goal."
 ```
@@ -1964,12 +1962,12 @@ def artifact_type
 
 ### Use CSL for Bulk Data Entry and LLM Collaboration
 
-When converting research notes or documents into graph entries, use CSL rather than typing commands one by one. Paste your notes to an LLM with the CSL grammar in the system prompt; review the generated script with `csl.dry`; then run it.
+When converting research notes or documents into graph entries, use CSL rather than typing commands one by one. Paste your notes to an LLM with the CSL grammar in the system prompt; review the generated script with `csl.build`; then run it.
 
 ```
 1. Paste notes to LLM → receive a .csl script
 2. csl.check script="..."  → fix any errors
-3. csl.dry   script="..."  → verify what will be written
+3. csl.build   script="..."  → verify what will be written
 4. csl.run   script="..."  → execute
 ```
 
@@ -2000,8 +1998,8 @@ akasha/user $ look ~emo:melancholy
 Use the `>` redirect to save query results locally for sharing or analysis.
 
 ```
-akasha/user $ exp reconstructive_memory 3 > memory_graph.json
-Output written to memory_graph.json
+akasha/user $ exp ns=emo > emo_atoms.json
+Output written to emo_atoms.json
 ```
 
 ### Run `cog` After Large Imports

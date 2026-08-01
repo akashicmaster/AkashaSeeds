@@ -8,6 +8,14 @@ host that only offers **CGI** — no long-running httpd, no free choice of port
 JSON-RPC paths (`/rpc`, `/api/rpc`) to `services/cgi/akasha.cgi`. No daemon and
 no open port are required.
 
+> ⚠️ **Tier scope — this guide targets the Thesaurus / server tier, not the public seeds tier.**
+> It assumes bundled contents that ship only with the Thesaurus/enterprise tiers: the
+> `archives/` portal, the `.htaccess.example` rewrite rules, and the thesaurus concept
+> methods (`thesaurus.view.atom`, `thesaurus.shelf.list`, …). The public **seeds** tier does
+> **not** bundle `archives/` or the `.htaccess` example, so those steps do not apply there —
+> a seeds deployment exposes the kernel over `/api/rpc` (and MCP over `/api/mcp`) without the
+> public thesaurus portal. Use this guide when deploying a Thesaurus/server release.
+
 ---
 
 ## Why plain CGI is enough

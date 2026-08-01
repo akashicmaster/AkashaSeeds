@@ -301,19 +301,19 @@ You do not need to write code to perform real analytical work in Akasha.
 The built-in ontology already contains sensory and flavor attributes for fruits — sweetness, acidity, color — loaded in the background during startup. You can project any set directly into a structured view using `lens`:
 
 ```
-# Scan the built-in fruits set — attributes are already in the ontology
-akasha/user $ lens src=set:fruits
+# Scan the built-in fruit set — attributes are already in the ontology
+akasha/user $ lens src=set:ingred:fruit
 ```
 
 ```
-Scanned 24 atoms from set:fruits
-  — sweetness (numeric, 21/24 atoms)
-  — acidity   (numeric, 19/24 atoms)
-  — color     (text, 24/24 atoms)
+Scanned 5 atoms from set:ingred:fruit
+  — sweetness (numeric, 5/5 atoms)
+  — acidity   (numeric, 4/5 atoms)
+  — color     (text, 5/5 atoms)
 
 Candidate models:
-  [0] rec      — schema-free record table   (coverage: 88%)
-  [1] quadrant — 4-quadrant scatter plot    (sweetness × acidity, coverage: 79%)
+  [0] rec      — schema-free record table   (coverage: 93%)
+  [1] quadrant — 4-quadrant scatter plot    (sweetness × acidity, coverage: 80%)
 ```
 
 No data entry required. `lens` discovers the attributes already present on each atom.
@@ -404,7 +404,7 @@ akasha/user $ svc ls
 
   Services
   ─────────────────────────────────────────
-  http_portal   running   http://127.0.0.1:8000
+  svc:web-portal   running   http://127.0.0.1:8000
 ```
 
 Then open in any browser:
@@ -623,7 +623,7 @@ Akasha currently includes:
 - JSON-RPC 2.0 API (`/rpc`)
 - local-first deployment — runs on a laptop, a Raspberry Pi, or an iPad
 - graceful contraction — runs without TFLite or SpaCy if unavailable; capabilities scale to hardware
-- LLM integration through MCP (in progress)
+- LLM integration through MCP — shipped: stdlib server, stdio + HTTP transports, 15 tools
 
 No ORM.
 
@@ -789,7 +789,6 @@ Start with Red 0 regardless of track. Blue and Green chapters reference their Re
 | [`docs/ontology/ontology-spec.md`](docs/ontology/ontology-spec.md) | Ontology designers | Built-in ontology and Concept Model extensions |
 | [`docs/concept-model/concept-model-spec.md`](docs/concept-model/concept-model-spec.md) | Plugin developers | BaseConcept API and implementation guide |
 | [`docs/developer/api-spec.md`](docs/developer/api-spec.md) | App developers | Full RPC API reference |
-| [`docs/for-llm/akasha-spec-compact.md`](docs/for-llm/akasha-spec-compact.md) | LLMs | Compact single-file Akasha reference for LLM context |
 
 ---
 

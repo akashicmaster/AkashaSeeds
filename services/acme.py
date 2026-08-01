@@ -9,15 +9,26 @@ into `<data>/tls/` — exactly where TLS layer A (services/tls.py) serves from. 
 http-01 challenge tokens are written into the same `<data>/tls/acme-challenge/`
 directory the port-80 responder serves, so the two layers compose directly.
 
-Configuration (env):
-  AKASHA_TLS_DOMAINS  — comma-separated hostnames for the cert's SANs (required
-                        to enable ACME). Falls back to AKASHA_BASE_DOMAIN.
-  AKASHA_TLS_EMAIL    — ACME account contact (recommended; expiry notices).
-  AKASHA_ACME_STAGING — "1" uses Let's Encrypt STAGING (untrusted certs, high
-                        rate limits) — verify the flow on the VPS with this FIRST,
-                        then unset for a real cert.
-  AKASHA_ACME_DIRECTORY — override the ACME directory URL entirely.
-  AKASHA_ACME_RENEW_DAYS — renew when fewer than N days remain (default 30).
+Configuration — EDIT A FILE, no shell/env exports needed (the operator-friendly path).
+Put a file in the data dir or the project `config/` dir; the running cell reads it on
+boot. Either form works:
+
+  config/tls_domains.txt   one hostname per line (blank lines and `# comments` ignored):
+                               akashicarchives.net
+                               www.akashicarchives.net
+  config/tls.json          full config in one file:
+                               {"domains": ["akashicarchives.net", "www.akashicarchives.net"],
+                                "email": "you@example.com",
+                                "staging": false}
+
+`domains` are the cert SANs (required to enable ACME); `email` is the ACME contact
+(recommended — expiry notices); `staging` true verifies the flow against Let's Encrypt
+STAGING (untrusted certs, high rate limits) — set true FIRST on a new VPS, then set
+false for a real cert. See config/tls.json.example for a template.
+
+Environment variables still work and OVERRIDE the file (back-compat / secrets manager):
+  AKASHA_TLS_DOMAINS · AKASHA_TLS_EMAIL · AKASHA_ACME_STAGING ·
+  AKASHA_ACME_DIRECTORY (override directory URL) · AKASHA_ACME_RENEW_DAYS (default 30).
 
 Running the flow constitutes agreement to the ACME provider's Terms of Service
 (termsOfServiceAgreed=true), the same as `certbot` with an email.
@@ -54,26 +65,98 @@ def _b64(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
 
 
-def _domains_from_env() -> list:
-    raw = os.environ.get("AKASHA_TLS_DOMAINS", "").strip()
-    if not raw:
-        raw = os.environ.get("AKASHA_BASE_DOMAIN", "").strip()
+def _norm_domains(raw) -> list:
+    """Normalise domains from a list or a comma/space-separated string: lower-cased,
+    de-duplicated, order preserved."""
+    if isinstance(raw, str):
+        raw = raw.replace(",", " ").split()
     seen, out = set(), []
-    for d in raw.split(","):
-        d = d.strip().lower()
+    for d in (raw or []):
+        d = str(d).strip().lower()
         if d and d not in seen:
             seen.add(d)
             out.append(d)
     return out
 
 
-def _directory_url() -> str:
+def _tls_config_paths(data_dir: str):
+    """Operator-editable TLS config files, in preference order — the data dir first
+    (survives a seed re-extraction), then the project `config/` dir. Two shapes are
+    accepted so an operator NEVER needs a shell/env export:
+        tls.json         {"domains": ["a.com","www.a.com"], "email": "you@a.com",
+                          "staging": false}
+        tls_domains.txt  one domain per line (blank lines and `# comments` ignored;
+                          commas/spaces on a line also split)
+    """
+    roots = []
+    if data_dir:
+        roots.append(os.path.abspath(data_dir))
+    proj = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    roots.append(os.path.join(proj, "config"))
+    return ([os.path.join(r, "tls.json") for r in roots],
+            [os.path.join(r, "tls_domains.txt") for r in roots])
+
+
+def _load_tls_file(data_dir: str) -> dict:
+    """Read the operator's TLS config from a file (no env needed). Returns
+    {"domains": [...], "email": str, "staging": bool}; empty when no file is present.
+    First tls.json found wins for the whole config; if it has no domains (or is
+    absent), the first tls_domains.txt found supplies the domains."""
+    json_paths, txt_paths = _tls_config_paths(data_dir)
+    conf = {"domains": [], "email": "", "staging": False}
+    for p in json_paths:
+        try:
+            if os.path.isfile(p):
+                with open(p, encoding="utf-8") as f:
+                    d = json.load(f)
+                if isinstance(d, dict):
+                    conf["domains"] = _norm_domains(d.get("domains"))
+                    conf["email"] = str(d.get("email", "") or "").strip()
+                    conf["staging"] = bool(d.get("staging", False))
+                    break
+        except Exception as e:                                   # never break boot on a typo
+            logger.warning("[TLS] ignoring malformed %s: %s", p, e)
+    if not conf["domains"]:
+        for p in txt_paths:
+            try:
+                if os.path.isfile(p):
+                    toks = []
+                    for line in open(p, encoding="utf-8").read().splitlines():
+                        line = line.split("#", 1)[0]
+                        toks.extend(line.replace(",", " ").split())
+                    conf["domains"] = _norm_domains(toks)
+                    if conf["domains"]:
+                        break
+            except Exception as e:
+                logger.warning("[TLS] ignoring malformed %s: %s", p, e)
+    return conf
+
+
+def _resolve_domains(data_dir: str) -> list:
+    """Cert SAN domains: env `AKASHA_TLS_DOMAINS` wins (back-compat / override), else
+    the operator's config file, else `AKASHA_BASE_DOMAIN`."""
+    env = os.environ.get("AKASHA_TLS_DOMAINS", "").strip()
+    if env:
+        return _norm_domains(env)
+    file_domains = _load_tls_file(data_dir).get("domains") or []
+    if file_domains:
+        return file_domains
+    return _norm_domains(os.environ.get("AKASHA_BASE_DOMAIN", ""))
+
+
+# Back-compat shim: env-only domain read (retained for any external caller).
+def _domains_from_env() -> list:
+    return _resolve_domains("")
+
+
+def _directory_url(data_dir: str = None) -> str:
     override = os.environ.get("AKASHA_ACME_DIRECTORY", "").strip()
     if override:
         return override
-    if os.environ.get("AKASHA_ACME_STAGING", "").strip() in ("1", "true", "yes"):
-        return LETSENCRYPT_STAGING
-    return LETSENCRYPT_PROD
+    staging = os.environ.get("AKASHA_ACME_STAGING", "").strip() in ("1", "true", "yes")
+    if not staging and data_dir is not None:
+        staging = bool(_load_tls_file(data_dir).get("staging", False))
+    return LETSENCRYPT_STAGING if staging else LETSENCRYPT_PROD
 
 
 def _renew_days() -> int:
@@ -396,7 +479,8 @@ def obtain_certificate(data_dir, domains, email="", directory_url=None,
                        "A/AAAA record and they join on the next renewal.",
                        ", ".join(skipped))
     if not domains:
-        raise RuntimeError("no configured domain resolves — check DNS / AKASHA_TLS_DOMAINS")
+        raise RuntimeError("no configured domain resolves — check DNS, or the domains in "
+                           "config/tls.json / config/tls_domains.txt (or AKASHA_TLS_DOMAINS)")
 
     account = _Account.load_or_create(os.path.join(tdir, "account.key"))
     client = _AcmeClient(directory_url, account)
@@ -443,7 +527,7 @@ def ensure_certificate(data_dir, start_responder=True):
     When *start_responder* is True and no portal is running yet, a temporary
     port-80 responder is stood up for the duration of issuance (boot-time case).
     """
-    domains = _domains_from_env()
+    domains = _resolve_domains(data_dir)
     if not domains:
         return "unconfigured"
 
@@ -461,7 +545,7 @@ def ensure_certificate(data_dir, start_responder=True):
         if operator_supplied:
             return "current"
         _cs = _cert_is_staging(certfile)
-        _staging_now = "staging" in _directory_url()
+        _staging_now = "staging" in _directory_url(data_dir)
         if _cs is None or _cs == _staging_now:
             return "current"
         logger.warning("[ACME] Existing cert is a %s cert but this run is configured "
@@ -494,8 +578,10 @@ def ensure_certificate(data_dir, start_responder=True):
         hp = resolve_tls(data_dir)["https_port"]
         responder = start_http_responder(chal, hp, host="0.0.0.0", http_port=80)
     try:
-        obtain_certificate(data_dir, domains,
-                           email=os.environ.get("AKASHA_TLS_EMAIL", "").strip(),
+        email = (os.environ.get("AKASHA_TLS_EMAIL", "").strip()
+                 or _load_tls_file(data_dir).get("email", ""))
+        obtain_certificate(data_dir, domains, email=email,
+                           directory_url=_directory_url(data_dir),
                            challenge_dir=chal)
         return "issued"
     except Exception as exc:

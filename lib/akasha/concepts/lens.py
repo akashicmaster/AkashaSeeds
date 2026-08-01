@@ -176,19 +176,30 @@ class SourceScanner:
             return None
 
         seen: set = set()
-        for cls, _, _ in _registry_ref._handlers.values():
+        for entry in _registry_ref._handlers.values():
+            cls = entry[0]                        # (cls, op_name, coerce, namespace)
             if cls in seen:
                 continue
             seen.add(cls)
-            if (isinstance(cls, type)
-                    and issubclass(cls, ExportableMixin)
-                    and cls.EXPORT_SCHEMA.get("meta_type") == meta_type):
-                try:
-                    instance = cls(self.session)
-                    nodes = instance.export_projection(atom_key)
-                    return nodes if nodes is not None else None
-                except Exception:
-                    return None
+            if not (isinstance(cls, type) and issubclass(cls, ExportableMixin)):
+                continue
+            schema = cls.EXPORT_SCHEMA
+            if schema.get("meta_type") != meta_type:
+                continue
+            # Optional refinement: every key in meta_match must equal the atom's meta.
+            # Lets several models share a generic meta_type (e.g. "concept") while
+            # still being disambiguated (survey roots are type="concept" + concept="survey").
+            meta_match = schema.get("meta_match") or {}
+            if any(meta.get(mk) != mv for mk, mv in meta_match.items()):
+                continue
+            try:
+                instance = cls(self.session)
+                nodes = instance.export_projection(atom_key)
+                if nodes is not None:
+                    return nodes
+            except Exception:
+                return None
+            return None
 
         return None
 
@@ -365,7 +376,8 @@ class LensConcept(BaseConcept):
             return []
         seen: set = set()
         result: List[type] = []
-        for cls, _, _ in _registry_ref._handlers.values():
+        for entry in _registry_ref._handlers.values():
+            cls = entry[0]                        # (cls, op_name, coerce, namespace)
             if cls not in seen and isinstance(cls, type) and issubclass(cls, ImportableMixin):
                 seen.add(cls)
                 result.append(cls)

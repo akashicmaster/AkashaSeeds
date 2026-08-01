@@ -31,9 +31,9 @@
    - [6.1 When to Use Script Mode](#61-when-to-use-script-mode)
    - [6.2 Writing a CSL Script](#62-writing-a-csl-script)
    - [6.3 Checking Before Running](#63-checking-before-running)
-   - [6.4 The Dry Run](#64-the-dry-run)
+   - [6.4 Compiling — Preview the .ak](#64-compiling--preview-the-ak)
    - [6.5 Running the Script](#65-running-the-script)
-   - [6.6 Saving and Reusing Scripts](#66-saving-and-reusing-scripts)
+   - [6.6 Saving and Reusing Scripts — Workflows](#66-saving-and-reusing-scripts--workflows)
 7. [Value Types Reference](#7-value-types-reference)
 8. [Validation and Error Messages](#8-validation-and-error-messages)
 9. [Common Mistakes](#9-common-mistakes)
@@ -698,10 +698,10 @@ csl> link.create src=$atom_a.key dst=$atom_b.key rel="@evidenced_by"
 | `write` | `.key` |
 | `define` | `.key`, `.alias` |
 | `ft.src.add` | `.source_id` |
-| `ft.fact.add` | `.fact_id` |
-| `cur.premise` | `.premise_id` |
-| `cur.view` | `.view_id` |
+| `ft.add` | `.fact_id` |
+| `curation.new` | `.curation_id` |
 | `intel.req` | `.requirement_id` |
+| `intel.gap` | `.gap_id` |
 | `intel.assess` | `.assessment_id` |
 | `intel.recommend` | `.recommendation_id` |
 
@@ -776,7 +776,7 @@ Three concept models are available for researchers:
 | Model | What it is for |
 |-------|---------------|
 | **Fact collection** | Recording what sources say, how credible they are, what is absent |
-| **Curation** | Organising competing claims about the same topic under different viewpoints |
+| **Curation** | Interpreting a set of atoms as an ordered narrative path over their relationships |
 | **Intelligence** | Working through a structured analytical process from question to decision |
 
 You never have to use these models — `write`, `link.create`, and sets are always available. But for research, analysis, and structured knowledge work, the concept models save considerable effort and create a structured, traceable record.
@@ -808,14 +808,14 @@ csl> $src = ft.src.add:
 }
 
 csl> # Step 2: Record facts from this source
-csl> $f1 = ft.fact.add:
+csl> $f1 = ft.add:
 ...     fact_type = event
 ...     content   = "UK government confirmed the 2035 deadline for ending new petrol car sales."
 ...     source_id = $src.source_id
 ...
 {"status": "created", "fact_id": "b72c...d304"}
 
-csl> $f2 = ft.fact.add:
+csl> $f2 = ft.add:
 ...     fact_type = statement
 ...     content   = "The policy was announced without an independent economic assessment."
 ...     source_id = $src.source_id
@@ -848,14 +848,14 @@ csl> $src_vt = ft.src.add:
 ...     credibility = 0.99
 ...
 
-csl> ft.fact.add:
+csl> ft.add:
 ...     fact_type = event
 ...     content   = "Alsace-Lorraine was returned to France under Article 51 of the Treaty of Versailles, signed 28 June 1919."
 ...     source_id = $src_vt.source_id
 ...     as_of     = "1919-06-28"
 ...
 
-csl> ft.fact.add:
+csl> ft.add:
 ...     fact_type = statement
 ...     content   = "The return was unconditional and without plebiscite, unlike the 1871 annexation."
 ...     source_id = $src_vt.source_id
@@ -889,122 +889,97 @@ csl> ft.fact.add:
 
 | Command | Required options | Description |
 |---------|-----------------|-------------|
+| `ft.new` | `title` | Create a new fact collection |
 | `ft.src.add` | `kind`, `title` | Register a source |
-| `ft.src.ls` | — | List registered sources |
-| `ft.fact.add` | `fact_type`, `content`, `source_id` | Add a fact |
+| `ft.add` | `fact_type`, `content`, `source_id` | Add a fact |
 | `ft.claim` | `speaker`, `content`, `source_id` | Record a direct quote |
 | `ft.absent` | `description`, `source_id` | Note missing evidence |
-| `ft.ls` | — | List facts in this collection |
-| `ft.open` | `fact_id` | Open an existing collection |
-| `ft.rm` | `fact_id` | Remove a collection |
+| `ft.ls` | — | List fact collections |
+| `ft.open` | `fact_root_id` | Open an existing collection |
+| `ft.rm` | — | Soft-delete the active collection |
 | `ft.trace` | `fact_id` | Show provenance of a fact |
 | `ft.diagnose` | — | Check the collection for problems |
 
 ### 5.3 Curation
 
 **What curation is for:**  
-When you have multiple sources saying different — or even contradictory — things about the same topic, curation helps you organise them without simply picking a winner. It lets you maintain multiple perspectives simultaneously.
+When you have a *set* of atoms about a topic, curation interprets them **through the relationships among them** and produces a **narrative path**: an ordered walk from atom to atom. It is not about a single atom (that is what fact collection does) — it is about the structure that connects a group of atoms.
 
-**The key principle:** Curation never modifies the original source atoms. It creates a separate analytical layer above them. You compare and resolve, while all the original evidence stays intact and traceable.
+**The key principle:** Curation never modifies the original atoms. It reads the relations already in the graph (or an order you supply) and writes a separate interpretation layer — `curation:next` edges chaining the path, and a curation root that points at every atom it covers. A curation carries `provenance=interpretation`: it shows its **grounds** (which relation axes / operation produced the path) but does not prove them.
 
-**A useful analogy:** Imagine you have three historians who each wrote different things about who controlled Alsace in 1942. Curation is like creating a transparent sheet over their writings: you can write your analysis on the sheet, compare what they said, and draw conclusions — without crossing anything out in the original texts.
+**The three operators.** Curation has exactly three commands:
 
-**The workflow:**
+| Command | CSL / full name | What it does |
+|---------|-----------------|--------------|
+| `cur.new` | `curation.new` | Create a curation — derive a path from relation axes, or author an explicit order |
+| `cur.narrate` | `curation.narrate` | Read a curation's narrative path back (ordered atoms + grounds) |
+| `cur.ls` | `curation.ls` | List curations |
 
-1. Open a curation workspace
-2. Register source atoms as **inputs** (by reference, not by copying)
-3. Define **premises** — the analytical viewpoint you are working from (a time period, a legal perspective)
-4. Create **views** — one analysis window per premise
-5. Resolve conflicts with **fold** commands
-6. Record **conclusions**
+*(The short `cur.*` forms and the full `curation.*` forms are interchangeable — `cur.` is an alias prefix for `curation.`.)*
 
-#### Example: Alsace sovereignty 1871–1945
+**Two ways to build a curation:**
 
-This example curates three competing claims about who controlled Alsace:
+- **Derived** — give a target set and one or more **relation axes** (`rels=`). The path is computed from the relationship structure. With two or more axes and `op=intersect` (the default), an edge `a→b` survives only if `b` is adjacent to `a` under *every* axis (e.g. later-in-time **and** descends-from), and the surviving edges chain into the path.
+- **Authored** — give an explicit order with `ids=` (and no `rels=`). The path is taken exactly as given, and its `curation:next` edges are written.
+
+#### Example: a narrative path over a set of atoms
 
 ```
-csl> # Open a workspace
-csl> cur.new title="Sovereignty of Alsace-Lorraine 1871–1945"
-{"status": "created", "curation_id": "c41d...e820"}
+csl> # First, collect the atoms you want to interpret into a set
+csl> set.add name="alsace_dispute" id="alsace.sovereignty.1648"
+csl> set.add name="alsace_dispute" id="alsace.occupation.1871"
+csl> set.add name="alsace_dispute" id="alsace.dejure.1939"
+csl> set.add name="alsace_dispute" id="alsace.defacto.1942"
 
-csl> # Register three existing source atoms as inputs (references only)
-csl> $i_fr  = cur.input ref_id="bartlett.de_jure_france"  role=sovereignty
-csl> $i_de  = cur.input ref_id="german.occupation.record" role=administration
-csl> $i_vt  = cur.input ref_id="versailles.article51"     role=treaty
-
-csl> # Define two premises — different analytical lenses
-csl> $p_jure = cur.premise:
-...     label           = de_jure_1939
-...     as_of           = "1939-09-01"
-...     perspective     = de_jure
-...     conflict_policy = perspective_preferred
+csl> # Derive a path by intersecting relation axes (e.g. time ∩ control)
+csl> $c = curation.new:
+...     title = "Alsace sovereignty over time"
+...     set   = "alsace_dispute"
+...     rels  = "time:after,control:by"
+...     op    = intersect
+...     alias = "cur:alsace"
 ...
+{"status": "created", "curation_id": "c41d...e820", "mode": "derived",
+ "op_applied": "intersect", "length": 4}
 
-csl> $p_facto = cur.premise:
-...     label           = de_facto_1942
-...     as_of           = "1942-01-01"
-...     perspective     = de_facto
-...     conflict_policy = most_recent
-...
-
-csl> # Create views (one per premise)
-csl> $v_jure  = cur.view premise_id=$p_jure.premise_id  label="Alsace: de jure 1939"
-csl> $v_facto = cur.view premise_id=$p_facto.premise_id label="Alsace: de facto 1942"
-
-csl> # Inside the de facto view: resolve the conflict between French and German claims
-csl> cur.fold:
-...     view_id             = $v_facto.view_id
-...     competing_input_ids = [$i_fr.input_id, $i_de.input_id]
-...     winner_id           = $i_de.input_id
-...     rationale           = "German administration atom is more recent per most_recent policy"
-...
-
-csl> # Record conclusions for each view
-csl> cur.conclude:
-...     view_id         = $v_facto.view_id
-...     statement       = "As of 1942, Alsace was under German de facto administration."
-...     conclusion_type = state
-...     confidence      = 0.85
-...
-
-csl> cur.conclude:
-...     view_id         = $v_jure.view_id
-...     statement       = "France retained de jure sovereignty under international law throughout the occupation."
-...     conclusion_type = state
-...     confidence      = 0.92
-...
-
-csl> # Check for consistency
-csl> cur.diagnose
+csl> # Read the resolved narrative path back
+csl> curation.narrate curation_id=$c.curation_id
+{
+  "type": "curation:narrative",
+  "title": "Alsace sovereignty over time",
+  "grounds": {"rels": ["time:after", "control:by"], "op": "intersect"},
+  "steps": [ ... ordered atoms ... ],
+  "transitions": [ ... ],
+  "length": 4
+}
 ```
 
-Both conclusions can coexist — one describes the legal reality, the other describes what was happening on the ground.
+Or author the order explicitly, when you already know the sequence:
 
-#### Conflict policies
+```
+csl> curation.new:
+...     title = "Alsace timeline (authored)"
+...     ids   = "alsace.sovereignty.1648, alsace.occupation.1871, alsace.dejure.1939, alsace.defacto.1942"
+...
+{"status": "created", "mode": "authored", "length": 4}
 
-| Policy | What it means |
-|--------|--------------|
-| `perspective_preferred` | Keep only inputs that match the premise's perspective label |
-| `most_recent` | The most recently written atom wins |
-| `highest_credibility` | The most credible source wins |
-| `manual` | No automatic resolution — you resolve explicitly with `cur.fold` |
+csl> curation.ls
+{"curations": [ ... ], "count": 2}
+```
 
-#### Curation command reference
+#### `curation.new` options
 
-| Command | Description |
-|---------|-------------|
-| `cur.new` | Create a curation workspace |
-| `cur.open` | Open an existing workspace |
-| `cur.ls` | List workspaces |
-| `cur.rm` | Remove a workspace (soft delete) |
-| `cur.premise` | Define a premise (time, perspective, policy) |
-| `cur.input` | Register a source atom as input |
-| `cur.view` | Create a view under a premise |
-| `cur.fold` | Resolve competing inputs inside a view |
-| `cur.conclude` | Record a conclusion for a view |
-| `cur.dispute` | Flag an unresolved disagreement |
-| `cur.trace` | Show the full reasoning chain |
-| `cur.diagnose` | Check for missing inputs, open disputes |
+| Option | Meaning |
+|--------|---------|
+| `title` | Required. A short name for the curation. |
+| `set` | Name of a set whose members are the atoms to interpret. |
+| `ids` | Comma/space-separated atom ids — extend the pool, or (with no `rels`) become the authored order. |
+| `rels` | Comma-separated relation axes to derive the path from (derived mode). |
+| `op` | Relation operator for two-plus axes. `intersect` is implemented (the default); other names fall back to intersect. |
+| `alias` | Optional alias for the curation root (re-running with the same alias is idempotent). |
+| `thesis` | Optional one-line statement of the interpretation's standpoint. |
+
+> **Roadmap note.** A richer argumentation layer — premises, perspective-scoped views, conflict-resolution folds, and recorded conclusions — is a *planned* extension, not part of the shipped model. Today curation is the three operators above (`new` / `narrate` / `ls`). Do not rely on `cur.premise`, `cur.input`, `cur.view`, `cur.fold`, `cur.conclude`, `cur.dispute`, or `cur.trace` — they are not implemented and will return "Unknown method".
 
 ### 5.4 Intelligence
 
@@ -1156,12 +1131,12 @@ $src = ft.src.add:
     title       = "The Guardian — UK 2035 Petrol Ban"
     credibility = 0.82
 
-$f1 = ft.fact.add:
+$f1 = ft.add:
     fact_type = event
     content   = "UK government confirmed 2035 deadline for ending new petrol car sales."
     source_id = $src.source_id
 
-$f2 = ft.fact.add:
+$f2 = ft.add:
     fact_type = statement
     content   = "Policy announced without independent economic assessment."
     source_id = $src.source_id
@@ -1185,7 +1160,7 @@ Before running any script, check it for errors:
 ```
 akasha/user $ csl.check script="
 $src = ft.src.add kind=newspaper title='The Guardian' credibility=0.82
-ft.fact.add fact_type=event content='UK confirmed 2035 ban' source_id=$src.source_id
+ft.add fact_type=event content='UK confirmed 2035 ban' source_id=$src.source_id
 "
 {
   "valid": true,
@@ -1211,54 +1186,39 @@ If there are errors:
 
 Fix all `"level": "error"` errors before proceeding. `"level": "warning"` errors are reported but do not stop execution.
 
-### 6.4 The Dry Run
+### 6.4 Compiling — Preview the `.ak`
 
-Once the script is valid, preview exactly what will happen — without writing anything to the graph:
+Once the script is valid, compile it with `csl.build` to see exactly what it will write — as `.ak`, the flat instruction form — **without executing anything**:
 
 ```
-akasha/user $ csl.dry script="
+akasha/user $ csl.build script="
 $src = ft.src.add kind=newspaper title='The Guardian' credibility=0.82
-ft.fact.add fact_type=event content='UK confirmed 2035 ban' source_id=$src.source_id
+ft.add fact_type=event content='UK confirmed 2035 ban' source_id=$src.source_id
 "
 {
-  "operations": [
-    {
-      "method": "ft.src.add",
-      "params": {"kind": "newspaper", "title": "The Guardian", "credibility": 0.82},
-      "assigns_to": "src",
-      "source_line": 1
-    },
-    {
-      "method": "ft.fact.add",
-      "params": {
-        "fact_type": "event",
-        "content": "UK confirmed 2035 ban",
-        "source_id": {"__ref__": "$src.source_id"}
-      },
-      "assigns_to": null,
-      "source_line": 2
-    }
-  ]
+  "ak": "def \"...\" \"The Guardian\"\n...\nln ... fact:derived_from_source",
+  "call_count": 2,
+  "source_lines": 2,
+  "out": null
 }
 ```
 
-The `"__ref__": "$src.source_id"` entry means: at runtime, fill in the `source_id` value from the result of the `$src` step.
+The `ak` field is the transpiled `.ak` text — every atom, alias, and link the script would create. Reviewing it is the recommended last check before running.
 
-You can also get a plain-English summary with `csl.explain`:
+To also save the compiled `.ak` to a file, pass `out=`:
 
 ```
-akasha/user $ csl.explain script="..."
-{
-  "explanation": "Line 1: $src = ft.src.add(kind='newspaper', title='The Guardian', credibility=0.82)\nLine 2: ft.fact.add(fact_type='event', content='UK confirmed 2035 ban', source_id=...)"
-}
+akasha/user $ csl.build out="guardian.ak" script="..."
 ```
+
+There is no `csl.dry` or `csl.explain` command — `csl.build` is the compile/preview verb and `csl.check` (§6.3) is the validate verb.
 
 ### 6.5 Running the Script
 
 ```
 akasha/user $ csl.run script="
 $src = ft.src.add kind=newspaper title='The Guardian' credibility=0.82
-ft.fact.add fact_type=event content='UK confirmed 2035 ban' source_id=$src.source_id
+ft.add fact_type=event content='UK confirmed 2035 ban' source_id=$src.source_id
 "
 {
   "results": [
@@ -1269,7 +1229,7 @@ ft.fact.add fact_type=event content='UK confirmed 2035 ban' source_id=$src.sourc
       "assigns_to": "src"
     },
     {
-      "method": "ft.fact.add",
+      "method": "ft.add",
       "result": {"status": "created", "fact_id": "b72c...d304"},
       "error": null,
       "assigns_to": null
@@ -1284,79 +1244,78 @@ Each step shows its result. If one step fails, its `"error"` field contains the 
 
 ```
 1.  csl.check   — fix any validation errors
-2.  csl.dry     — review the operation list
-3.  csl.explain — read the plain-English summary if any step is unclear
-4.  csl.run     — execute
+2.  csl.build   — review the transpiled .ak (exactly what will be written)
+3.  csl.run     — execute
 ```
 
-### 6.6 Saving and Reusing Scripts
+### 6.6 Saving and Reusing Scripts — Workflows
 
-Once a script works correctly you can save it to the graph and run it again by name — without keeping a separate text file.
+A named, saved, re-runnable script is a **workflow**. The `workflow.*` commands store a CSL script in the graph under a name and run it again later — no separate text file to manage. (There is no `csl.save` / `csl.ls` / `csl.exec` / `csl.rm`; the persistence story is the `workflow` namespace.)
 
-#### Saving a script
+> **Permission note.** `workflow.run` executes the script as an orchestrated background job, so it requires the **librarian** or **admin** role. `workflow.def` / `workflow.ls` / `workflow.get` are ordinary write/read operations.
+
+#### Saving a script — `workflow.def`
 
 ```
-akasha/user $ csl.save name="my_fact_template" script="
+akasha/user $ workflow.def name="my_fact_template" script="
 $src = ft.src.add kind=report title='Internal report' credibility=0.80
 ft.add fact_type=event content='Placeholder event' source_id=$src.source_id
 "
 {
-  "status": "saved",
+  "status": "defined",
   "name":   "my_fact_template",
-  "alias":  "csl:my_fact_template",
+  "alias":  "wf:my_fact_template",
   "key":    "a3f7...c19e"
 }
 ```
 
-The script is validated before saving — syntax errors are caught immediately.
+The script's CSL **syntax** is checked before saving — parse errors are caught immediately. (Method/parameter errors surface later, when you run it.)
 
-#### Listing saved scripts
+#### Listing saved workflows — `workflow.ls`
 
 ```
-akasha/user $ csl.ls
+akasha/user $ workflow.ls
 {
-  "scripts": [
+  "workflows": [
     {
-      "name":    "my_fact_template",
-      "key":     "a3f7...c19e",
-      "preview": "$src = ft.src.add kind=report title='Intern"
+      "name":        "my_fact_template",
+      "alias":       "wf:my_fact_template",
+      "description": ""
     }
   ],
   "count": 1
 }
 ```
 
-#### Loading (reading back) a script
+#### Reading back a workflow's script — `workflow.get`
 
 ```
-akasha/user $ csl.load name="my_fact_template"
+akasha/user $ workflow.get name="my_fact_template"
 {
-  "name":   "my_fact_template",
-  "script": "$src = ft.src.add kind=report ...",
-  "key":    "a3f7...c19e"
+  "name":        "my_fact_template",
+  "key":         "a3f7...c19e",
+  "description": "",
+  "script":      "$src = ft.src.add kind=report ..."
 }
 ```
 
-#### Running a saved script by name
-
-From the Akasha shell, use `csl.exec`:
+#### Running a saved workflow by name — `workflow.run`
 
 ```
-akasha/user $ csl.exec my_fact_template
+akasha/user $ workflow.run name="my_fact_template"
 {
-  "results": [ ... ]
+  "status":    "submitted",
+  "workflow":  "my_fact_template",
+  "job_id":    "job-7f3a...",
+  "job_label": "wf:my_fact_template"
 }
 ```
 
-Or pass `name=` to `csl.run` directly from CSL:
+`workflow.run` submits the script as **one bounded background job** (it runs through the job scheduler rather than inline), so it returns a `job_id` you can track — not the results directly.
 
-```
-csl> csl.run name="my_fact_template"
-```
+#### Running a local .csl file directly
 
-#### Running a local .csl file
-
-If you have a CSL script saved as a plain text file (e.g. `setup.csl`), run it directly from the shell without first importing it:
+If you have a CSL script saved as a plain text file (e.g. `setup.csl`), run it directly from the shell — this executes immediately and returns results inline:
 
 ```
 akasha/user $ csl setup.csl
@@ -1365,35 +1324,34 @@ akasha/user $ csl setup.csl
 }
 ```
 
-The file is read, validated, and executed in one step. To save the results of a file run for later re-use, load the file content and call `csl.save`:
+To turn a file into a reusable workflow, read the file into `workflow.def`:
 
 ```
-akasha/user $ csl.save name="setup" script="$(cat setup.csl)"
+akasha/user $ workflow.def name="setup" script="$(cat setup.csl)"
 ```
 
-#### Deleting a saved script
+#### Deleting a saved workflow — `workflow.rm`
 
 ```
-akasha/user $ csl.rm name="my_fact_template"
+akasha/user $ workflow.rm name="my_fact_template"
 {
   "status": "removed",
   "name":   "my_fact_template"
 }
 ```
 
-The script atom remains in the graph (the delete is non-destructive by default) but it is removed from the index of saved scripts and will no longer appear in `csl.ls`.
+This unbinds the `wf:<name>` name, so the workflow no longer appears in `workflow.ls` / `workflow.run` / `workflow.get`. (The content-addressed script atom itself remains as harmless residue.)
 
 #### Summary table
 
 | Command | What it does |
 |---------|-------------|
-| `csl.save name="…" script="…"` | Save (or overwrite) a script by name |
-| `csl.ls` | List all saved scripts |
-| `csl.load name="…"` | Retrieve script text by name |
-| `csl.exec <name>` | Run a saved script by name (from shell) |
-| `csl.run name="…"` | Run a saved script by name (from CSL) |
-| `csl <filename.csl>` | Run a local .csl file directly from shell |
-| `csl.rm name="…"` | Remove script from the saved index |
+| `workflow.def name="…" script="…"` | Save (or overwrite) a script by name |
+| `workflow.ls` | List all saved workflows |
+| `workflow.get name="…"` | Retrieve a workflow's script text by name |
+| `workflow.run name="…"` | Run a saved workflow by name (submits a background job; librarian/admin) |
+| `csl <filename.csl>` | Run a local .csl file directly from the shell |
+| `workflow.rm name="…"` | Remove a workflow from the saved index |
 
 ---
 
@@ -1426,9 +1384,10 @@ Only quote values that contain spaces or special characters.
 **Multi-line text:**
 
 ```
-csl> cur.conclude:
-...     view_id   = $v.view_id
-...     statement = """
+csl> intel.assess:
+...     requirement_id = $req.requirement_id
+...     assessment_type = situation
+...     judgment = """
 ...         Under international law as of 1939, France retained de jure
 ...         sovereignty over Alsace-Lorraine. German administration was
 ...         de facto but was not recognised by the Allied powers.
@@ -1457,7 +1416,7 @@ Every CSL command is checked before execution:
 
 ```
 ERROR line 2: Unknown method 'ft.source.add'
-Suggestion: Did you mean: ft.src.add, ft.src.ls?
+Suggestion: Did you mean: ft.src.add, ft.src.eval?
 ```
 
 The suggestion uses fuzzy matching — if your command is close to a known one, the correct name will be suggested.
@@ -1496,7 +1455,7 @@ Any value with a space must be in double quotes. Single words without spaces do 
 ### Using a `$name` before assigning it
 
 ```
-csl> ft.fact.add source_id=$src.source_id ...   ← wrong: $src is not assigned yet
+csl> ft.add source_id=$src.source_id ...   ← wrong: $src is not assigned yet
 csl> $src = ft.src.add kind=newspaper ...
 ```
 
@@ -1514,10 +1473,11 @@ csl> ft.src.add kind=newspaper title="Times" credibility=0.85  ← correct
 ### Forgetting the blank line to close a block in the interpreter
 
 ```
-csl> cur.conclude:
-...     view_id    = $v.view_id
-...     statement  = "France retained sovereignty."
-...     confidence = 0.90
+csl> intel.assess:
+...     requirement_id  = $req.requirement_id
+...     assessment_type = situation
+...     judgment        = "France retained sovereignty."
+...     confidence      = 0.90
 ...                          ← press Enter on an empty line here
 ```
 
@@ -1530,9 +1490,9 @@ Some common mistakes:
 | Wrong | Correct | Why |
 |-------|---------|-----|
 | `ft.source.add` | `ft.src.add` | Short alias is `src`, not `source` |
-| `cur.view` | `cur.view` (with `label=` and `premise_id=`) | `cur.view` needs arguments |
+| `ft.fact.add` | `ft.add` | The add-a-fact alias is `ft.add`, not `ft.fact.add` |
+| `cur.premise`, `cur.view`, `cur.fold` | `curation.new` / `curation.narrate` / `curation.ls` | Curation has only these three operators |
 | `intel.assess.add` | `intel.assess` | The short alias is `intel.assess` |
-| `curation.view` | `curation.view.run` | Full method name requires `.run` |
 
 When in doubt, use `csl.check` — the error message will suggest the correct command name.
 

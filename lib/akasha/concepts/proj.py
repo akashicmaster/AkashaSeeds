@@ -66,38 +66,44 @@ class ProjectionConcept(BaseConcept):
 
     CONCEPT_PREFIX = "proj"
     CONTEXT_KEY_ACTIVE = CONTEXT_KEY_ACTIVE
+    # IAM actions are annotated explicitly (per the spec table in this file's header).
+    # This model shipped complete but its kernel _METHOD_TO_ACTION wiring was never
+    # added by hand, so every op was 404 at the capability gate. The registry now
+    # derives a fail-safe action for a bare entry (issue #50), but proj's read/write
+    # split is semantically load-bearing (several projection ops are pure reads), so the
+    # authoritative actions are declared here rather than left to the verb convention.
     CONCEPT_METHODS = {
-        "new":   {"op": "op_new"},
-        "open":  {"op": "op_open",
+        "new":   {"op": "op_new", "action": "write"},
+        "open":  {"op": "op_open", "action": "write",
                   "coerce": lambda d: {"proj_id": d.get("proj_id") or d.get("id", "")}},
-        "ls":    {"op": "op_list_all"},
-        "map":   {"op": "op_map"},
-        "rm":    {"op": "op_delete"},
-        "axis.add": {"op": "op_add_axis",
+        "ls":    {"op": "op_list_all", "action": "read"},
+        "map":   {"op": "op_map", "action": "read"},
+        "rm":    {"op": "op_delete", "action": "drop"},
+        "axis.add": {"op": "op_add_axis", "action": "write",
                      "coerce": lambda d: {"word": d.get("word") or d.get("name", ""),
                                           "ref_id": d.get("ref_id")}},
-        "extract":  {"op": "op_extract",
+        "extract":  {"op": "op_extract", "action": "write",
                      "coerce": lambda d: {"focal": (d.get("focal") or d.get("version_id")
                                                     or d.get("atom_id") or d.get("id", "")),
                                           "text": d.get("text")}},
-        "project":  {"op": "op_project"},
-        "scope":    {"op": "op_scope"},
-        "resonate": {"op": "op_resonate",
+        "project":  {"op": "op_project", "action": "read"},
+        "scope":    {"op": "op_scope", "action": "read"},
+        "resonate": {"op": "op_resonate", "action": "read",
                      "coerce": lambda d: {"focal": (d.get("focal") or d.get("atom_id")
                                                     or d.get("id", "")),
                                           "scope": d.get("scope", 1)}},
-        "lens":     {"op": "op_lens",
+        "lens":     {"op": "op_lens", "action": "read",
                      "coerce": lambda d: {"focal": (d.get("focal") or d.get("atom_id")
                                                     or d.get("id", ""))}},
-        "associate": {"op": "op_associate",
+        "associate": {"op": "op_associate", "action": "read",
                       "coerce": lambda d: {"focal": (d.get("focal") or d.get("atom_id")
                                                      or d.get("id", "")),
                                            "axis": d.get("axis"), "scope": d.get("scope", 1)}},
-        "void":  {"op": "op_void",
+        "void":  {"op": "op_void", "action": "write",
                   "coerce": lambda d: {"focal": (d.get("focal") or d.get("atom_id")
                                                  or d.get("id", ""))}},
-        "tag":   {"op": "op_tag"},
-        "diagnose": {"op": "op_diagnose"},
+        "tag":   {"op": "op_tag", "action": "write"},
+        "diagnose": {"op": "op_diagnose", "action": "read"},
     }
 
     # ── ctor / auto-mount ───────────────────────────────────

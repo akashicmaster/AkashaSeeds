@@ -1,6 +1,11 @@
 # Akasha ontology — namespace: myth
 # atoms: 383
 
+# Apex for the myth field — ~347 myth:* atoms already declare `sys:is_a myth`, so this
+# def closes the definition-completeness gap (a bare, undefined `myth` target) and gives
+# the archives field navigator a root should a Myth room be added.
+def "myth" "Myth — the world's myths and legends: the oldest stories a people tells to explain the world, the gods, and itself. The apex of the myth field."
+
 def "myth:aboriginal_rainbow_serpent" "The Rainbow Serpent is among the oldest and greatest of Aboriginal Australian beings: the giant snake who shaped the rivers and waterholes in the Dreaming, who lives in deep water, and who arches across the sky as the rainbow, bringer of the rains and guardian of water and life. — Aboriginal Australian myth"
 ln myth:aboriginal_rainbow_serpent myth sys:is_a
 ln myth:aboriginal_rainbow_serpent rainbow @explains

@@ -153,10 +153,13 @@ class ArchivesConcept(BaseConcept):
             return t.op_concept(name=name, atom_id=atom_id)   # redefined API
         return t.op_view_atom(name=name, atom_id=atom_id)     # today
 
-    def _project_reference(self, limit: int) -> Dict[str, Any]:
+    def _project_reference(self, limit: int, initial: str = "") -> Dict[str, Any]:
         t = self._thesaurus()
         if hasattr(t, "op_reference"):
-            return t.op_reference(limit=limit)
+            # `initial` letter-scopes the glossary server-side (the archives reference
+            # page browses one letter at a time, so a large glossary never ships as one
+            # giant list). op_reference already implements the letter filter.
+            return t.op_reference(limit=limit, initial=initial)
         return t.op_shelf_list(limit=limit)
 
     def _project_explore(self, query: str, filters: Dict[str, Any]) -> Dict[str, Any]:
@@ -450,13 +453,15 @@ class ArchivesConcept(BaseConcept):
             "backing": raw.get("backing", "thesaurus"),
         }
 
-    def op_reference(self, limit: int = 100) -> Dict[str, Any]:
+    def op_reference(self, limit: int = 100, initial: str = "") -> Dict[str, Any]:
         """[archives.reference] Projects the thesaurus reference (organised list).
-        Entries transition to concept spaces."""
-        raw = self._project_reference(limit)
+        Entries transition to concept spaces. `initial=<letter>` scopes to one A–Z
+        bucket so the archives page can browse the glossary a letter at a time."""
+        raw = self._project_reference(limit, initial)
         return {
             "type":     "archives:reference",
             "entries":  self._to_space_entries(raw),
+            "initial":  initial.upper() if initial else "",
             "total":    raw.get("total_indexed") or raw.get("total"),
         }
 

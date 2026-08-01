@@ -4,7 +4,7 @@ Akasha web worker — standalone subprocess entry point.
 Boots an independent Gateway instance and serves it via uvicorn/FastAPI.
 Launched by akasha.py when the ASGI portal is requested.
 
-Usage (internal — called by ServiceManager):
+Usage (internal — launched by akasha.py, managed by the Harmonia Supervisor):
   python -m api.portals.web_worker \\
       --host 0.0.0.0 --port 8000 --data /path/to/data \\
       [--static /mount:abs/dir ...]
@@ -88,7 +88,11 @@ def main() -> None:
     )
 
     from api.gateway import create_gateway
-    gw = create_gateway(series=args.series, base_dir=data_dir)
+    # Single-writer invariant: this serve-only subprocess must NOT write the nucleus directly.
+    # SplitGateway serves reads from this local engine and forwards writes/auth to the ONE
+    # primary writer over the local socket (preserving network trust). See cell_ipc.SplitGateway.
+    from api.portals.cell_ipc import SplitGateway
+    gw = SplitGateway(create_gateway(series=args.series, base_dir=data_dir), data_dir)
 
     # TLS: if a cert/key pair is present, terminate HTTPS in uvicorn and stand
     # the port-80 responder (ACME http-01 challenge + HTTP→HTTPS redirect). The
@@ -97,23 +101,32 @@ def main() -> None:
     # TLS is optional — a missing/broken services.tls must not take the portal
     # down; degrade to plain HTTP instead of crashing this worker subprocess.
     ssl_cert = ssl_key = None
+    serve_port = args.port
     try:
         from services.tls import resolve_tls, start_http_responder
         tls = resolve_tls(data_dir)
         if tls["active"]:
             ssl_cert, ssl_key = tls["certfile"], tls["keyfile"]
+            # When TLS is active, HTTPS MUST bind the https port (443) and port 80 belongs
+            # to the ACME/redirect responder started below. akasha.py can resolve --port
+            # to 80 when it checks the cert a moment before it becomes readable; the worker
+            # then sees TLS active, so binding uvicorn on that 80 would collide with our OWN
+            # responder ([Errno 98] address already in use → the worker dies and `svc ls`
+            # shows "Dead" while a later 443 retry serves). Bind the https port instead.
+            serve_port = tls["https_port"]
             start_http_responder(tls["challenge"], tls["https_port"],
                                  host=args.host, http_port=tls["http_port"])
             logging.getLogger("akasha-web-worker").info(
-                "[TLS] HTTPS active on %s:%s (cert=%s)", args.host, args.port, ssl_cert)
+                "[TLS] HTTPS active on %s:%s (cert=%s)", args.host, serve_port, ssl_cert)
             _start_renewal_watcher(data_dir, ssl_cert)
     except Exception as exc:
         logging.getLogger("akasha-web-worker").warning(
             "[TLS] layer unavailable (%s) — serving HTTP.", exc)
         ssl_cert = ssl_key = None
+        serve_port = args.port
 
     from api.portals.asgi import run_server
-    run_server(gw, host=args.host, port=args.port, static_dirs=static_dirs or None,
+    run_server(gw, host=args.host, port=serve_port, static_dirs=static_dirs or None,
                ssl_certfile=ssl_cert, ssl_keyfile=ssl_key)
 
 

@@ -53,6 +53,9 @@ class FieldNoteConcept(BaseConcept):
         },
         "read": {"op": "op_read"},
         "rm":   {"op": "op_delete"},
+        "export": {"op": "op_export", "action": "read"},
+        "import": {"op": "op_import", "action": "write",
+                   "coerce": lambda d: {"capsule": d.get("capsule", "")}},
     }
 
     def __init__(self, session: Any, concept_id: Optional[str] = None, namespace: Optional[str] = None):
@@ -250,3 +253,22 @@ class FieldNoteConcept(BaseConcept):
         if hasattr(self.session, "set_context"):
             self.session.set_context(self._ctx_key(CONTEXT_KEY_ACTIVE), None)
         return {"status": "deleted", "fieldnote_id": fieldnote_id}
+
+    def op_export(self) -> Dict[str, Any]:
+        """[fieldnote.export] Export the active FieldNote as an Akasha capsule (JSON string)."""
+        self._require_concept()
+        from lib.akasha.capsule import KnowledgeCapsule
+        capsule_json = KnowledgeCapsule(self.session).encapsulate_document(
+            concept_id = self.concept_id,
+            set_name   = f"set:fieldnote:{self.concept_id}",
+            doc_type   = "fieldnote",
+            scopes     = self.allowed_scopes,
+        )
+        return {"capsule": capsule_json, "doc_type": "fieldnote", "concept_id": self.concept_id}
+
+    def op_import(self, capsule: str = "") -> Dict[str, Any]:
+        """[fieldnote.import] Import a FieldNote from an Akasha capsule; atoms land in a pending isolation scope."""
+        if not capsule:
+            raise ValueError("fieldnote.import requires 'capsule' (Akasha capsule JSON string)")
+        from lib.akasha.capsule import KnowledgeCapsule
+        return KnowledgeCapsule(self.session).decapsulate(capsule)

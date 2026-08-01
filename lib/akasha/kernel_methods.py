@@ -57,52 +57,11 @@ METHOD_TO_ACTION: Dict[str, str] = {
     "set.ls": "read",
     "set.clear": "drop",
     "set.op": "write",
-    # FieldNote
-    "fieldnote.new":    "write",
-    "fieldnote.ls":     "read",
-    "fieldnote.open":   "read",
-    "fieldnote.add":    "write",
-    "fieldnote.read":   "read",
-    "fieldnote.rm":     "drop",
-    "fieldnote.export": "read",
-    "fieldnote.import": "write",
-    # Notes
-    "note.new":       "write",
-    "note.add":       "write",
-    "note.section":   "write",
-    "note.paragraph": "write",
-    "note.toc":       "read",
-    "note.read":      "read",
-    "note.rm":        "drop",
-    "note.list":      "read",
-    "note.edit":      "write",
-    "note.move":      "write",
-    "note.undo":      "write",
-    "note.redo":      "write",
-    "note.restore":   "write",
-    "note.rename":    "write",
-    "note.ls":        "read",
-    "note.open":      "write",
-    "note.export":    "read",
-    "note.import":    "write",
-    "note.clone":     "write",
-    # Loom (note model isolated under "loom" namespace)
-    "loom.note.new":     "write",
-    "loom.note.add":     "write",
-    "loom.note.read":    "read",
-    "loom.note.rm":      "drop",
-    "loom.note.list":    "read",
-    "loom.note.edit":    "write",
-    "loom.note.move":    "write",
-    "loom.note.undo":    "write",
-    "loom.note.redo":    "write",
-    "loom.note.restore": "write",
-    "loom.note.rename":  "write",
-    "loom.note.ls":      "read",
-    "loom.note.open":    "write",
-    "loom.note.export":  "read",
-    "loom.note.import":  "write",
-    "loom.note.clone":   "write",
+    # FieldNote / Notes / Loom (note.* / loom.note.*) actions are DERIVED from the concept
+    # models (FieldNoteConcept / NoteConcept + CONCEPT_NAMESPACES) — see the annotated
+    # CONCEPT_METHODS. The hand-wired action block here was retired in #50 Stage 2 together
+    # with the explicit kernel handlers; the registry injects these into METHOD_TO_ACTION at
+    # boot (kernel.py, get_method_actions merge).
     # Associate (assoc — gap detection; fill=yes writes links)
     "kernel.associate":    "write",
     "associate.unwritten": "read",
@@ -114,6 +73,13 @@ METHOD_TO_ACTION: Dict[str, str] = {
     "dream.run": "write",                       # internal background step (JCL-dispatched)
     "dream.confirm": "write", "dream.approve": "write",
     "dream.forget": "write", "dream.reject": "write",
+    # nebula (cartographer — global inductive schema discovery: LOW-priority JCL survey,
+    # candidates stored in the nucleus vault; nebula.confirm plants a set + salient-rels and
+    # emits a concept-model skeleton for a human to place — machine proposes only).
+    "nebula": "write",
+    "nebula.run": "write",                      # internal background survey (JCL-dispatched)
+    "nebula.confirm": "write", "nebula.approve": "write",
+    "nebula.forget": "write", "nebula.reject": "write",
     # Contexa. fetch WRITES external content into the cortex (atoms + weave), so it is a
     # write capability — this also puts it under the single-route write workspace (its
     # put_chunk would otherwise trip the guard once a live fetch returns text) and keeps
@@ -128,6 +94,8 @@ METHOD_TO_ACTION: Dict[str, str] = {
     # selection through generate_view and renders a presentation inline, no graph write → read.
     "contexa.ingest": "write", "survey.ingest": "write",
     "jataka.present": "read",  "present": "read",
+    "curation.project": "write", "cur.project": "write",   # HOP A — build a private presentation
+    "pres.export": "read", "presentation.export": "read",  # HOP B — publish variant librarian-gated in handler
     # image.profile classifies an image (LiteRT) and writes the labels as atoms/links, so
     # it is a write capability (same guardrail class as fetch: provenance=external labels).
     "image.profile": "write",
@@ -146,10 +114,22 @@ METHOD_TO_ACTION: Dict[str, str] = {
     "onto.dump":           "read",
     "onto.export":         "read",
     "onto.status":         "read",
+    # Service lifecycle plane (Supervisor RPC). svc.ls is a read; start/stop/restart are the
+    # delegable SVC_OPERATE capability (admin-implicit today; a future grant scopes it).
+    "svc.ls":              "svc.read",
+    "svc.start":           "svc.operate",
+    "svc.stop":            "svc.operate",
+    "svc.restart":         "svc.operate",
+    # Capability delegation — admin composes per-client authority as grants. grant/revoke are
+    # IAM_MANAGE (admin); grants (list) is read (handler restricts to own unless admin).
+    "iam.grant":           "iam.manage",
+    "iam.revoke":          "iam.manage",
+    "iam.grants":          "read",
     "onto.pack.list":      "read",
     "onto.pack.enable":    "write",   # handler enforces role:librarian
     "onto.pack.disable":   "write",   # handler enforces role:librarian
     "onto.reload":         "write",   # handler enforces role:librarian
+    "onto.reconcile":      "write",   # handler enforces role:librarian (compact = superuser)
     "onto.reset":          "write",   # handler enforces role:librarian
     "sys.cogito": "status", "cogito": "status",
     "sys.status": "status", "sys.status.full": "status",
@@ -306,6 +286,24 @@ METHOD_TO_ACTION: Dict[str, str] = {
     "cast.diagnose":      "read",
     "cast.publish":       "write",
     "cast.say":           "write",
+    "cast.feed":          "read",
+    "cast.soc":           "read",
+    # Society — the virtual dialogue space (avatar-mediated chat) on a group.
+    "society.new":        "write",
+    "society.ls":         "read",
+    "society.open":       "read",
+    "society.join":       "write",
+    "society.say":        "write",
+    "society.feed":       "read",
+    "society.roster":     "read",
+    "society.turn":       "read",
+    "society.world":      "write",
+    "society.info":       "read",
+    "society.decider":    "write",
+    "society.guest":      "write",
+    "society.public":     "write",
+    "society.broadcast":  "read",
+    "society.rm":         "drop",
     # World
     "world.new":          "write",
     "world.open":         "read",
@@ -558,16 +556,9 @@ METHOD_TO_ACTION: Dict[str, str] = {
     "dont.send":   "write",
     "dont.open":   "read",
     "dont.ls":     "read",
-    # Survey concept model
-    "survey.new":     "write",
-    "survey.q.add":   "write",
-    "survey.opt.add": "write",
-    "survey.ls":      "read",
-    "survey.list":    "read",
-    "survey.open":    "read",
-    "survey.ans":     "write",
-    "survey.res.add": "write",
-    "survey.rm":      "drop",
+    # Survey concept model — actions DERIVED from SurveyConcept's annotated CONCEPT_METHODS
+    # (retired from this table in #50 Stage 2; survey.ingest above is a separate pipeline
+    # method and stays). The registry injects these at boot.
     # Geo concept model
     "geo.new":           "write",
     "geo.open":          "read",

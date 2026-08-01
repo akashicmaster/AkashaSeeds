@@ -77,20 +77,32 @@ class ModeController:
         """Ordered command strings the REPL should try for input `raw` inside `[mode]`:
 
           1. nav_hint + a bare number → `<mode>.<navop> signpost=N`  (dive signposts)
-          2. in a COMMAND mode, if `raw`'s head is a real global command (per the optional
-             `is_command` predicate) → `raw` FIRST (pass through), then the scoped form.
-             This is why `tree Spain` / `s.ls` / `lens src=…` still work inside `[dive]`:
-             `dive <anything>` always builds, so scoping-first would swallow them.
-          3. otherwise → `<mode> <raw>` (namespace-scoped, i.e. <mode>.<op>) then `raw`
-             (a bare word navigates; global fallback keeps help / status / w / r working).
+          2. otherwise → ONLY the `<mode>`-scoped form (`<mode> <raw>` → `<mode>.<op>`, and
+             for a command mode like dive, `dive <raw>` navigates).
 
-        The REPL builds each in order and uses the first that resolves.
+        Mode PURITY: there is NO global passthrough. Inside `[mode]`, only that mode's
+        operators (and, for dive, bare navigation) resolve — a stray shell command is NOT
+        silently executed (that added noise and blurred whether you were in the mode). The
+        REPL still handles meta (help / out / exit / more / next / prev) BEFORE this call, so
+        leaving and getting help always work; everything else must be a mode command or it is
+        rejected with a clear "not a <mode> command" (the REPL prints it when nothing builds).
+
+        `is_command` is accepted for signature compatibility but no longer consulted.
         """
         parts = raw.split(None, 1)
         head = parts[0] if parts else ""
+        # Forgive a redundant leading mode verb. Inside [dive] a user habitually types the
+        # WHOLE command — `dive town` — not just the target `town`. Without this, purity turns
+        # that into `dive dive town`, so the focus id becomes the literal string "dive town"
+        # and the dive fails with "Focal point dissolved". Strip ONE leading token when it is
+        # this mode's own name or an alias that ENTERS this mode (dive/look/d → dive), so
+        # `town` and `dive town` are identical. A non-verb head (`tree Spain`) is untouched —
+        # purity still rejects stray shell commands.
+        if head and (head == mode or self._COMMAND_ALIASES.get(head) == mode):
+            raw = parts[1] if len(parts) > 1 else ""
+            parts = raw.split(None, 1)
+            head = parts[0] if parts else ""
         nav = self._nav_hint.get(mode)
         if nav and head.isdigit():
             return [f"{mode}.{nav} signpost={head}"]
-        if self.is_command_mode(mode) and is_command is not None and is_command(head):
-            return [raw, f"{mode} {raw}"]
-        return [f"{mode} {raw}", raw]
+        return [f"{mode} {raw}"]

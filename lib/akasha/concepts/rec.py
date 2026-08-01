@@ -27,11 +27,13 @@ The same layering principle applies everywhere in Akasha. Start free,
 add constraints only where the problem demands them.
 """
 
+import hashlib
 import logging
 import time
 from typing import Any, Dict, List, Optional
 
 from lib.akasha.concepts.base import BaseConcept
+from lib.akasha.concepts.mixins.importable import ImportableMixin
 
 logger = logging.getLogger("Harmonia.Rec")
 
@@ -46,24 +48,38 @@ def _coerce_new(data: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-class RecConcept(BaseConcept):
+class RecConcept(BaseConcept, ImportableMixin):
     """
     Schema-free record model.
 
     Records are Atoms.  Attributes are typed links (rel = "rec:{attr_key}").
     Values are Atoms — content-addressed, so identical values share one Atom.
     Index sets are arbitrary: any set name the agent chooses to use.
+
+    As an ImportableMixin, rec is the **universal projection target**: a lens
+    scan of any source can be cast INTO rec (`io.project model=rec` /
+    `lens.cast model=rec`), producing one schema-free rec atom per source node
+    with every attribute preserved as a rec: link.  Because it enforces nothing,
+    rec always qualifies — a *specific* model (e.g. table) outscores it when the
+    source is tabular, while rec remains the always-available catch-all.
     """
 
     CONCEPT_PREFIX = "rec"
     CONCEPT_METHODS = {
-        "new":   {"op": "op_new", "coerce": _coerce_new},
-        "set":   {"op": "op_set"},
-        "idx":   {"op": "op_idx"},
-        "get":   {"op": "op_get"},
-        "ls":    {"op": "op_ls"},
-        "sum":   {"op": "op_sum"},
-        "rm":    {"op": "op_rm"},
+        "new":   {"op": "op_new", "coerce": _coerce_new, "action": "write", "args": ["content"],
+                  "desc": "Create a schema-free record: rec.new <content> [type=] [attr=val …]"},
+        "set":   {"op": "op_set", "action": "write", "args": ["key", "attr", "val"],
+                  "desc": "Set a record attribute (typed link): rec.set <key> <attr> <val>"},
+        "idx":   {"op": "op_idx", "action": "write", "args": ["key", "sets"],
+                  "desc": "Add a record to index set(s): rec.idx <key> <sets>"},
+        "get":   {"op": "op_get", "action": "read", "args": ["key"],
+                  "desc": "Read a record (content + attributes): rec.get <key>"},
+        "ls":    {"op": "op_ls", "action": "read", "args": ["type"],
+                  "desc": "List records: rec.ls [type=] [in_set=] [limit=N]"},
+        "sum":   {"op": "op_sum", "action": "read", "args": ["attr"],
+                  "desc": "Aggregate an attribute across records: rec.sum <attr> [in_set=] [type=]"},
+        "rm":    {"op": "op_rm", "action": "drop", "args": ["key"],
+                  "desc": "Delete a record: rec.rm <key>"},
         "table": {
             "op":     "op_table",
             "action": "read",
@@ -87,6 +103,112 @@ class RecConcept(BaseConcept):
         },
     }
 
+    # ── ImportableMixin — lens projection adapter (universal target) ───────────
+
+    IMPORT_SCHEMA = {
+        "model":       "rec",
+        "requires":    [],                 # schema-free — nothing is mandatory
+        "prefers":     ["rec:", "content"],
+        "min_nodes":   1,
+        "description": "Schema-free records: one rec atom per node, every attr kept as a rec: link.",
+    }
+
+    @classmethod
+    def match_projection(cls, profile: Dict[str, Any]) -> Dict[str, Any]:
+        """Score rec compatibility — the universal fallback target.
+
+        rec accepts ANY node set (it enforces no schema), so it always qualifies
+        with a modest score: a specific model (table) wins on tabular sources,
+        while rec is always available as a catch-all.
+        """
+        if profile.get("node_count", 0) < 1:
+            return {"score": 0.0, "auto_mapping": {}, "auto_opts": {},
+                    "notes": [], "missing": ["no nodes"]}
+
+        attrs     = profile.get("attrs", {})
+        rec_attrs = [k for k in attrs if k.startswith("rec:")]
+        notes     = ["schema-free: every attribute preserved as a rec: link"]
+
+        if rec_attrs:
+            score = 0.35
+            notes.append(f"{len(rec_attrs)} rec: attr(s) carried through")
+        elif profile.get("content_available"):
+            score = 0.25
+            notes.append("content preserved as rec:content")
+        else:
+            score = 0.25
+
+        return {"score": score, "auto_mapping": {}, "auto_opts": {},
+                "notes": notes, "missing": []}
+
+    def import_projection(
+        self,
+        nodes:   List,
+        mapping: Dict[str, str],
+        into:    str,
+        **opts,
+    ) -> Dict[str, Any]:
+        """Project a lens scan into schema-free rec atoms.
+
+        nodes   — [(atom_key, attrs_dict, depth, meta), …] from the scanner
+        mapping — ignored (rec is passthrough — no column contract to satisfy)
+        into    — target set name (bare names get the 'set:' prefix)
+        opts    — rec_type= / type= optional type hint (adds a set:rec:<type> index)
+
+        One rec atom per source node.  Every non-context attribute is kept as a
+        rec: link (including the source content as rec:content); a ctx:source link
+        traces back to the original atom.  The source is NEVER modified.
+
+        The projected atom's OWN content is a unique snapshot marker
+        (`[ rec:<src> in:<into> ]`), NOT the source content — atoms are
+        content-addressed, so re-using the source content verbatim would resolve
+        to the source atom itself and overwrite its meta.  Identical source
+        contents therefore stay distinct records, and the source stays untouched.
+        """
+        if not into:
+            raise ValueError("'into' target name is required.")
+        set_name = self._set_name(into)
+        rtype    = (opts.get("rec_type") or opts.get("type") or "").strip()
+        author, scopes = self._author_scopes()
+
+        written = 0
+        for atom_key, attrs, depth, meta in nodes:
+            rmeta: Dict[str, Any] = {
+                "type":       "rec",
+                "created_at": time.time(),
+                "source_key": atom_key,
+            }
+            if rtype:
+                rmeta["rec_type"] = rtype
+
+            key = self.cortex.put_chunk(
+                content=f"[ rec:{atom_key[:24]} in:{into} ]",
+                meta=rmeta, author=author, scopes=scopes,
+            )
+
+            # Source content becomes a rec:content value link (not the atom's own content).
+            src_content = (attrs.get("content") or "").strip()
+            if src_content:
+                vk = self._val_key(src_content, author, scopes)
+                self.cortex.put_link(key, vk, "rec:content", author=author)
+
+            for attr, val in attrs.items():
+                if attr == "content" or not val:
+                    continue
+                if attr.startswith("ctx:"):          # context links are not record data
+                    continue
+                attr_name = attr.split(":", 1)[1] if ":" in attr else attr
+                vk = self._val_key(str(val), author, scopes)
+                self.cortex.put_link(key, vk, f"rec:{attr_name}", author=author)
+
+            self.cortex.put_link(key, atom_key, "ctx:source", author=author)
+            self.cortex.add_to_set(set_name, key)
+            if rtype:
+                self.cortex.add_to_set(self._set_name(f"rec:{rtype}"), key)
+            written += 1
+
+        return {"model": "rec", "into": set_name, "written": written}
+
     # ── helpers ──────────────────────────────────────────────────────────────
 
     def _author_scopes(self):
@@ -94,10 +216,28 @@ class RecConcept(BaseConcept):
         return aid, [f"owner:user_{aid}", f"view:user_{aid}"]
 
     def _val_key(self, val: str, author: str, scopes: List[str]) -> str:
-        """Resolve alias → existing key; otherwise store value as a content-addressed atom."""
+        """Resolve a value to an atom key WITHOUT ever clobbering an existing atom.
+
+        Atoms are content-addressed (key = sha256(content)) and put_chunk is
+        INSERT-OR-REPLACE, so re-storing a value that equals an existing atom's
+        content would overwrite that atom's meta.  This bites hardest during a lens
+        projection, which deliberately surfaces existing atoms' contents (a survey's
+        question / response text) as VALUES — a naive put_chunk would corrupt the
+        very source it projects from.
+
+        So: resolve an alias first; else, if an atom with that content already
+        exists, REUSE it as the value (content-addressing says it already IS this
+        value) — never rewrite it; only mint a fresh rec_value atom when nothing
+        matches.  Reads (rec.sum / rec.table / export) key off content, so reusing a
+        real atom instead of a rec_value twin is transparent — and non-destructive.
+        """
         existing = self.cortex.resolve_alias(val)
         if existing:
             return existing
+        key = hashlib.sha256(val.encode("utf-8")).hexdigest()
+        core = getattr(self.cortex, "core", None)
+        if core is not None and core.get_chunk_raw(key) is not None:
+            return key   # atom already exists → reuse, never overwrite its meta
         return self.cortex.put_chunk(
             content=val,
             meta={"type": "rec_value"},

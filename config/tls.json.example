@@ -1,0 +1,6 @@
+{
+  "_help": "Enable HTTPS by EDITING A FILE — no shell commands. Copy this to config/tls.json (or place it in your data dir), set your domains, then (re)start akasha. On boot it obtains a Let's Encrypt certificate for these domains and serves HTTPS on 443 with a port-80 redirect. Requirements: the domains' DNS A/AAAA records point at this host, and ports 80 and 443 are open. Set staging=true the FIRST time to test against Let's Encrypt staging (untrusted cert, high rate limits), then set it false for a real cert. Even simpler: instead of this JSON you may create config/tls_domains.txt with one domain per line.",
+  "domains": ["example.com", "www.example.com"],
+  "email": "you@example.com",
+  "staging": false
+}

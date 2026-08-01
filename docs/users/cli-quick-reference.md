@@ -17,7 +17,7 @@ Learn the model name; the rest follows.
 | **Full model name** (canonical) | `thesaurus.reference ns=word` | Always works, every model — the one to remember |
 | **`<model> <op>`** (one-shot) | `thesaurus reference ns=word` | Same, spelled with a space |
 | **Subcommand mode** | `thesaurus` ⏎ then `reference ns=word` | Exploring one model; prompt shows `[thesaurus]`, `out`/`exit` leaves |
-| **Abbreviation** (shortcut) | `th.reference ns=word` | Once you know it — `cs`=cast, `n`=note, `ft`=fact, `hum`=human, `cur`=curation, `th`=thesaurus, … |
+| **Abbreviation** (shortcut) | `cur.ls` | Once you know it — `cs`=cast, `n`=note, `ft`=fact, `hum`=human, `cur`=curation, … |
 
 Inside a mode, bare operators (`reference`, `explore`, `concept`) resolve to
 `<model>.<op>`; ordinary commands (`help`, `status`, `w`, `r`) still work as a
@@ -50,7 +50,7 @@ These directives are handled by the shell itself and are not sent to the kernel.
 | `svc ls` | List background services and connected session count |
 | `svc stop <name>` | Stop a service *(admin only)* |
 | `svc restart <name>` | Restart a service *(admin only)* |
-| `exit` | Disconnect and end the session |
+| `exit` / `quit` / `bye` | Disconnect and end the session (at the top level). Inside a navigation/dive mode, `out` and `..` also exit the mode |
 
 ---
 
@@ -99,7 +99,7 @@ Relations are auto-normalised: `supports` → `@supports`, `sys:is_a` kept as-is
 | Command | Args | Description |
 |---|---|---|
 | `dive` / `d` | `<id>` | Dive into an atom — meaning space, signposts, cosmos field |
-| `explore` / `exp` | `<id> [depth]` | BFS graph exploration from a node |
+| `explore` / `exp` | `[ns=] [set=] [type=] [pat=] [limit=]` | Filter-search the ontology (filters ANDed; positional = pat) |
 | `tree` | `<target> [depth=2] [follow=<rel>] [format=rich\|ascii]` | Link-traversal tree from an atom, set, or namespace |
 | `assoc` | `<id> [axis=] [fill=yes]` | Gap detection — find absent 1-hop links, number the candidates |
 | `dream` | `<id> [boldness=] [reach=] [again=yes]` | Affinity-gap incubation — async "sleep on it"; stages bridges a human confirms |

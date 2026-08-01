@@ -62,9 +62,16 @@ def main():
     c = m.candidates("dive", "5")
     record("M2 nav numeric", c == ["dive.look signpost=5"], str(c))
 
-    # M3 — inside [dive] a non-number tries the scoped form, then the global.
-    c = m.candidates("dive", "love")
-    record("M3 nav word", c == ["dive love", "love"], str(c))
+    # M3 — inside [dive] a non-number navigates the mode-scoped form ONLY (purity:
+    #      no global passthrough). A redundant leading mode verb is forgiven, so
+    #      `town` and `dive town` (and the `look`/`d` aliases) resolve identically —
+    #      the regression that made `dive town` dive the literal id "dive town".
+    ok = (m.candidates("dive", "love") == ["dive love"]
+          and m.candidates("dive", "dive town") == ["dive town"]
+          and m.candidates("dive", "look town") == ["dive town"]
+          and m.candidates("dive", "d town") == ["dive town"]
+          and m.candidates("dive", "dive 5") == ["dive.look signpost=5"])
+    record("M3 nav word", ok, str(m.candidates("dive", "dive town")))
 
     # ── Booted registry: concept models must auto-register as modes ───────────
     from api.gateway import create_gateway
@@ -78,17 +85,18 @@ def main():
           and "concept" in ops and "reference" in ops and "explore" in ops)
     record("M4 concept mode", ok, f"thesaurus ops={ops}")
 
-    # M5 — inside [thesaurus] a bare operator scopes to thesaurus.<op>; a global
-    #      command (status) still resolves via the fallback candidate.
+    # M5 — inside [thesaurus] a bare operator scopes to thesaurus.<op>. Purity: there
+    #      is NO global fallback candidate — a stray global (status) stays mode-scoped
+    #      (and is rejected by the REPL if it does not build), it is not silently run.
     c_op = m.candidates("thesaurus", "reference ns=word")
     c_gl = m.candidates("thesaurus", "status")
-    ok = (c_op == ["thesaurus reference ns=word", "reference ns=word"]
-          and c_gl == ["thesaurus status", "status"])
+    ok = (c_op == ["thesaurus reference ns=word"]
+          and c_gl == ["thesaurus status"])
     record("M5 concept resolve", ok, f"{c_op} / {c_gl}")
 
-    # M6 — every candidate the controller emits must really resolve in the router
-    #      (the first that resolves wins — exactly what run_cli._build does, passing
-    #      is_command so a command mode lets real commands pass through).
+    # M6 — every candidate the controller emits must really build in the router, AND
+    #      purity holds: a stray shell command inside [dive] stays mode-scoped (it does
+    #      NOT pass through as a global), while a redundant leading mode verb is forgiven.
     def resolves(mode, raw):
         for cand in m.candidates(mode, raw, is_command=R.is_command):
             if R.build_rpc_request(cand, "akt:tok") is not None:
@@ -97,13 +105,11 @@ def main():
     checks = {
         ("dive", "5"): "dive.look signpost=5",
         ("dive", "love"): "dive love",                 # bare word → navigate
-        ("dive", "tree Spain"): "tree Spain",          # real command → pass through (regression)
-        ("dive", "s.ls set:x"): "s.ls set:x",          # single-token command → pass through
-        ("dive", "lens src=set:x"): "lens src=set:x",  # not swallowed into a dive on "lens"
-        ("dive", "sim rome"): "sim rome",
+        ("dive", "dive town"): "dive town",            # redundant verb forgiven (regression)
+        ("dive", "look town"): "dive town",            # entering alias forgiven too
+        ("dive", "tree Spain"): "dive tree Spain",     # purity: stays mode-scoped, no passthrough
         ("thesaurus", "reference"): "thesaurus reference",
         ("thesaurus", "concept id=word:love"): "thesaurus concept id=word:love",
-        ("thesaurus", "status"): "status",
         ("curation", "ls"): "curation ls",
     }
     bad = {k: (resolves(*k), want) for k, want in checks.items()

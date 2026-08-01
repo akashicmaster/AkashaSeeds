@@ -83,6 +83,16 @@ class JCLWorker:
             t = threading.Thread(target=self._run_loop, daemon=True, name="JCLWorker")
             t.start()
 
+        # Graceful shutdown: a worker blocked on the queue can't see the flag, so on
+        # shutdown we push one poison-pill per worker to wake them (they then return).
+        try:
+            from lib.akasha import lifecycle
+            _n = max_workers
+            lifecycle.register_wake(
+                lambda: [self._queue.put((9999, next(self._seq), None)) for _ in range(_n)])
+        except Exception:
+            pass
+
     # ------------------------------------------------------------------ public
 
     def submit(self, job: JCLJob) -> JCLJob:
@@ -208,8 +218,13 @@ class JCLWorker:
         return {k: _expand(v) for k, v in params.items()}
 
     def _run_loop(self):
+        from lib.akasha import lifecycle
         while True:
+            if lifecycle.is_shutting_down():
+                return
             _prio, _seq, job_id = self._queue.get()
+            if job_id is None:            # shutdown poison-pill (see register_wake below)
+                return
             job = self._jobs.get(job_id)
             if not job or job.status in (CANCELLED, DONE, FAILED):
                 continue

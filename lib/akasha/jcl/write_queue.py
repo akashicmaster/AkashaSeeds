@@ -88,6 +88,14 @@ class WriteQueue:
         self._q: "queue.PriorityQueue" = queue.PriorityQueue()
         self._seq = itertools.count()
         self._worker: Optional[threading.Thread] = None
+        # Set once close/shutdown begins: from then on, ordinary submits from OTHER
+        # threads are dropped instead of queued, so a still-running background feeder
+        # (the boot-load daemon) stops handing the worker new SQLite writes. That lets
+        # the worker reach the shutdown sentinel and EXIT before the connection is closed
+        # and the interpreter finalizes the sqlite3 C module — closing the teardown race
+        # that segfaulted an `exit` issued mid-load. Dropped late writes are acceptable
+        # under the crash-stop model ("only the last in-flight write is lost").
+        self._closing = False
         t = threading.Thread(target=self._run, daemon=True, name=name)
         t.start()
 
@@ -111,7 +119,8 @@ class WriteQueue:
                     time.sleep(_YIELD_S)
                     _last_yield = time.monotonic()
 
-    def submit(self, fn: Callable[[], Any], priority: Optional[int] = None) -> Any:
+    def submit(self, fn: Callable[[], Any], priority: Optional[int] = None,
+               force: bool = False) -> Any:
         """
         Submit a zero-argument callable; block until it executes and return
         its result.  Exceptions from fn propagate to the calling thread.
@@ -127,6 +136,11 @@ class WriteQueue:
         """
         if threading.current_thread() is self._worker:
             return fn()
+        # Shutting down: drop late writes from feeder threads so no new SQLite work is
+        # started while the connection is being closed (crash-stop). `force=True` (the
+        # close-path checkpoint) still runs.
+        if self._closing and not force:
+            return None
         if priority is None:
             from lib.akasha.jcl.workspace_context import current_priority
             priority = current_priority()
@@ -134,7 +148,18 @@ class WriteQueue:
         self._q.put((int(priority), next(self._seq), (fn, f)))
         return f.result()
 
-    def shutdown(self) -> None:
-        """Signal the worker to stop after draining pending items."""
-        # Highest priority number so it drains only after real work already queued.
-        self._q.put((9999, next(self._seq), None))
+    def begin_closing(self) -> None:
+        """Stop accepting new writes from other threads (feeders drain to no-ops)."""
+        self._closing = True
+
+    def shutdown(self, join_timeout: float = 15.0) -> None:
+        """Stop the worker and WAIT for it to exit, so no write is in flight when the
+        caller closes the SQLite connection / the interpreter tears the C module down.
+        The sentinel is HIGH priority (-1) so the worker exits right after the current
+        item — dropping any not-yet-started backlog (crash-stop) rather than draining a
+        possibly-huge boot-load queue at exit."""
+        self._closing = True
+        self._q.put((-1, next(self._seq), None))
+        w = self._worker
+        if w is not None and w.is_alive() and threading.current_thread() is not w:
+            w.join(join_timeout)

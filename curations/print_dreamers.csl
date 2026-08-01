@@ -1,0 +1,21 @@
+# print_dreamers.csl — the AUTHORED curation "The Dream of Printing & Publishing".
+# Second installment of the exhibition series 「夢追い人の系譜」.
+#
+# AUTHORED mode: the order is a curator's reading of a TWO-BRANCH story rooted in
+# woodblock — the Western line (movable type + copperplate → Gutenberg → offset), then
+# the Eastern line (woodblock → Japan's ukiyo-e → Art Nouveau). The fork and spines are
+# in the graph (chrono:before) too; the atoms are defined in
+# ontology/curation/print_dreamers.ak (loaded first). No burden of proof — an
+# interpretation (provenance:interpretation): it shows its grounds but proves nothing.
+#
+# The kernel scans curations/ at boot and runs each .csl. `alias=` makes curation.new
+# idempotent, so re-running on every boot returns the same curation (no duplicates).
+#
+# Read the narrative back with:  narrate curation:print-dreamers
+
+$story = curation.new
+    title  = "印刷と出版の夢 — 木版から分かれた二つの道"
+    thesis = "The dream of multiplying the written word, read as a fork from one root. From East Asian woodblock the craft branches: West, it turns to metal — movable type and the copperplate meeting in Gutenberg's press, through publishing and the steam press to offset, and text becomes everyone's; East, the block stays a block, crosses to Japan as the people's ukiyo-e, and through Japonisme reshapes Art Nouveau — the birth of commercial design. Two dreams of the multiplied image, from one carved page."
+    mode   = "authored"
+    ids    = "print:origin:woodblock, print:origin:bi_sheng, print:origin:jikji, print:west:copperplate, print:milestone:gutenberg, print:milestone:aldus, print:milestone:steam_press, print:milestone:offset, print:east:ukiyoe, print:east:artnouveau"
+    alias  = "curation:print-dreamers"

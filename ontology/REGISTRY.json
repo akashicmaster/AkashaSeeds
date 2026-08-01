@@ -70,10 +70,6 @@
       "autoload": false
     },
     {
-      "name": "nutrition",
-      "autoload": true
-    },
-    {
       "name": "people",
       "autoload": false
     },
@@ -104,6 +100,31 @@
     {
       "name": "recipe",
       "autoload": true
+    },
+    {
+      "name": "nutrition",
+      "autoload": false,
+      "tier": "C"
+    },
+    {
+      "name": "drinks_c",
+      "autoload": false,
+      "tier": "C"
+    },
+    {
+      "name": "smallplates_c",
+      "autoload": false,
+      "tier": "C"
+    },
+    {
+      "name": "sweets_bread_c",
+      "autoload": false,
+      "tier": "C"
+    },
+    {
+      "name": "kitchen_index",
+      "autoload": false,
+      "tier": "C"
     }
   ]
 }

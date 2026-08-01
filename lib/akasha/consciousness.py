@@ -44,10 +44,13 @@ import time
 import sys
 import os
 import platform
+import logging
 from typing import Dict, Any, List, Optional
 from lib.akasha.composite import AkashaEngine, _rel_salience_weight
 from lib.akasha.tensor import TensorEngine
 from lib.akasha import lexicon
+
+logger = logging.getLogger("Harmonia.Consciousness")   # under Harmonia.* so it reaches system.log
 
 # 語感 — the affect field (emotion + sensation) a word evokes. A word's feel is
 # recalled regardless of which SENSE is meant (fruit-apple vs company-apple both
@@ -102,7 +105,11 @@ class CosmosMapper:
                 return cls._EMO_PALETTE[alias]
             if alias in cls._SENSE_PALETTE:
                 return cls._SENSE_PALETTE[alias]
-        for dst, _rel in (cortex.get_adjacent_links(key) or []):
+        # Bound the scan (top-N by weight): the aura is a heuristic look for an adjacent
+        # emotion/sense atom, and this runs on the FOCUS of a dive — a mega-hub focus would
+        # otherwise materialize every outgoing edge here and OOM the dive. The strongest edges
+        # are where a meaningful emo:/sense link would be.
+        for dst, _rel in (cortex.get_adjacent_links(key, limit=512, order_by_weight=True) or []):
             for alias in (cortex.get_aliases_by_key(dst) or []):
                 if alias in cls._EMO_PALETTE:
                     return cls._EMO_PALETTE[alias]
@@ -290,7 +297,12 @@ class ConsciousnessEngine:
             "os_release": platform.release(),
             "python_version": sys.version.split()[0],
             "math_backend": backend_name,
-            "database_path": getattr(self.cortex.core, 'db_path', "local_memory"),
+            # SQLiteBackend stores the path as `_db_path`; the public `db_path` name
+            # never existed, so this always fell back to the misleading "local_memory"
+            # label even for a normal persistent SQLite cell. Read the real path.
+            "database_path": (getattr(self.cortex.core, 'db_path', None)
+                              or getattr(self.cortex.core, '_db_path', None)
+                              or "in-memory"),
             "uptime_seconds": round(time.time() - self._boot_time, 2)
         }
         
@@ -419,6 +431,16 @@ class ConsciousnessEngine:
     _HUB_SIGNPOST_DISPLAY = 48
     _HUB_SCAN_CAP = 600
 
+    # Primary fan-out bound. A high-degree HUB — a domain super-concept (`ingredient` with
+    # every food `sys:is_a` it, `lexeme` with every proto-word), a role, or any popular node —
+    # can have thousands of 1-hop edges. Building a signpost per edge is O(degree) graph reads
+    # (alias + preview + colour each), which turned a dive on such a hub into a multi-second
+    # scan (~3.4s / 48k queries on `lexeme`). Keep the strongest-weighted edges up to this cap
+    # and report the rest as overflow; every neighbour stays reachable by diving it directly or
+    # enumerating via `concept.children`. Comfortably above any normal atom's degree, so an
+    # ordinary dive is unaffected.
+    _MAGNETIC_DISPLAY_CAP = 96
+
     def _build_signpost(self, link: Dict[str, Any], focus_key: str,
                         allowed_scopes: List[str], idx: int) -> Optional[Dict[str, Any]]:
         """Enrich one magnetic-neighbourhood link into a signpost dict (alias, preview,
@@ -458,7 +480,14 @@ class ConsciousnessEngine:
         if not dst_content:
             dst_content = self._group_fallback(neighbor_key, "get_chunk") or ""
 
-        branch_count = len(self.cortex.get_adjacent_links(neighbor_key))
+        # Per-signpost DISPLAY count ("N branches ahead"). This only needs the NUMBER of
+        # outgoing edges, never their contents — so it must NOT fetch them. The old
+        # get_adjacent_links(limit=256, order_by_weight=True) preads every outgoing value of
+        # the neighbour to rank the top-256, then throws all but the count away; across ~700
+        # signposts of a dense-hub dive under the disk-value store that pread storm was the
+        # dominant dive latency (measured ~13s at 120k density). count_adjacent_links reads
+        # keys only (no value pread / a single COUNT(*)), so the cue is effectively free.
+        branch_count = self.cortex.count_adjacent_links(neighbor_key)
         preview = dst_content[:30].replace('\n', ' ') + "..." if len(dst_content) > 30 else dst_content.replace('\n', ' ')
 
         dst_meta_row = self.cortex.core.get_chunk_raw(neighbor_key)
@@ -492,8 +521,9 @@ class ConsciousnessEngine:
 
     def generate_view(self, focus_key: str, allowed_scopes: List[str] = None) -> Dict[str, Any]:
         """Generates the field of view including N-D vectors and signposts."""
+        logger.info("[dive] focus=%s phase=start", str(focus_key)[:24])
         is_col = self.cortex.core.collection_exists(focus_key)
-                
+
         if is_col:
             return self.generate_collection_view(focus_key, allowed_scopes)
 
@@ -557,10 +587,30 @@ class ConsciousnessEngine:
         focus_nd = CosmosMapper.calculate_nd(self.cortex, focus_key, content, meta, depth=0)
 
         signposts = []
+        # Phase breadcrumbs — each is FLUSHED before the phase runs (logging.FileHandler flushes
+        # per emit, so a line survives even a SIGKILL/OOM of this process). The LAST [dive] line in
+        # system.log therefore names the phase that died, with the size that drove it. This is the
+        # decisive instrument for the "dive of a real mega-hub still OOMs" case.
+        logger.info("[dive] focus=%s phase=magnetic-fetch", focus_key[:24])
         magnetic_links = self.cortex.get_magnetic_neighborhood(focus_key)
+        logger.info("[dive] focus=%s magnetic=%d phase=signpost-build",
+                    focus_key[:24], len(magnetic_links))
+
+        # Bound the primary fan-out (see _MAGNETIC_DISPLAY_CAP): a mega-hub's thousands of edges
+        # would otherwise each cost a signpost build. Prioritise by edge weight, build up to the
+        # cap, count the rest as overflow. `magnetic_links` stays the full (reordered) list so the
+        # proto-word sense scan below still sees every `specializes` edge.
+        signpost_overflow = 0
+        if len(magnetic_links) > self._MAGNETIC_DISPLAY_CAP:
+            magnetic_links = sorted(magnetic_links,
+                                    key=lambda l: float(l.get("w", 1.0) or 1.0), reverse=True)
+            signpost_overflow = len(magnetic_links) - self._MAGNETIC_DISPLAY_CAP
+            build_links = magnetic_links[:self._MAGNETIC_DISPLAY_CAP]
+        else:
+            build_links = magnetic_links
 
         seen_keys = {focus_key}
-        for link in magnetic_links:
+        for link in build_links:
             sp = self._build_signpost(link, focus_key, allowed_scopes, len(signposts))
             if sp is not None:
                 signposts.append(sp)
@@ -585,6 +635,7 @@ class ConsciousnessEngine:
         overflow = 0
         sense_keys = [l["key"] for l in magnetic_links
                       if l.get("rel") == "specializes" and l.get("direction") == "in"]
+        logger.info("[dive] focus=%s senses=%d phase=sense-expand", focus_key[:24], len(sense_keys))
         if sense_keys:
             focus_svec = meta.get("semantic_vector") if isinstance(meta, dict) else None
             candidates: List[Dict[str, Any]] = []
@@ -665,6 +716,8 @@ class ConsciousnessEngine:
                 sp["rel_desc"] = _rd_cache[r]
 
         # ── Resonance: 2-hop semantic neighbourhood ───────────────────────────────
+        logger.info("[dive] focus=%s signposts=%d phase=resonance",
+                    focus_key[:24], len(signposts))
         signpost_keys = {sp["key"] for sp in signposts}
 
         def _atom_type(k: str) -> str:
@@ -687,7 +740,11 @@ class ConsciousnessEngine:
                 break
             sp_key   = sp["key"]
             sp_alias = sp.get("alias") or sp_key[:12]
-            for hop_key, _hop_rel in self.cortex.get_adjacent_links(sp_key)[:15]:
+            # Bound the fetch, not just the slice — a plain get_adjacent_links(sp_key)[:15]
+            # materializes ALL of a signpost's outgoing edges before taking 15; a mega-hub
+            # signpost would OOM here. Fetch the top-15 by weight directly.
+            for hop_key, _hop_rel in self.cortex.get_adjacent_links(sp_key, limit=15,
+                                                                    order_by_weight=True):
                 if hop_key in seen_2hop:
                     continue
                 seen_2hop.add(hop_key)
@@ -710,6 +767,8 @@ class ConsciousnessEngine:
         ns_desc = lexicon.namespace_description(self.cortex, lexicon.namespace_of_alias(focus_alias)) \
             if focus_alias else None
 
+        logger.info("[dive] focus=%s signposts=%d resonance=%d phase=done",
+                    focus_key[:24], len(signposts), len(resonance))
         return {
             "type": "atom",
             "focus": {
@@ -723,10 +782,11 @@ class ConsciousnessEngine:
             "signposts":    signposts,
             "resonance":    resonance,
             "associations": associations,
-            # Explicit overflow (never a silent cut): how many proximity-ranked hub
-            # neighbours were beyond the display bound. Each sense stays divable, so
-            # these remain reachable by diving the sense that carried them.
-            "hub_overflow": overflow,
+            # Explicit overflow (never a silent cut): neighbours not shown as signposts —
+            # the proximity-ranked hub neighbours beyond the display bound PLUS the primary
+            # fan-out edges dropped past _MAGNETIC_DISPLAY_CAP on a high-degree hub. Each stays
+            # reachable by diving it directly or via `concept.children`.
+            "hub_overflow": overflow + signpost_overflow,
         }
 
     def generate_collection_view(self, name: str, allowed_scopes: List[str] = None) -> Dict[str, Any]:
@@ -762,7 +822,9 @@ class ConsciousnessEngine:
             if not c_content:
                 continue
             c_als = engine.get_aliases_by_key(c_key)
-            c_links = engine.get_adjacent_links(c_key)
+            # Bounded: link_count is a display cue; don't materialize a mega-hub concept's
+            # entire fan-out just to len() it.
+            c_links = engine.get_adjacent_links(c_key, limit=256, order_by_weight=True)
             concept_info = {
                 "key":        c_key,
                 "alias":      c_als[0] if c_als else None,

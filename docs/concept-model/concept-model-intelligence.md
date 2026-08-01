@@ -1481,6 +1481,15 @@ order.
 **CLI prefix:** `cur.*`  
 **Index set:** `set:curation:index`
 
+> **⚠️ Implementation status — read first.** The shipped curation surface is intentionally
+> small: `curation.new` (`cur.new`), `curation.narrate` (`cur.narrate`), `curation.ls`
+> (`cur.ls`), and `curation.project` (`cur.project`). The **premise / perspective-view /
+> fold / conclusion argumentation model described in the rest of this section is a DESIGN
+> for a planned extension — it is not yet implemented.** Methods such as `cur.premise`,
+> `cur.view`, `cur.fold`, `cur.conclude`, `cur.dispute`, and `cur.trace` (and their
+> `curation.premise.add` / `curation.conclusion.add` mappings) will return **"Unknown
+> method"** today. Treat §4.3–§4.7 as the target design, not a runnable API.
+
 ---
 
 ### 4.1 Design Rationale

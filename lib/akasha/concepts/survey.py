@@ -32,9 +32,10 @@ sys:derived_from.
 
 import time
 import logging
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 
 from lib.akasha.concepts.base import BaseConcept
+from lib.akasha.concepts.mixins.exportable import ExportableMixin
 
 logger = logging.getLogger("Harmonia.Concept.Survey")
 
@@ -42,23 +43,106 @@ CONTEXT_KEY_ACTIVE = "active_survey_root"
 INDEX_SET = "set:survey:index"
 
 _CONCEPT_WORD_ALIAS_PREFIX = "concept:word:"
+_MAX_EXPORT_RESPONSES = 5000   # hard cap for export_projection (mirrors lens _MAX_NODES)
 
 
-class SurveyConcept(BaseConcept):
+class SurveyConcept(BaseConcept, ExportableMixin):
     """Pure structural Survey Universe."""
 
     CONCEPT_PREFIX = "survey"
     CONCEPT_METHODS = {
-        "new":     {"op": "op_new"},
-        "open":    {"op": "op_open"},
-        "ls":      {"op": "op_surveys"},
-        "q.add":   {"op": "op_add_question"},
-        "opt.add": {"op": "op_add_option"},
-        "res.add": {"op": "op_add_respondent"},
-        "ans":     {"op": "op_add_response"},
-        "list":    {"op": "op_list"},
-        "rm":      {"op": "op_delete"},
+        "new":     {"op": "op_new", "action": "write", "args": ["title"],
+                    "desc": "Create a survey: survey.new <title> [description=]"},
+        "open":    {"op": "op_open", "action": "read", "args": ["survey_id"],
+                    "desc": "Mount a survey as the active one: survey.open <survey_id>"},
+        "ls":      {"op": "op_surveys", "action": "read", "args": [],
+                    "desc": "List surveys: survey.ls"},
+        "q.add":   {"op": "op_add_question", "action": "write", "args": ["text", "qtype"],
+                    "desc": "Add a question: survey.q.add <text> [qtype=free_text|choice] [order=]"},
+        "opt.add": {"op": "op_add_option", "action": "write", "args": ["question_id", "label"],
+                    "desc": "Add a choice option to a question: survey.opt.add <question_id> <label> [value=]"},
+        "res.add": {"op": "op_add_respondent", "action": "write", "args": ["respondent_id"],
+                    "desc": "Register a respondent: survey.res.add <respondent_id> [attributes=]"},
+        "ans":     {"op": "op_add_response", "action": "write",
+                    "args": ["question_id", "respondent_atom", "answer"],
+                    "desc": "Record an answer: survey.ans <question_id> <respondent_atom> <answer>"},
+        "list":    {"op": "op_list", "action": "read", "args": [],
+                    "desc": "Structural inventory of the active survey: survey.list"},
+        "rm":      {"op": "op_delete", "action": "drop", "args": [],
+                    "desc": "Delete the active survey: survey.rm"},
     }
+
+    # ── ExportableMixin — lens export adapter ────────────────────────────────
+    #
+    # A survey root is exported as its RESPONSES, one node per response, carrying
+    # the answer + question text + respondent id as rec: attributes so the stream
+    # can be re-projected into any Importable target (table, rec, …) — the survey
+    # OUT side of the pipe, complementing contexa.ingest (the IN side).
+    #
+    # Survey roots carry meta type="concept"; that value is shared by other concept
+    # models, so `meta_match` refines detection to concept="survey" only.
+
+    EXPORT_SCHEMA = {
+        "model":       "survey",
+        "meta_type":   "concept",                 # survey root atoms carry type="concept"
+        "meta_match":  {"concept": "survey"},      # …refined to survey roots only
+        "description": "Survey responses as records (answer / question / respondent).",
+        "produces":    ["rec:"],
+    }
+
+    def export_projection(self, src_key: str, **opts) -> Optional[List[Tuple]]:
+        """Return the survey's responses as SourceScanner-format nodes.
+
+        src_key — atom key of the survey root (resolved from alias by the scanner)
+        Each node: (response_key, attrs, 0, response_meta)
+          attrs = {"content", "rec:answer", "rec:question", "rec:respondent"}
+
+        Returns None if src_key is not a survey root (scanner falls through to a
+        plain set/tree scan).  Scope-filtered against the session's allowed scopes.
+        """
+        meta = self.cortex.get_meta(src_key) or {}
+        if meta.get("concept") != "survey":
+            return None
+
+        allowed  = self.allowed_scopes
+        resp_set = f"set:survey:{src_key}:responses"
+        resp_keys = self.cortex.get_collection_members(resp_set) or []
+
+        q_cache: Dict[str, str] = {}
+        r_cache: Dict[str, str] = {}
+        nodes: List[Tuple] = []
+
+        for rk in resp_keys[:_MAX_EXPORT_RESPONSES]:
+            if allowed and not self.cortex.check_access(rk, allowed):
+                continue
+            rmeta = self.cortex.get_meta(rk) or {}
+            if rmeta.get("type") != "survey_response":
+                continue
+
+            attrs: Dict[str, str] = {"content": self.cortex.get_chunk(rk) or ""}
+
+            ans = rmeta.get("answer")
+            if ans is not None and str(ans).strip():
+                attrs["rec:answer"] = str(ans)
+
+            qid = rmeta.get("question_id")
+            if qid:
+                if qid not in q_cache:
+                    q_cache[qid] = self.cortex.get_chunk(qid) or ""
+                if q_cache[qid]:
+                    attrs["rec:question"] = q_cache[qid]
+
+            ratom = rmeta.get("respondent_atom")
+            if ratom:
+                if ratom not in r_cache:
+                    rm = self.cortex.get_meta(ratom) or {}
+                    r_cache[ratom] = rm.get("respondent_id") or (self.cortex.get_chunk(ratom) or "")
+                if r_cache[ratom]:
+                    attrs["rec:respondent"] = r_cache[ratom]
+
+            nodes.append((rk, attrs, 0, rmeta))
+
+        return nodes
 
     def __init__(self, session: Any, concept_id: Optional[str] = None):
         super().__init__(session, concept_id)

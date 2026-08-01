@@ -24,12 +24,27 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger("Akasha.Vision")
 
-try:
-    import numpy as _np
-    _HAS_NUMPY = True
-except Exception:
-    _np = None
-    _HAS_NUMPY = False
+# numpy is imported LAZILY (only when an image is actually classified), never at module load.
+# `vision` is pulled in transitively by the kernel, so an eager `import numpy` here would put
+# numpy — and its BLAS/C-extension init — on the BOOT critical path of the single-writer daemon,
+# for a feature (image.profile) that most boots never touch. That is both wasted startup work and
+# an unnecessary native surface at boot. `_load_numpy()` imports on first use and caches the result
+# (None = unavailable); `available()` / `classify()` call it on demand.
+_np = None                       # populated on first _load_numpy()
+_HAS_NUMPY = None                # None = not yet probed; True/False after the first probe
+
+
+def _load_numpy():
+    """Import numpy on first use and cache it. Returns the module or None (unavailable).
+    Keeps numpy off the boot path — see the note above."""
+    global _np, _HAS_NUMPY
+    if _HAS_NUMPY is None:
+        try:
+            import numpy as _mod
+            _np, _HAS_NUMPY = _mod, True
+        except Exception:
+            _np, _HAS_NUMPY = None, False
+    return _np
 
 # Backend probe result: None = not tried, False = none available, else (name, Interpreter).
 _BACKEND: Any = None
@@ -116,11 +131,11 @@ class VisionEngine:
     def backend_available(allow_install: bool = False) -> bool:
         """True if any TFLite interpreter backend is importable (no install probe by
         default, so a cheap check never triggers a network pip)."""
-        return _HAS_NUMPY and _resolve_backend(allow_install=allow_install) is not None
+        return _load_numpy() is not None and _resolve_backend(allow_install=allow_install) is not None
 
     def available(self) -> bool:
         """Backend + numpy + PIL importable. Model is fetched lazily, so not required here."""
-        if not (_HAS_NUMPY and self.backend_available()):
+        if not (_load_numpy() is not None and self.backend_available()):
             return False
         try:
             import PIL  # noqa: F401
@@ -204,7 +219,7 @@ class VisionEngine:
     def classify(self, src, top_k: int = 5) -> Dict[str, Any]:
         """src = local path | http(s) URL | raw bytes. Returns
         {labels:[{label,score}], backend, model} or {'error': …} (never raises)."""
-        if not _HAS_NUMPY:
+        if _load_numpy() is None:                       # lazy import on first classify
             return {"error": "numpy unavailable"}
         if not self._load():
             return {"error": "vision backend/model unavailable (offline or no runtime)"}

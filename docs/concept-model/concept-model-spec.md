@@ -692,7 +692,12 @@ Use this before opening a PR or handing a concept model off for review.
 - [ ] `CONTEXT_KEY_ACTIVE` and `INDEX_SET` defined as module-level constants.
 - [ ] No filesystem, network, or shell access.
 - [ ] No import of `kernel.py` or `router.py`.
-- [ ] IAM routing added to `_METHOD_TO_ACTION` in `kernel.py` (§7.2).
+- [ ] IAM action, CLI command, positional args, and help are **auto-derived** from the
+      model (issue #50) — a bare `CONCEPT_METHODS` entry needs NO hand-wiring in
+      `kernel.py`/`router.py`. Annotate `action`/`args`/`desc`/`cli` in `CONCEPT_METHODS`
+      **only to override** a derived default (see `docs/concept-model/drop-in-concept-model.md`).
+      Do NOT add the method to `_METHOD_TO_ACTION` in `kernel.py` or a `COMMAND_SPECS` entry
+      in `router.py` — that hand-wiring is retired.
 
 ---
 
@@ -1039,27 +1044,33 @@ At startup, `ConceptRegistry.discover(concepts_dir)` scans the directory, import
 **Concept model commands are intentionally hidden from the main `help` output.**
 Document each model's API in `docs/concept-model-spec.md` (this file).
 
-### 7.2 IAM Routing
+### 7.2 IAM Routing — auto-derived (do NOT hand-wire)
 
-Add each method to `_METHOD_TO_ACTION` in `kernel.py` so IAM enforces read/write/drop
-permissions on concept model commands:
+The IAM action for each method is **derived from the model** (issue #50): a curated
+non-mutating verb set (`ls`/`get`/`read`/`toc`/…) → `read`, everything else → `write`
+(fail-safe). Pin it only when the convention would guess wrong — annotate `action` in
+`CONCEPT_METHODS`:
 
 ```python
-"mything.new":    "write",
-"mything.add":    "write",
-"mything.ls":     "read",
-"mything.rm":     "drop",
+CONCEPT_METHODS = {
+    "new": "op_new",                              # → write (derived)
+    "ls":  "op_list",                             # → read  (derived)
+    "rm":  {"op": "op_delete", "action": "drop"}, # pin drop explicitly (delete verb)
+}
 ```
+
+Do **not** add the method to `_METHOD_TO_ACTION` in `kernel.py` — that hand table was
+retired for concept models in #50 Stage 2; the registry injects the derived/annotated
+actions at boot.
 
 ### 7.3 Shell Command Aliases
 
-Add short aliases to `api/router.py`:
+The canonical (`mything.new`), one-shot (`mything new`), and subcommand-mode (`[mything]`)
+forms are auto-registered. For a short abbreviation, set `cli` in the entry — no
+`api/router.py` edit:
 
 ```python
-"mt.new": "mything.new",
-"mt.add": "mything.add",
-"mt.ls":  "mything.ls",
-"mt.rm":  "mything.rm",
+"new": {"op": "op_new", "cli": "mt.new"},
 ```
 
 ### 7.4 Session Instance Layer Integration

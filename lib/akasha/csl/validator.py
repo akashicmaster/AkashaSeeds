@@ -125,6 +125,9 @@ def _load_registry():
         reg = ConceptRegistry()
         concepts_dir = os.path.join(_akasha_dir, "concepts")
         reg.discover(concepts_dir, module_prefix="lib.akasha.concepts")
+        # Session-layer models (SpaceConcept → instance.*) live in a sibling dir. The kernel
+        # discovers both; CSL must too, or instance.* validates as an unknown command.
+        reg.discover(os.path.join(_akasha_dir, "session"), module_prefix="lib.akasha.session")
         return reg
     except Exception:
         return None

@@ -20,7 +20,7 @@ class CommandRouter:
         "ln.rm":  {"method": "ln.rm",               "args": ["src", "dst", "rel"],"desc": "Remove a typed link between two atoms"},
         "meta":   {"method": "meta.set",             "args": ["id", "key", "value"],"desc": "Set metadata key on atom"},
         "exp":    {"method": "explore",              "args": ["ns", "set", "type", "pat", "limit"], "desc": "Explore ontology by filter: ns=, set=, type=, pat= (positional = pat)"},
-        "tree":   {"method": "graph.tree",           "args": ["target", "depth", "follow", "format"], "desc": "Link-traversal tree: tree <alias|key|set:*|ns:*> [depth=2] [follow=<rel>] [format=rich|ascii]"},
+        "tree":   {"method": "graph.tree",           "args": ["target", "depth", "follow", "format", "concept", "limit", "leaves"], "desc": "Link-traversal tree: tree <alias|key|set:*|ns:*> [depth=2] [follow=<rel>] [format=rich|ascii] [concept=yes → taxonomic concept (sys:is_a) tree; leaves=yes → show instances]"},
         # ── Names / Aliases ───────────────────────────────────────────
         "al":     {"method": "kernel.identity.alias",      "args": ["id", "name"],  "desc": "Name an atom (multi-word: al $it first kiss)"},
         "al.ls":  {"method": "kernel.identity.alias.list", "args": [],              "desc": "List all named atoms"},
@@ -79,9 +79,11 @@ class CommandRouter:
         # ── Ontology Dump & Inspection ────────────────────────────────
         "onto.dump":   {"method": "onto.dump",   "args": ["mode", "ns", "rel", "collection", "sort", "limit"], "desc": "Dump ontology (modes: atoms|links|antonyms|aliases|sets|namespaces)"},
         "onto.reload":       {"method": "onto.reload",       "args": ["confirm"],         "desc": "Clear ontology sentinels and re-trigger boot load (requires librarian, confirm=RELOAD)"},
+        "onto.reconcile":    {"method": "onto.reconcile",    "args": ["pack"],            "desc": "Retire atoms a pack no longer contributes (librarian): dry=yes preview, apply=yes retire, compact=yes vacuum (superuser)"},
         "onto.reset":        {"method": "onto.reset",        "args": ["confirm"],         "desc": "⚠ Wipe nucleus ontology data (DNA preserved) then reload (requires librarian, confirm=RESET)"},
         "onto.genesis.redo": {"method": "onto.genesis.redo", "args": ["confirm"],         "desc": "⚠ Remove genesis anchors to allow re-running genesis_rite (requires admin, confirm=GENESIS)"},
         "onto.scope.drop":   {"method": "onto.scope.drop",   "args": ["scope", "confirm"],"desc": "⚠ Delete all nucleus atoms carrying a given scope (requires librarian, confirm=DROP:<scope>)"},
+        "onto.status":       {"method": "onto.status",       "args": [],       "desc": "Ontology load status: progress (loading/complete), packs, sentinels, nucleus counts"},
         "onto.pack.list":    {"method": "onto.pack.list",    "args": [],       "desc": "List all ontology packages from REGISTRY.json with load status"},
         "onto.pack.enable":  {"method": "onto.pack.enable",  "args": ["name"], "desc": "Enable an optional ontology pack and trigger load (requires librarian)"},
         "onto.pack.disable": {"method": "onto.pack.disable", "args": ["name"], "desc": "Disable an optional ontology pack (atoms remain until onto.reset) (requires librarian)"},
@@ -133,7 +135,12 @@ class CommandRouter:
         "dream":         {"method": "jataka.dream",  "args": ["id", "boldness", "reach", "again"], "desc": "Incubate hidden affinity bridges (async 'sleep on it'). dream id=<atom> → dreaming; call again → ready + candidates. boldness=/reach= tune; again=yes re-dreams."},
         "dream.confirm": {"method": "dream.confirm",  "args": ["dst", "src"], "desc": "Approve a staged dream bridge into a real link: dream.confirm dst=<atom> [src=<focus>]"},
         "dream.forget":  {"method": "dream.forget",   "args": ["dst", "src"], "desc": "Drop staged dream bridges: dream.forget [dst=<atom>] [all=yes]"},
+        "nebula":         {"method": "nebula",         "args": ["ns", "limit", "min_size", "threshold", "again"], "desc": "Survey accumulated atoms for regions becoming a concept model (async). nebula → surveying; call again → ready + candidate regions with proposed salient-rels. again=yes re-surveys."},
+        "nebula.confirm": {"method": "nebula.confirm", "args": ["id", "name"], "desc": "Approve a proposed region → plant its set + salient-rels and emit a concept-model skeleton: nebula.confirm id=<neb:…> name=<concept>"},
+        "nebula.forget":  {"method": "nebula.forget",  "args": ["id"], "desc": "Drop a proposed region (or all): nebula.forget [id=<neb:…>] [all=yes]"},
         "present":       {"method": "jataka.present", "args": ["focus", "as"], "desc": "Narrate/report a selection: present (focus=|survey=|set=) as=table|scatter|narrative"},
+        "cur.project":   {"method": "curation.project", "args": ["id", "as"], "desc": "Project a curation into a private presentation deck: cur.project id=<cur> as=presentation [title=]"},
+        "pr.export":     {"method": "pres.export", "args": ["id", "as"], "desc": "Export a presentation as a self-contained artifact: pr.export id=<pres> as=scroll|kamishibai [inline=true|publish=<slug>]"},
         # ── Contexa ───────────────────────────────────────────────────
         "fetch":  {"method": "contexa.fetch",  "args": ["query"], "desc": "Fetch from web / Wikipedia"},
         # ── Cross ─────────────────────────────────────────────────────
@@ -597,16 +604,36 @@ class CommandRouter:
 
     @classmethod
     def _ensure_augmented(cls) -> None:
-        """Augment from the active ConceptRegistry if not yet done."""
+        """Augment from the active ConceptRegistry if not yet done.
+
+        In the split front/back deployment the CLI runs as a thin client attached to the Cell
+        daemon and never boots the kernel — so no registry is `set_active` in THIS process and the
+        drop-in concept-model commands (rec/table/quadrant/lens.flatten/recipe/formula + the food
+        models) would be missing from the client's router (Unknown command / absent from `help -c`).
+        When no active registry exists, discover one here: discovery only imports the concept
+        classes, needs no engine, and makes those commands routable in any process."""
         if cls._augmented:
             return
         try:
-            from lib.akasha.concepts.registry import get_active
-            reg = get_active()
+            from lib.akasha.concepts import registry as _reg_mod
+            reg = _reg_mod.get_active()
+            if reg is None:
+                import os as _os
+                _base = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+                _new = _reg_mod.ConceptRegistry()
+                _new.discover(_os.path.join(_base, "lib", "akasha", "concepts"),
+                              module_prefix="lib.akasha.concepts")
+                _sess = _os.path.join(_base, "lib", "akasha", "session")
+                if _os.path.isdir(_sess):
+                    _new.discover(_sess, module_prefix="lib.akasha.session")
+                _reg_mod.set_active(_new)
+                reg = _new
             if reg is not None:
                 cls.augment_from_registry(reg)
         except ImportError:
             cls._augmented = True  # don't retry if import fails
+        except Exception:
+            cls._augmented = True  # a discovery hiccup must never break the CLI
 
     @classmethod
     def concept_namespaces(cls) -> "dict":
@@ -805,6 +832,18 @@ class CommandRouter:
                     params["id"] = token
                     id_set = True
             return cls._create_payload("jataka.dream", params, session_token)
+
+        # Special handling for 'nebula' — global survey, key=value tuning only, no positional.
+        # `nebula`, `nebula again`, `nebula limit=10 min_size=5`, `nebula ns=dish`.
+        if cmd == "nebula":
+            params = {}
+            for token in args:
+                if "=" in token:
+                    k, v = token.split("=", 1)
+                    params[k.strip()] = v.strip()
+                elif token:
+                    params[token.strip()] = "yes"      # bare flag, e.g. `again`
+            return cls._create_payload("nebula", params, session_token)
 
         # Special handling for 'cross' / 'cross.axes' / 'cross.atom'
         if cmd in ("cross", "cross.axes"):

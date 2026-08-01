@@ -13,7 +13,6 @@ import os
 import time
 import json
 import uuid
-import getpass
 import logging
 from typing import List, Optional, Tuple
 
@@ -472,12 +471,76 @@ def _print_history(hist: List[str], limit: int = 50) -> None:
 
 # ─── Service control ──────────────────────────────────────────────────────────
 
-def _handle_svc(args_str: str, user_role: str = "user", su_context: dict = None):
+def _svc_base_dir():
+    import os as _os
+    _root = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", ".."))
+    return (_os.environ.get("AKASHA_DATA_DIR", "").strip() or _os.path.join(_root, "data"))
+
+
+def _units_as_rows(base_dir):
+    """Convert Supervisor run-dir units into render_svc_list rows — the CROSS-PROCESS view,
+    so `svc ls` from a thin CLI client shows the detached Cell daemon, web portal, and the
+    ontology-load job it never spawned itself."""
+    import time as _t
+    from lib.harmonia import supervisor as _sv
+    units = _sv.list_units(base_dir)
+    # A `job:` unit's state is written by the Cell daemon that runs it. If that daemon is
+    # dead, the state is frozen at whatever it last wrote — so a job that died mid-run (e.g.
+    # onto-load stuck at 1/26 packs) keeps rendering "Active" forever, a ghost. Cross-check
+    # the daemon's own liveness: no live svc:cell ⇒ its jobs are stale, not active.
+    _cell_live = any(u.get("id") == "svc:cell" and u.get("live") for u in units)
+    rows = []
+    for u in units:
+        started = u.get("started_at")
+        uptime = int(_t.time() - started) if started else None
+        if u.get("kind") == _sv.KIND_JOB:
+            state = u.get("state", "?")
+            status = {"running": "Active", "complete": "Done", "starting": "Active"}.get(state, "Dead")
+            if status == "Active" and not _cell_live:
+                status = "Stale"        # owning daemon is gone — the job is not really running
+            det = u.get("detail") or {}
+            engine = "job"
+            row = {"name": u["id"], "status": status, "engine": engine,
+                   "uptime_sec": uptime, "pid": None,
+                   "host": "", "port": 0}
+            if det.get("packs_present") is not None:
+                row["name"] = f"{u['id']} ({det.get('packs_loaded')}/{det.get('packs_present')} packs)"
+            rows.append(row)
+        else:
+            rows.append({"name": u["id"], "status": "Active" if u.get("live") else "Dead",
+                         "engine": u.get("engine", "?"), "uptime_sec": uptime,
+                         "pid": u.get("pid"), "host": u.get("host", ""),
+                         "port": u.get("port", 0)})
+    return rows
+
+
+def _svc_rpc(gw, session_token, method, unit_id):
+    """Send a svc.* lifecycle request to the daemon that hosts the Supervisor (P3: only it
+    respawns). Works in embedded mode too — gw is then the in-process gateway."""
+    if gw is None:
+        return {"error": "no gateway — restart runs on the Cell daemon"}
+    resp = gw.dispatch({"jsonrpc": "2.0", "method": method,
+                        "params": {"session_token": session_token, "data": {"id": unit_id}},
+                        "id": "svc"})
+    if isinstance(resp, dict) and "error" in resp:
+        err = resp["error"]
+        return {"error": err.get("message", str(err)) if isinstance(err, dict) else str(err)}
+    return (resp or {}).get("result", {})
+
+
+def _handle_svc(args_str: str, user_role: str = "user", su_context: dict = None,
+                gw=None, session_token: str = ""):
     try:
-        from api.service_manager import ServiceManager
-        svc   = ServiceManager.get_instance()
+        from lib.harmonia import supervisor as _sv
         parts = args_str.split()
         sub   = parts[0] if parts else ""
+        base_dir = _svc_base_dir()
+        # The Harmonia Supervisor is the ONE service registry (ServiceManager is retired). Every
+        # verb reads the persistent run-dir; start/restart route to the daemon (P3) which respawns
+        # from the P1 recipe; stop is a cross-process SIGTERM (no spawn authority needed).
+
+        def _uid(name):
+            return name if name.startswith("svc:") else f"svc:{name}"
 
         is_admin = (user_role == "admin") or (
             su_context and su_context.get("active") and
@@ -494,7 +557,8 @@ def _handle_svc(args_str: str, user_role: str = "user", su_context: dict = None)
                     session_counts = _mgr.count_sessions()
             except Exception:
                 pass
-            render_svc_list(svc.list_services(), session_counts)
+            # The persistent run-dir is the single cross-process truth (daemon + portal + jobs).
+            render_svc_list(_units_as_rows(base_dir), session_counts)
 
         elif sub == "start":
             if not is_admin:
@@ -503,11 +567,13 @@ def _handle_svc(args_str: str, user_role: str = "user", su_context: dict = None)
             if len(parts) < 2:
                 print(c(Colors.FAIL, "  Usage: svc start <name>"))
                 return
-            result = svc.start_by_blueprint(parts[1])
+            # Route to the daemon (P3: only it spawns, from the persisted recipe).
+            result = _svc_rpc(gw, session_token, "svc.start", parts[1])
             if "error" in result:
                 print(c(Colors.FAIL, f"  [!] {result['error']}"))
             else:
-                print(c(Colors.GREEN, f"  ✓ {result.get('service', parts[1])} {result.get('status', 'started')}"))
+                print(c(Colors.GREEN, f"  ✓ {result.get('id', parts[1])} "
+                                      f"{result.get('status', 'started')} (PID {result.get('pid','?')})"))
 
         elif sub == "stop":
             if not is_admin:
@@ -516,11 +582,14 @@ def _handle_svc(args_str: str, user_role: str = "user", su_context: dict = None)
             if len(parts) < 2:
                 print(c(Colors.FAIL, "  Usage: svc stop <name>"))
                 return
-            result = svc.stop_service(parts[1])
-            if "error" in result:
-                print(c(Colors.FAIL, f"  [!] {result['error']}"))
-            else:
-                print(c(Colors.GREEN, f"  ✓ {result['service']} {result['status']}"))
+            uid = _uid(parts[1])
+            # Stop is a cross-process SIGTERM over the run-dir (no spawn authority needed),
+            # so a thin client can stop the detached daemon/portal it never spawned.
+            if not _sv.read_unit(base_dir, uid):
+                print(c(Colors.FAIL, f"  [!] Service '{parts[1]}' is not currently registered."))
+                return
+            r = _sv.Supervisor(base_dir).stop(uid)
+            print(c(Colors.GREEN, f"  ✓ {uid} {r.get('status', 'stopped')}"))
 
         elif sub == "restart":
             if not is_admin:
@@ -530,18 +599,88 @@ def _handle_svc(args_str: str, user_role: str = "user", su_context: dict = None)
                 print(c(Colors.FAIL, "  Usage: svc restart <name>"))
                 return
             print(c(Colors.DIM, f"  Restarting {parts[1]}…"))
-            result = svc.restart_service(parts[1])
+            # Route to the daemon (P3): it respawns from the persisted recipe (P1), so this
+            # works cross-process from a thin client — the deferred D1 item, now closed.
+            result = _svc_rpc(gw, session_token, "svc.restart", parts[1])
             if "error" in result:
                 print(c(Colors.FAIL, f"  [!] {result['error']}"))
             else:
-                print(c(Colors.GREEN, f"  ✓ {result.get('service', parts[1])} {result.get('status', 'restarted')}"))
+                print(c(Colors.GREEN, f"  ✓ {result.get('id', parts[1])} "
+                                      f"{result.get('status', 'restarted')} (PID {result.get('pid','?')})"))
 
         else:
             print(c(Colors.DIM, "  Usage: svc ls  |  svc start <n>  |  svc stop <n>  |  svc restart <n>"))
             if not is_admin:
                 print(c(Colors.DIM, "  (start/stop/restart require admin)"))
-    except ImportError:
-        print(c(Colors.WARNING, "[!] ServiceManager not available."))
+    except Exception as _exc:
+        print(c(Colors.WARNING, f"[!] svc: {_exc}"))
+
+
+def _handle_grant(sub: str, args_str: str, gw=None, session_token: str = ""):
+    """CLI surface for capability delegation (admin composes per-client authority):
+        grant  <grantee> <capability> [resource]   attach a scoped grant   (admin)
+        ungrant <grantee> <grant_id>               remove a grant          (admin)
+        grants [<grantee>]                          list grants (own, or a principal's — admin)
+    e.g.  grant alice svc_operate svc:app:alice:*
+    The RPC (iam.grant/iam.revoke/iam.grants) enforces authorization server-side."""
+    if gw is None:
+        print(c(Colors.FAIL, "  [!] no gateway."))
+        return
+    parts = args_str.split()
+
+    def _rpc(method, data):
+        resp = gw.dispatch({"jsonrpc": "2.0", "method": method,
+                            "params": {"session_token": session_token, "data": data}, "id": "iam"})
+        if isinstance(resp, dict) and "error" in resp:
+            e = resp["error"]
+            return {"error": e.get("message", str(e)) if isinstance(e, dict) else str(e)}
+        return (resp or {}).get("result", {})
+
+    if sub == "grants":
+        data = {"grantee": parts[0]} if parts else {}
+        r = _rpc("iam.grants", data)
+        if "error" in r:
+            print(c(Colors.FAIL, f"  [!] {r['error']}"))
+            return
+        grants = r.get("grants", [])
+        who = r.get("grantee", "you")
+        if not grants:
+            print(c(Colors.DIM, f"  (no grants for {who})"))
+            return
+        print(c(Colors.DIM, f"\n  grants for {who}:"))
+        for g in grants:
+            exp = g.get("expires")
+            exp_s = f" · expires {int(exp)}" if exp else ""
+            print(f"    {c(Colors.CYAN, g.get('id','?'))}  {g.get('capability','?')}"
+                  f"  over {c(Colors.GREEN, g.get('resource','*'))}"
+                  f"  [{g.get('state','active')}]{exp_s}  (by {g.get('grantor','?')})")
+
+    elif sub == "grant":
+        if len(parts) < 2:
+            print(c(Colors.FAIL, "  Usage: grant <grantee> <capability> [resource]"))
+            print(c(Colors.DIM,  "  e.g.   grant alice svc_operate svc:app:alice:*"))
+            return
+        data = {"grantee": parts[0], "capability": parts[1],
+                "resource": parts[2] if len(parts) > 2 else "*"}
+        r = _rpc("iam.grant", data)
+        if "error" in r:
+            print(c(Colors.FAIL, f"  [!] {r['error']}"))
+            return
+        g = r.get("granted", {})
+        print(c(Colors.GREEN, f"  ✓ granted {g.get('capability')} over {g.get('resource')} "
+                              f"to {g.get('grantee')}  (id {g.get('id')})"))
+
+    elif sub == "ungrant":
+        if len(parts) < 2:
+            print(c(Colors.FAIL, "  Usage: ungrant <grantee> <grant_id>"))
+            return
+        r = _rpc("iam.revoke", {"grantee": parts[0], "grant_id": parts[1]})
+        if "error" in r:
+            print(c(Colors.FAIL, f"  [!] {r['error']}"))
+        elif r.get("revoked"):
+            print(c(Colors.GREEN, f"  ✓ revoked {parts[1]} from {parts[0]}"))
+        else:
+            print(c(Colors.WARNING, f"  [~] no such grant {parts[1]} for {parts[0]}"))
 
 
 # ─── REPL ─────────────────────────────────────────────────────────────────────
@@ -580,7 +719,16 @@ def run_cli(gw):
     # _autoload_ontology / _autoload_ontology_csl are legacy and must not run here —
     # they walk all of ontology/ unconditionally, overriding the kernel's base-only policy.
 
-    _setup_readline()
+    # readline is DISABLED on restricted/embedded consoles (iOS a-Shell / Pyto). Their minimal
+    # line editors miscount the cursor column, so after any output that scrolls the view readline's
+    # redisplay desyncs and the REPL "suddenly stops accepting commands" (input goes to the wrong
+    # place / is not echoed). Plain input() — no cursor tracking — is robust there. Capable
+    # terminals (Codespaces, VS Code, a real TTY) keep readline for history + arrow keys.
+    _readline_wanted = not (
+        env.is_restricted_console
+        or os.environ.get("AKASHA_EMBEDDED", "").strip().lower() in ("1", "yes", "true", "on"))
+    if _readline_wanted:
+        _setup_readline()
 
     # Prompt rendering policy. A coloured/multi-line prompt makes minimal iOS line
     # editors (a-Shell / Pyto) miscount the cursor column — the left margin drifts,
@@ -652,11 +800,11 @@ def run_cli(gw):
             # Re-issue the last paginated list command with an adjusted cursor, so a
             # long list is turned page-by-page instead of scrolled line-by-line.
             _pw = low.split()
-            if _pw and _pw[0] in ("more", "next", "prev", "page") and _last_list["cmd"]:
+            if _pw and _pw[0] in ("more", "next", "n", "prev", "p", "page") and _last_list["cmd"]:
                 _lim = _last_list["limit"] or 20
-                if _pw[0] in ("more", "next"):
+                if _pw[0] in ("more", "next", "n"):
                     _no = _last_list["offset"] + _lim
-                elif _pw[0] == "prev":
+                elif _pw[0] in ("prev", "p"):
                     _no = max(0, _last_list["offset"] - _lim)
                 else:  # page N (1-based)
                     _n = int(_pw[1]) if len(_pw) > 1 and _pw[1].isdigit() else 1
@@ -677,6 +825,14 @@ def run_cli(gw):
                 continue
             if low in ("exit", "quit", "bye"):
                 print(c(Colors.DIM, "Suspending consciousness… Goodbye."))
+                # Graceful shutdown BEFORE the interpreter tears down C modules: stop the
+                # background daemons and close SQLite connections so nothing is mid-C-op at
+                # finalization (which segfaulted on exit, esp. on Python 3.14).
+                try:
+                    from lib.akasha import lifecycle
+                    lifecycle.begin_shutdown()
+                except Exception:
+                    pass
                 break
 
             # ── Enter a namespace mode by a bare model name ───────────
@@ -1002,16 +1158,33 @@ def run_cli(gw):
                     print(c(Colors.FAIL, f"[!] Submit failed: {e}"))
                 continue
 
-            if full_cmd.startswith("svc "):
-                _handle_svc(full_cmd[4:].strip(), user_role, su_context)
+            # Service lifecycle — accept the DOTTED form (svc.ls / svc.start <n> / svc.stop /
+            # svc.restart) as the first-class spelling, consistent with every other backend
+            # command (sys.ping, onto.reload, job.stat …) now that server management is a
+            # backend concern. `svc <sub>` (space) stays as a back-compat alias.
+            if low == "svc" or low.startswith("svc.") or full_cmd.startswith("svc "):
+                if full_cmd.startswith("svc "):
+                    _sub = full_cmd[4:].strip()
+                elif full_cmd.startswith("svc."):
+                    _sub = full_cmd[4:].strip()          # "svc.start x" → "start x", "svc.ls" → "ls"
+                else:
+                    _sub = ""                            # bare `svc` → usage
+                _handle_svc(_sub, user_role, su_context, gw=gw, session_token=session_token)
+                continue
+
+            _grant_verb = full_cmd.split(" ", 1)[0]
+            if _grant_verb in ("grant", "grants", "ungrant"):
+                _rest = full_cmd.split(" ", 1)
+                _handle_grant(_grant_verb, _rest[1].strip() if len(_rest) > 1 else "",
+                              gw=gw, session_token=session_token)
                 continue
 
             # ── passwd — self-service passphrase change ──────────────────
             if full_cmd.strip().lower() == "passwd":
                 try:
-                    cur  = getpass.getpass(c(Colors.WARNING, "Current passphrase: "))
-                    pw1  = getpass.getpass(c(Colors.WARNING, "New passphrase: "))
-                    pw2  = getpass.getpass(c(Colors.WARNING, "Confirm new passphrase: "))
+                    cur  = env.secure_input(c(Colors.WARNING, "Current passphrase: "))
+                    pw1  = env.secure_input(c(Colors.WARNING, "New passphrase: "))
+                    pw2  = env.secure_input(c(Colors.WARNING, "Confirm new passphrase: "))
                 except (KeyboardInterrupt, EOFError):
                     print()
                     continue
@@ -1044,8 +1217,8 @@ def run_cli(gw):
                 if payload:
                     target_id = payload["params"]["data"].get("client_id", "")
                     try:
-                        pw1 = getpass.getpass(c(Colors.WARNING, "New passphrase: "))
-                        pw2 = getpass.getpass(c(Colors.WARNING, "Confirm passphrase: "))
+                        pw1 = env.secure_input(c(Colors.WARNING, "New passphrase: "))
+                        pw2 = env.secure_input(c(Colors.WARNING, "Confirm passphrase: "))
                     except (KeyboardInterrupt, EOFError):
                         print()
                         continue
@@ -1069,7 +1242,7 @@ def run_cli(gw):
                 pw = ""
                 if target != "exit":
                     try:
-                        pw = getpass.getpass(c(Colors.WARNING, "Password: "))
+                        pw = env.secure_input(c(Colors.WARNING, "Password: "))
                     except (KeyboardInterrupt, EOFError):
                         print()
                         continue
@@ -1131,9 +1304,18 @@ def run_cli(gw):
 
             payload = _build(dispatch_cmd, session_token)
             if payload is None:
-                print(c(Colors.FAIL,
-                        f"[!] Unknown command: '{dispatch_cmd.split()[0]}'"
-                        "  (type 'help')"))
+                _head = dispatch_cmd.split()[0] if dispatch_cmd.split() else dispatch_cmd
+                if nav_mode.get("kind") == "ns":
+                    # Mode purity: a non-mode command is not silently run as a global. Say so,
+                    # and remind how to leave — so it is always clear you are inside the mode.
+                    _mn = nav_mode["name"]
+                    _ops = ", ".join(_modes.operators(_mn)) or "(navigate by name/number)"
+                    print(c(Colors.FAIL, f"[!] '{_head}' is not a {_mn} command.") +
+                          c(Colors.DIM, f"  operators: {_ops}   ·  out to leave"))
+                else:
+                    print(c(Colors.FAIL,
+                            f"[!] Unknown command: '{_head}'"
+                            "  (type 'help')"))
                 continue
 
             resp = gw.dispatch(payload)
@@ -1181,7 +1363,23 @@ def run_cli(gw):
             if _pg is not None:
                 _base = " ".join(t for t in dispatch_cmd.split()
                                  if not (t.lower().startswith("cursor=") or t.lower().startswith("limit=")))
-                _last_list = {"cmd": _base, "limit": _pg.get("limit") or 20, "offset": _pg.get("offset") or 0}
+                _lim0 = _pg.get("limit") or 20
+                _off0 = _pg.get("offset") or 0
+                _last_list = {"cmd": _base, "limit": _lim0, "offset": _off0}
+                # Explicit, always-visible page footer — the missing "how do I go next?" cue.
+                # Plain words work identically on iOS (a-Shell/Pyto) and Linux: just type n / p.
+                _tot = _pg.get("total")
+                _cnt = _pg.get("count") or 0
+                if _pg.get("has_more") or _off0 > 0:
+                    _rng = f"{_off0 + 1}–{_off0 + _cnt}" + (f" of {_tot}" if _tot is not None else "")
+                    _nav = []
+                    if _pg.get("has_more"):
+                        _nav.append(c(Colors.CYAN, "n") + c(Colors.DIM, " next"))
+                    if _off0 > 0:
+                        _nav.append(c(Colors.CYAN, "p") + c(Colors.DIM, " prev"))
+                    print(c(Colors.DIM, f"  — showing {_rng}  ·  ")
+                          + c(Colors.DIM, " · ").join(_nav)
+                          + c(Colors.DIM, "  (or 'page N') —"))
 
             if redirect_path:
                 try:

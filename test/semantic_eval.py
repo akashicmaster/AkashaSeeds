@@ -263,6 +263,14 @@ def phase7_autolearn():
         keys.append(nuc.put_atom(c, {"type": "onto", "i": i}, author="admin"))
     _SHARED["loaded"] = False
     _SHARED["model"] = None
+    # The autolearn thread gates on the `_relations_*.done` sentinel (so it learns on the
+    # WHOLE corpus, not a half-built boot graph). This test stubs `_boot_load_ontology`, so
+    # nothing writes that sentinel — the corpus is already fully materialized synchronously
+    # above, so signal "relations complete" ourselves, else the thread blocks on the gate.
+    _sent_dir = os.path.join(k.base_dir, "central", "sentinels")
+    os.makedirs(_sent_dir, exist_ok=True)
+    with open(os.path.join(_sent_dir, "_relations_test.done"), "w") as _sf:
+        _sf.write("1")
     k._schedule_semantic_learn()
 
     def baked_count():

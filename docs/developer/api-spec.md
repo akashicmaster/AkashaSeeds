@@ -105,31 +105,45 @@ python akasha.py w "The cat sat on the mat"
 
 ### 2.2 HTTP — REST/RPC via POST
 
-**Endpoint:** `POST /rpc`  
 **Content-Type:** `application/json`
+
+Akasha ships **two** HTTP portals, and their route sets are **not identical**:
+
+- **ASGI / uvicorn portal** (`api/portals/asgi.py`, `--server uvicorn`) — the FastAPI stack.
+- **stdlib `httpd` portal** (`services/http_gateway.py`, the default) — pure stdlib, no
+  FastAPI. It fronts a **`SplitGateway`** (`api/portals/cell_ipc.py`): reads are served
+  from the local engine, while writes/auth/session are forwarded over a local socket to the
+  single writer daemon (preserving `TRUST_NETWORK` and one signing authority for tokens).
 
 Start in HTTP-only server mode:
 
 ```bash
-python akasha.py --server uvicorn --host 0.0.0.0 --port 8080
+python akasha.py --server uvicorn --host 0.0.0.0 --port 8080   # ASGI portal
+python akasha.py --host 0.0.0.0 --port 8080                    # stdlib httpd portal (default)
 ```
 
-Additional HTTP routes:
+| Route | Method | ASGI | stdlib httpd | Description |
+|---|---|---|---|---|
+| `/rpc` | POST | ✅ | — | JSON-RPC 2.0 endpoint (ASGI only) |
+| `/api/rpc` | POST | ✅ | ✅ | JSON-RPC 2.0 endpoint (API path — both portals) |
+| `/mcp` | POST | ✅ | ✅ | MCP over HTTP (`TRUST_NETWORK`) |
+| `/api/mcp` | POST | ✅ | ✅ | MCP over HTTP (API path) |
+| `/api/readme` | GET | ✅ | ✅ | Served README |
+| `/health` | GET | ✅ | — | Liveness check (wraps `sys.ping`; ASGI only) |
+| `/docs` | GET | ✅ | — | Swagger UI (uvicorn mode) |
+| `/openapi.json` | GET | ✅ | — | OpenAPI schema (uvicorn mode) |
 
-| Route | Method | Description |
-|---|---|---|
-| `GET /health` | GET | Liveness check (wraps `sys.ping`) |
-| `POST /rpc` | POST | JSON-RPC 2.0 endpoint |
-| `GET /docs` | GET | Swagger UI (uvicorn mode) |
-| `GET /openapi.json` | GET | OpenAPI schema (uvicorn mode) |
+> ⚠️ `/rpc` and `/health` are **ASGI-only**. The stdlib `httpd` portal does **not** serve them —
+> use `/api/rpc` for JSON-RPC there. Both portals serve `/mcp`, `/api/mcp`, and `/api/readme`.
 
-The stdlib `httpd` engine accepts JSON-RPC at `POST /api/rpc`.
+Both portals support **guest sessions**: an anonymous caller is issued a read-only guest session
+whose token is a `gbk:` binding key (the "prove-don't-assert" default; see [Section 4](#4-authentication)).
 
 CORS headers (`Access-Control-Allow-Origin: *`) are set on all responses.
 
 ### 2.3 MCP — Model Context Protocol
 
-The MCP portal (`api/portals/mcp.py`) exposes a subset of kernel operations as MCP tools for AI assistant integration (e.g., Claude Desktop). Transport wiring is pending the `mcp-python-sdk`. See [Section 12](#12-mcp-portal) for the full tool definitions.
+The MCP portal (`api/portals/mcp.py`) exposes a subset of kernel operations as MCP tools for AI assistant integration (e.g., Claude Desktop, a local Ollama agent). It is a **stdlib implementation** — MCP is just JSON-RPC 2.0 with a fixed method set, so no `mcp-python-sdk` dependency is required. **Both transports are shipped and live:** stdio (`python akasha.py --mcp`, `TRUST_LOCAL`) and HTTP (`POST /mcp` on ASGI / `POST /api/mcp` on httpd, `TRUST_NETWORK`). See [Section 12](#12-mcp-portal) for the full tool catalogue.
 
 ---
 
@@ -345,11 +359,11 @@ Context references are resolved by `lib/akasha/resolver.py:ContextResolver`. The
 | Capability | Granted to | Governs |
 |---|---|---|
 | `READ` | All | `explore`, `read`, `link.list`, `dive.*`, `sys.history` |
-| `WRITE` | USER and above | `write`, `define`, `link.create`, `meta.set`, `note.*`, `alias` |
+| `WRITE` | USER and above | `write`, `define`, `link.create`, `meta.set`, `note.*`, `alias`, `jataka.dream` |
 | `DELETE` | USER and above | `drop`, `set.clear`, `set.rm` |
 | `COLLECTIVE_WRITE` | LIBRARIAN, ADMIN | Writing to `scope:sys:universal` |
 | `GROUP_MANAGE` | GROUP_ADMIN, ADMIN | Adding/removing members, granting group librarian rights |
-| `SIMULATE` | USER and above | `jataka.dream`, `link.reinforce` |
+| `SIMULATE` | USER and above | `link.reinforce` |
 | `SYNC_PULL` / `SYNC_PUSH` | LIBRARIAN, ADMIN | Network synchronisation |
 | `FEDERATE` | LIBRARIAN, ADMIN | Knowledge verification and merge |
 | `DELEGATE` | ADMIN | Issuing tokens; cancelling others' JCL jobs |
@@ -482,7 +496,7 @@ rollback_workspace(cortex, tx_id)
 JCL jobs (see [Section 10.11](#1011-jcl--job-control)) run each job as a single Harmonia workspace. If any step fails:
 
 1. The workspace is rolled back — no orphaned atoms remain.
-2. A `sys:jcl_failure_log` atom is written permanently so `job.log` can surface it.
+2. A `sys:jcl_failure_log` atom is written permanently (it survives rollback for auditing).
 3. Evidence atoms from completed steps survive rollback (audit trail is preserved).
 
 ### 9.3 Plugin Registry
@@ -1237,27 +1251,34 @@ for e in r["entries"]:
 
 #### `explore`
 
-Breadth-first graph traversal from a focal atom.
+**Filter/query tool** for discovering atoms in the ontology — NOT a graph traversal.
+It matches atoms by namespace, set membership, meta type, or alias pattern, ANDs the
+filters together, and returns a numbered flat list (for `dive` navigation). Use
+`graph.tree` or `dive.look` to walk links; `explore` finds the starting atoms.
 
-**Params (`data`):**
+**Params (`data`):** at least one filter is required.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `id` | string | Yes | Starting atom |
-| `depth` | integer | No | BFS depth (default: 2, role-capped) |
-| `rel` | string | No | Filter traversal to links matching this relation pattern (SQL LIKE) |
+| `ns` | string | * | Namespace prefix — aliases matching `ns:*` (e.g. `word:en`) |
+| `set` | string | * | Set membership — atoms in this named set |
+| `type` | string | * | `meta.type` filter |
+| `pat` | string | * | Alias wildcard pattern (`%` and `_` wildcards). A positional argument (`id=`) falls through to `pat=`. |
+| `limit` | integer | No | Max results (default: 50) |
+
+\* At least one of `ns` / `set` / `type` / `pat` must be supplied, else `-32602` is returned. Multiple filters are ANDed.
 
 **Response:**
 
 ```json
 {
   "result": {
-    "focus": "a3f9...",
-    "nodes": [
-      {"key": "a3f9...", "content": "The basilica...", "depth": 0},
-      {"key": "b4c5...", "content": "Byzantine Architecture...", "depth": 1}
+    "atoms": [
+      {"key": "a3f7c2...", "alias": "word:en:courage", "preview": "Word: courage. ..."},
+      {"key": "b8c1d5...", "alias": "word:en:fear",    "preview": "Word: fear. ..."}
     ],
-    "count": 2
+    "count": 2,
+    "filters": {"ns": "word:en"}
   }
 }
 ```
@@ -1265,9 +1286,13 @@ Breadth-first graph traversal from a focal atom.
 **Python:**
 
 ```python
-resp = rpc("explore", {"id": "Byzantine Architecture", "depth": 3}, token=token)
-for node in resp["result"]["nodes"]:
-    print(f"  depth={node['depth']} {node['key'][:12]} — {node['content'][:50]}")
+# All English vocabulary atoms
+resp = rpc("explore", {"ns": "word:en", "limit": 100}, token=token)
+for atom in resp["result"]["atoms"]:
+    print(f"  {atom['alias']} — {atom['preview'][:50]}")
+
+# Alias pattern
+resp = rpc("explore", {"pat": "%architecture%"}, token=token)
 ```
 
 **curl:**
@@ -1276,22 +1301,26 @@ for node in resp["result"]["nodes"]:
 curl -s -X POST http://localhost:8000/rpc \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"explore",
-       "params":{"session_token":"alice","data":{"id":"Byzantine Architecture","depth":3}},
+       "params":{"session_token":"alice","data":{"ns":"word:en","limit":50}},
        "id":"exp1"}'
 ```
 
 ---
 
-#### `sys.tree`
+#### `graph.tree`
 
-Render a hierarchical link-tree from a root node, following outgoing links recursively.
+Render a hierarchical link-tree by BFS link-traversal from an atom, set, or namespace,
+following outgoing links. (CLI shorthand: `tree`.)
 
 **Params (`data`):**
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `id` | string | No | Root atom. Defaults to `$it`. |
-| `depth` | integer | No | Max recursion depth (default: 3, max: 8) |
+| `target` | string | No | Root: an atom alias/key, `set:<name>`, or `ns:<prefix>`. Defaults to `$it`. |
+| `depth` | integer | No | Traversal depth (default: 2, capped 1–5) |
+| `follow` | string | No | Relation-type filter (empty = all outgoing links) |
+| `format` | string | No | `rich` (default) \| `ascii` |
+| `concept` | string | No | `yes` → walk the taxonomic `sys:is_a` concept lattice only (delegates to the concept navigator) |
 
 **Response:**
 
@@ -1904,7 +1933,8 @@ JCL (Job Control Language) allows clients to submit multi-step batch jobs that e
 
 #### `job.submit`
 
-Submit a batch job with one or more sequential steps.
+Submit a batch job with one or more sequential steps. **Restricted to `ADMIN` and
+`LIBRARIAN` roles** (the `job.submit` capability); ordinary users cannot submit JCL jobs.
 
 **Params (`data`):**
 
@@ -2060,68 +2090,10 @@ Cancel a PENDING job. Once a job transitions to RUNNING it cannot be cancelled.
 | -32001 | Job is already RUNNING/DONE/FAILED, or not owned by caller |
 | -32002 | Job not found |
 
----
-
-#### `job.log`
-
-Return Harmonia evidence atoms produced during a job's execution. Useful for debugging failed jobs.
-
-**Params (`data`):**
-
-| Field | Type | Required |
-|---|---|---|
-| `job_id` | string | Yes |
-
-**Response:**
-
-```json
-{
-  "result": {
-    "job_id": "job:4a7f3c2b1e09",
-    "tx_id": "ws:jcl:import-ravenna:1716600123000",
-    "evidence": [
-      {
-        "key": "f0a1...",
-        "type": "sys:action_evidence",
-        "executor": "nlp.extract",
-        "content": "Action Trace: nlp.extract within ws:..."
-      }
-    ],
-    "count": 1
-  }
-}
-```
-
-Evidence atom types:
-
-| Type | Description |
-|---|---|
-| `sys:workspace_info` | Workspace open record |
-| `sys:action_evidence` | Per-step execution trace |
-| `sys:jcl_failure_log` | Permanent failure record (survives rollback) |
-
----
-
-#### `sys.monitor`
-
-Queue and worker health snapshot. Non-ADMIN callers see only their own jobs in `recent`.
-
-**Params (`data`):** _(none)_
-
-**Response:**
-
-```json
-{
-  "result": {
-    "queue_depth": 0,
-    "total_jobs": 5,
-    "by_status": {"DONE": 4, "FAILED": 1},
-    "recent": [
-      {"job_id": "job:4a7f...", "label": "import-ravenna", "status": "DONE", "step_done": 3, "step_count": 3}
-    ]
-  }
-}
-```
+> **Note:** The four job methods above (`job.submit`, `job.ls`, `job.stat`, `job.cancel`)
+> are the complete JCL surface. There is no `job.log` or `sys.monitor` method. The
+> `sys:jcl_failure_log` / `sys:action_evidence` / `sys:workspace_info` evidence atoms a
+> job writes are ordinary atoms in the graph, readable with `read` / `explore` where scope allows.
 
 ---
 
@@ -2229,7 +2201,7 @@ focus), `threshold`/`limit`/`scan`.
    approval is mandatory by design (no agent auto-approval). If JCL is unavailable, `dream`
    falls back to a synchronous run.
 
-IAM: `dream` requires the `SIMULATE` capability and always inherits the session's `active_scopes`.
+IAM: `dream` requires the `WRITE` capability (its method action is `write`) and always inherits the session's `active_scopes`.
 
 **Errors:** `-32002` focus not found / access denied · `-32602` `dream.confirm` needs `dst`.
 
@@ -2302,7 +2274,11 @@ Terminate the caller's session, releasing all in-memory state.
 
 ### 10.15 Associate
 
-`kernel.associate` traverses the **meaning network** — `calc:*`, `emo:*`, `word:*` links — and returns a projection of the semantic field surrounding the focal atom. It is the meaning-layer complement to `explore`'s structure-layer BFS.
+`kernel.associate` (CLI alias: `assoc`) is a **gap-detection** operator. It scans the focal
+atom's **one-hop outgoing links**, determines which semantic axes are **absent** (the *voids*),
+and — for each void — offers structural candidates drawn from peer atoms in the focal atom's
+shared sets (no inference). Optionally it *fills* each void by writing the top candidate's link.
+It answers "what links is this atom missing?", not "what is it near?".
 
 ---
 
@@ -2312,72 +2288,57 @@ Terminate the caller's session, releasing all in-memory state.
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `id` | string | No | `$it` | Focal atom. Supports all context references. |
-| `axis` | string | No | `null` (all) | Filter by semantic axis (see Axis Filter table). |
-| `scope` | integer | No | `2` | Traversal depth. Role-capped identical to `explore`. |
-| `format` | string | No | `"raw"` | `"raw"` or `"cosmos"` (Cosmos Viewer ready). |
+| `id` | string | No | `$it` (last-written) | Focal atom. Supports all context references. |
+| `axis` | string | No | `null` (all axes) | Restrict the scan to one semantic axis (see Axis table). |
+| `fill` | string | No | `no` | `yes` → write the top candidate link for each void. Requires WRITE. |
 
-**Axis filter values:**
+**Axis values** (which axis a void belongs to):
 
-| `axis` | Matched rel prefixes |
+| `axis` | Detected via |
 |---|---|
-| `emotion` | `emo:` |
+| `emotion` | `emo:` targets |
 | `color` | `word:color:`, `calc:color` |
 | `sense` | `word:sense:`, `calc:sense` |
 | `time` | `chrono:`, `calc:time` |
 | `context` | `calc:context`, `calc:associated_with` |
 | `story` | `polti:`, `story:` |
-| omitted | all of the above |
+| omitted | all of the above (plus category-declared *salient* relations) |
 
-**Response (format=raw):**
-
-```json
-{
-  "result": {
-    "focal":  {"key": "<hex>", "content": "<full text>", "preview": "<50 chars>"},
-    "axis":   "emotion | all",
-    "scope":  2,
-    "associations": [
-      {"key": "<hex>", "rel": "emo:sadness", "depth": 1, "preview": "<60 chars>", "type": "emotion"}
-    ],
-    "resonance": [
-      {"key": "<hex>", "via": "<tag key>", "rel": "<rel>", "preview": "<60 chars>", "weight": 1.0}
-    ],
-    "unwritten": {"status": "pending | unavailable", "job_id": "<id | null>", "voids": []}
-  }
-}
-```
-
-**Response (format=cosmos):**
+**Response:**
 
 ```json
 {
   "result": {
-    "focal": {"key": "...", "preview": "..."},
-    "axis":  "emotion",
-    "nodes": [
-      {"id": "<key>", "name": "<preview>", "group": "focus | association | resonance", "val": 20, "color": "#ffffff"}
+    "focal":  {"key": "<hex>", "alias": "San Vitale", "preview": "<60 chars>"},
+    "axis":   "all",
+    "voids": [
+      {
+        "axis": "emotion",
+        "missing": "emo:",
+        "hint": "No 'emotion' links found.",
+        "candidates": [
+          {"key": "<hex>", "alias": "emo:awe", "rel": "calc:associated_with"}
+        ]
+      },
+      {
+        "axis": "salient",
+        "missing": "cocktail:base",
+        "missing_full": "base spirit — the defining spirit of the cocktail",
+        "hint": "Salient relation 'base spirit' expected for this category but absent.",
+        "candidates": [],
+        "salient": true
+      }
     ],
-    "links": [
-      {"source": "<key>", "target": "<key>", "rel": "<rel>", "type": "association | resonance"}
-    ],
-    "unwritten": {"status": "pending", "job_id": "<id>"}
+    "filled": []
   }
 }
 ```
 
-**Node color convention:**
-
-| Group | Color | Meaning |
-|---|---|---|
-| `focus` | `#ffffff` | Focal atom |
-| `association` | `#00ffcc` | Semantic link traversal |
-| `resonance` | `#ff9900` | Shared-tag resonance |
-| `void` | `#333333` | UnwrittenVoid (future) |
-
-**UnwrittenVoid detection:**
-
-An async JCL job (`associate.unwritten`) is submitted automatically. It detects which semantic axes are absent from the focal atom. Retrieve results via `job.log <job_id>` once the job completes.
+- `voids` — one entry per absent axis (and per category-declared *salient* relation the atom
+  lacks). Each carries the axis name, the `missing` relation/prefix, a human `hint`, and up to
+  three structural `candidates`.
+- `filled` — populated only when `fill=yes`: one entry (`axis`, `rel`, `dst`, `alias`) per void
+  that had a candidate written as a real link.
 
 **Errors:**
 
@@ -2389,34 +2350,30 @@ An async JCL job (`associate.unwritten`) is submitted automatically. It detects 
 **CLI examples:**
 
 ```
-associate $it
-associate $it axis=emotion
-associate $it axis=color format=cosmos
-associate note.chunk1 axis=story scope=3
+assoc $it
+assoc $it axis=emotion
+assoc $it fill=yes
+associate note.chunk1 axis=story
 ```
 
 ---
 
 ### 10.16 Scope State
 
-`sys.scope.*` manages the **session-level scope state** — persistent context keys that are automatically inherited by `kernel.associate` and `explore` when the caller omits the corresponding parameter. This allows slider-based UIs (e.g. the Cosmos Viewer) to synchronise traversal parameters with the kernel without resending them on every call.
+`sys.scope.*` manages the **session-level scope state** — persistent context keys a UI (e.g. the Cosmos Viewer sliders) can stash on the session and read back without resending them per call. They are stored via `sys.scope.set` and returned by `sys.scope.get`; `dive.look` surfaces `active_time` in its response metadata.
 
 #### Session context keys
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `active_axis` | string \| null | `null` | Semantic axis filter inherited by `kernel.associate` |
-| `active_scope` | integer \| null | `null` | Traversal depth inherited by `kernel.associate` and `explore` |
+| `active_axis` | string \| null | `null` | Preferred semantic axis (UI hint; stored session state) |
+| `active_scope` | integer \| null | `null` | Preferred traversal depth (UI hint; stored session state) |
 | `active_time` | string \| null | `null` | Temporal filter tag returned in `dive.look` response metadata |
 
-#### Parameter inheritance rules
-
-| Method | Parameter | Falls back to | Ultimate default |
-|---|---|---|---|
-| `kernel.associate` | `axis` | `active_axis` | `null` (all axes) |
-| `kernel.associate` | `scope` | `active_scope` | `2` |
-| `explore` | `depth` | `active_scope` | `2` |
-| `dive.look` | *(response only)* | `active_time` attached as `meta.active_time` | `null` |
+> **Note:** These keys are session-stored UI preferences read back through `sys.scope.get`; the
+> current `explore` (filter search: `ns`/`set`/`type`/`pat`) and `kernel.associate`
+> (gap detection: `id`/`axis`/`fill`) handlers do **not** silently inject them as parameter
+> fallbacks. Pass the parameters explicitly on each call.
 
 ---
 
@@ -3140,94 +3097,75 @@ Each step runs as a normal `kernel.dispatch()` call under the submitter's own `s
 
 ## 12. MCP Portal
 
-The MCP portal (`api/portals/mcp.py`) exposes five kernel operations as MCP tools. Full transport wiring (stdio/SSE) requires `mcp-python-sdk` and is pending; the portal class (`AkashaMCPPortal`) is instantiable today for local integrations.
+The MCP portal (`api/portals/mcp.py`) exposes Akasha to any MCP-speaking LLM client (Claude
+Desktop, a local Ollama agent, an editor plugin) as a set of MCP tools. It is a **stdlib
+implementation** — MCP is just JSON-RPC 2.0 with a fixed method set (`initialize`, `tools/list`,
+`tools/call`, `ping`, `notifications/*`), so there is **no `mcp-python-sdk` dependency** (it stays
+installable on the seeds/edge tier).
 
-### Tool Definitions
+**Both transports are shipped and verified end-to-end:**
 
-```json
-[
-  {
-    "name": "akasha_write",
-    "description": "Write a new atom (memory node) to the Akasha semantic mesh.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "text": {"type": "string", "description": "Content to store as a new atom"}
-      },
-      "required": ["text"]
-    }
-  },
-  {
-    "name": "akasha_read",
-    "description": "Read an atom by ID, alias, or $-reference.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Atom key (64-char hex), alias name, or $-reference ($0, $it, etc.)"
-        }
-      },
-      "required": ["id"]
-    }
-  },
-  {
-    "name": "akasha_explore",
-    "description": "BFS graph exploration from a focal node up to given depth.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "id":    {"type": "string"},
-        "depth": {"type": "integer", "default": 2, "minimum": 1, "maximum": 10}
-      },
-      "required": ["id"]
-    }
-  },
-  {
-    "name": "akasha_fetch",
-    "description": "Fetch external context from Wikipedia or a URL and integrate it.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "query": {"type": "string", "description": "Search query or URL"}
-      },
-      "required": ["query"]
-    }
-  },
-  {
-    "name": "akasha_ping",
-    "description": "Check Akasha kernel liveness.",
-    "inputSchema": {"type": "object", "properties": {}}
-  }
-]
-```
+| Transport | Launch / route | Trust | Identity |
+|---|---|---|---|
+| **stdio** (local) | `python akasha.py --mcp` (`run_mcp_stdio`) — newline-delimited JSON-RPC over stdin/stdout, spawned as a subprocess | `TRUST_LOCAL` | Acts as an authenticated local client (read + own-scope write) |
+| **HTTP** (remote) | `POST /mcp` (ASGI) / `POST /api/mcp` (httpd) via `mcp_http_process` | `TRUST_NETWORK` | Anonymous → guest session (read-only); `Authorization: Bearer akt:<token>` → that identity's scopes (scoped write) |
 
-### MCP → JSON-RPC Mapping
+Both transports call the same `AkashaMCPPortal` bridge → `gw.dispatch(...)`. **The kernel is the
+capability gate** — a guest calling a write tool is denied there, not in the portal. Trust is set
+by the transport, never the client.
 
-| MCP Tool | Kernel Method |
-|---|---|
-| `akasha_write` | `kernel.memory.write` |
-| `akasha_read` | `kernel.memory.read` |
-| `akasha_explore` | `explore` |
-| `akasha_fetch` | `contexa.fetch` |
-| `akasha_ping` | `sys.ping` |
+### Tool Catalogue (15 tools)
+
+Each tool maps to one existing kernel JSON-RPC method. `access` documents the underlying
+capability the kernel enforces (read tools work for a guest session; write tools need an
+authenticated `akt:` token or the local stdio route).
+
+| MCP Tool | Kernel Method | Access | Purpose |
+|---|---|---|---|
+| `akasha_ping` | `sys.ping` | read | Liveness check |
+| `akasha_read` | `read` | read | Read an atom by id/alias/`$`-ref |
+| `akasha_explore` | `explore` | read | Filter search (by `query`/`ns`) |
+| `akasha_concept` | `thesaurus.concept` | read | Concept page: neighbourhood, synonyms/broader/narrower, refs |
+| `akasha_search` | `semantic.search` | read | Semantic (meaning) nearest-neighbour search |
+| `akasha_gap_scan` | `gap.scan` | read | Find important-but-thin concepts (ontology gaps) |
+| `akasha_write` | `kernel.memory.write` | write | Write a new atom |
+| `akasha_link` | `kernel.memory.link` | write | Link two atoms with a typed relation |
+| `akasha_fetch` | `contexa.fetch` | write | Fetch external context (Wikipedia/URL) into the mesh |
+| `akasha_command` | `sys.cli_exec` | write | Run any Akasha CLI command as a raw string (CLI-equivalent escape hatch; kernel gates per command) |
+| `akasha_society_new` | `society.new` | write | Create a dialogue space (channel) in a group |
+| `akasha_society_say` | `society.say` | write | Speak as your avatar into a dialogue space |
+| `akasha_society_feed` | `society.feed` | read | Read a dialogue space's timeline |
+| `akasha_society_roster` | `society.roster` | read | List avatars present in a space |
+| `akasha_society_turn` | `society.turn` | read | Whose turn it is (last speaker + suggested next) |
+
+`AkashaMCPPortal.list_tools()` returns the `name` / `description` / `inputSchema` for each; the
+authoritative schemas live in `MCP_TOOLS` in `api/portals/mcp.py`.
 
 ### Programmatic Use (Python)
+
+The tool-dispatch method is **`call_tool(name, arguments, session_token)`** — it dispatches the
+tool's kernel method and wraps the result as MCP tool content (`{"content": [...], "isError": …}`).
 
 ```python
 from api.gateway import create_gateway
 from api.portals.mcp import AkashaMCPPortal
 
 gw = create_gateway(series="seeds", base_dir="data")
-mcp = AkashaMCPPortal(gw, client_id="claude")
+portal = AkashaMCPPortal(gw, client_id="claude")           # stdio/local default trust
 
 # List available tools
-tools = mcp.list_tools()
+tools = portal.list_tools()
 
-# Execute a tool call
-result = mcp.handle_tool_call("akasha_write", {"text": "Theodoric the Great ruled 493–526 AD."})
-print(result)  # {"key": "...", "status": "written"}
+# Resolve a session token (LOCAL → the configured client; NETWORK → a fresh guest), then call.
+token = portal.resolve_session(None)
+result = portal.call_tool("akasha_write",
+                          {"text": "Theodoric the Great ruled 493–526 AD."}, token)
+print(result)   # {"content": [{"type": "text", "text": "..."}], "isError": false}
 ```
+
+Full MCP messages (`initialize` / `tools/list` / `tools/call`) are handled by
+`portal.handle(msg, session_token)`; `run_mcp_stdio(gw)` and `mcp_http_process(gw, body, ...)`
+are the two transport drivers.
 
 ---
 
@@ -3385,8 +3323,8 @@ The interactive REPL translates shorthand commands to JSON-RPC 2.0 payloads via 
 | `al.find <pattern>` | `kernel.identity.alias.find` | `pattern` |
 | `onto.dump [mode] [ns=..] [rel=..] [collection=..] [sort=..] [limit=..]` | `onto.dump` | `mode`, `ns`, `rel`, `collection`, `sort`, `limit` |
 | `onto.report [clear=true]` | `onto.report` | `clear` |
-| `exp <id> [depth]` | `explore` | `id`, `depth` |
-| `tree [id] [depth]` | `network.tree` | `id`, `depth` |
+| `exp [ns=..] [set=..] [type=..] [pat]` | `explore` | `ns`, `set`, `type`, `pat`, `limit` |
+| `tree <target> [depth]` | `graph.tree` | `target`, `depth`, `follow`, `format`, `concept` |
 | `look [id]` | `dive.look` | `id` |
 | `d [id]` | `dive.look` | `id` (alias for `look`) |
 | `out [id]` | `dive.out` | `id` |
@@ -3422,12 +3360,10 @@ The interactive REPL translates shorthand commands to JSON-RPC 2.0 payloads via 
 | `cp.status` | `cockpit.status` | — |
 | `cp.rm` | `cockpit.rm` | — |
 | `job.ls` | `job.ls` | — |
-| `job.st <job_id>` | `job.stat` | `job_id` |
-| `job.can <job_id>` | `job.cancel` | `job_id` |
-| `job.log <job_id>` | `job.log` | `job_id` |
-| `mon` | `sys.monitor` | — |
-| `associate <id> [axis=X] [scope=N] [format=F]` | `kernel.associate` | `id`, `axis`, `scope`, `format` |
-| `assoc <id> [axis=X] [scope=N] [format=F]` | `kernel.associate` | `id`, `axis`, `scope`, `format` |
+| `job.stat <job_id>` | `job.stat` | `job_id` |
+| `job.cancel <job_id>` | `job.cancel` | `job_id` |
+| `associate <id> [axis=X] [fill=yes]` | `kernel.associate` | `id`, `axis`, `fill` |
+| `assoc <id> [axis=X] [fill=yes]` | `kernel.associate` | `id`, `axis`, `fill` |
 | `scope` / `scope get` | `sys.scope.get` | — |
 | `scope reset` | `sys.scope.reset` | — |
 | `scope [key=val ...]` | `sys.scope.set` | `axis`, `scope`, `time` (key=value pairs) |
@@ -3620,7 +3556,9 @@ Via `svc` commands (admin only):
 svc restart <name>
 ```
 
-The sub-service runs on a separate port as a subprocess managed by `ServiceManager`.
+The sub-service runs on a separate port as a subprocess managed by the Harmonia `Supervisor`
+(`lib/harmonia/supervisor.py`) — the one service registry, persisted in the run-dir
+(`data/central/run/*`). `ServiceManager` has been retired.
 
 ---
 

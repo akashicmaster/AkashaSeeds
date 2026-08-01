@@ -42,6 +42,7 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 from lib.akasha.concepts.formula import FormulaConcept, _as_list, _slug, _num, _paginate
+from lib.akasha.concepts.foodnutri import parse_nutrition, NUTR_LABEL_KEY
 
 logger = logging.getLogger("Harmonia.Concept.Recipe")
 
@@ -75,46 +76,45 @@ def _paid_features() -> set:
 # USDA labels (scripts/usda_food_import.py) → canonical nutrient keys, so a food
 # whose nutrition arrived as an .ak content string accumulates identically to one
 # written structurally by recipe.food.
-_NUTR_LABEL_KEY = {
-    "energy": "kcal", "kcal": "kcal", "calories": "kcal",
-    "protein": "protein_g",
-    "fat": "fat_g", "total fat": "fat_g",
-    "carbohydrate": "carb_g", "carbohydrates": "carb_g", "carbs": "carb_g", "carb": "carb_g",
-    "fiber": "fiber_g", "fibre": "fiber_g",
-    "sugar": "sugar_g", "sugars": "sugar_g",
-    "sodium": "sodium_mg", "calcium": "calcium_mg", "vitamin c": "vitc_mg",
-}
-_PER_BASIS_RE  = re.compile(r"per\s+(\d+(?:\.\d+)?)\s*g\b", re.I)
-_KCAL_RE       = re.compile(r"(\d+(?:\.\d+)?)\s*k?cal\b", re.I)
-_NUTR_FIELD_RE = re.compile(r"([A-Za-z][A-Za-z ]*?)\s+(\d+(?:\.\d+)?)\s*(mg|g)\b", re.I)
+# The USDA/FDC nutrition parser and its label map are shared with the ingredient dictionary —
+# one canonical parser over the same food:* content strings. See concepts/foodnutri.py.
+_NUTR_LABEL_KEY = NUTR_LABEL_KEY            # alias kept for _food_content's reverse-render map
+_parse_nutrition_content = parse_nutrition
 
 # A USDA FoodData Central id, however written: fdc=11429 / fdc:11429 / food:fdc:11429 / bare number.
 _FDC_RE = re.compile(r"^(?:food:)?fdc[:_]?(\d+)$", re.I)
 
 
-def _parse_nutrition_content(content: str) -> Optional[Dict[str, float]]:
-    """Parse a USDA-style content string into a nutrition dict, or None. Only fires on
-    the `per <N>g:` basis marker so a food's descriptive name is never read as data."""
-    if not content:
-        return None
-    mb = _PER_BASIS_RE.search(content)
-    if not mb:
-        return None
-    seg = content[mb.end():]
-    nut: Dict[str, float] = {}
-    mk = _KCAL_RE.search(seg)
-    if mk:
-        nut["kcal"] = float(mk.group(1))
-    for m in _NUTR_FIELD_RE.finditer(seg):
-        label = m.group(1).strip().lower()
-        key = _NUTR_LABEL_KEY.get(label) or (
-            _NUTR_LABEL_KEY.get(label.split()[-1]) if label.split() else None)
-        if key:
-            nut[key] = float(m.group(2))
-    if not nut:
-        return None
-    nut["basis_g"] = float(mb.group(1))
-    return nut
+# Reverse of _NUTR_LABEL_KEY: a structured nutrition key → (label, unit) for rendering a
+# USDA-style content string. Kcal is rendered specially ("<v> kcal"); anything not listed
+# falls back to "<key> <v>" (still a descriptive, non-bare string).
+_NUTR_KEY_RENDER = {
+    "protein_g": ("protein", "g"), "fat_g": ("fat", "g"),
+    "carb_g": ("carbohydrate", "g"), "fiber_g": ("fiber", "g"),
+    "sugar_g": ("sugar", "g"), "sodium_mg": ("sodium", "mg"),
+    "calcium_mg": ("calcium", "mg"), "vitc_mg": ("vitamin c", "mg"),
+}
+
+
+def _food_content(name: str, nut: Dict[str, float]) -> str:
+    """Render a food atom's content in the shared catalogue's USDA style
+    (`<name> — per <basis>g: <kcal> kcal, protein <p> g, …`). Two reasons this matters for
+    a NUCLEUS write: (1) it is descriptive, not a bare word, so the content-addressed key
+    never collides with the proto-word atom of the name (a bare-word food would be silently
+    overwritten by proto-word auto-creation on set_alias); (2) it round-trips through
+    _parse_nutrition_content, matching every boot-loaded `.ak` catalogue food."""
+    basis = _num(nut.get("basis_g")) or 100.0
+    parts: List[str] = []
+    kcal = nut.get("kcal")
+    if kcal is not None:
+        parts.append(f"{kcal:g} kcal")
+    for k, v in nut.items():
+        if k in ("basis_g", "kcal") or v is None:
+            continue
+        label, unit = _NUTR_KEY_RENDER.get(k, (k, ""))
+        parts.append(f"{label} {v:g} {unit}".strip())
+    tail = (": " + ", ".join(parts)) if parts else ":"
+    return f"{name.strip()} — per {basis:g}g{tail}"
 
 
 def _fdc_id(value) -> Optional[str]:
@@ -306,6 +306,12 @@ class RecipeConcept(FormulaConcept):
             "op": "op_reference_clone", "action": "write", "cli": "rcp.ref.clone", "args": ["id"],
             "desc": ("Materialise a reference dish into your own editable recipe: "
                      "recipe reference.clone id=recipe:mealdb:53262"),
+        },
+        "reference.bake": {
+            "op": "op_reference_bake", "action": "write", "cli": "rcp.ref.bake", "args": [],
+            "desc": ("Bake the shared reference-recipe library (recipe:* ontology dishes) into "
+                     "structured, guest-searchable recipes in the nucleus (admin; idempotent; "
+                     "paced): recipe reference.bake [limit=50|all=yes] [offset=N]"),
         },
         "nutrition": {
             "op": "op_nutrition", "action": "read", "cli": "rcp.nutrition", "args": ["recipe"],
@@ -544,10 +550,18 @@ class RecipeConcept(FormulaConcept):
         return super().op_new(title=title, alias=alias, **axis_kwargs)
 
     def _write_food(self, name: str, alias: str, basis_g: str,
-                    nutrients: Dict[str, Any], source: str) -> Dict[str, Any]:
+                    nutrients: Dict[str, Any], source: str,
+                    public: bool = False) -> Dict[str, Any]:
         """Shared body for the catalogue + personal food writers: upsert a food atom and
         (re)point `alias` at it. Fresh values on an existing food re-point the alias, so
-        recipes (which resolve by alias at read time) pick up the change transparently."""
+        recipes (which resolve by alias at read time) pick up the change transparently.
+
+        `public=True` (the SHARED catalogue, recipe.food) writes the atom into the NUCLEUS
+        (`scope:sys:universal`), exactly as the `.ak` boot loader does — so the shared
+        catalogue physically lives in the one store every session scans (guests included),
+        not in the writing admin's private cortex where no one else would ever see it.
+        `public=False` (recipe.food.personal) keeps the food in the caller's private
+        `owner:/view:user_<uid>` cortex scope, as before."""
         slug = _slug(name)
         author, scopes = self._author_scopes()
         nut: Dict[str, float] = {"basis_g": _num(basis_g) or 100.0}
@@ -555,18 +569,51 @@ class RecipeConcept(FormulaConcept):
             fv = _num(nv)
             if fv is not None:
                 nut[nk] = fv
+        meta = {"type": "atom", "role": "food", "concept": "recipe", "slug": slug,
+                "name": name.strip(), "nutrition": nut, "source": source,
+                "created_at": time.time()}
+        # resolve_alias is nucleus-fallback aware, so a shared food already in the nucleus
+        # is detected here for the upsert (re-point / no-op) decision.
         existing = self.cortex.resolve_alias(alias)
+        if public:
+            return self._write_food_shared(name, alias, slug, nut, meta, author, existing)
         if existing and len(nut) <= 1:
             return {"status": "exists", "food_id": existing, "name": name.strip(),
                     "slug": slug, "alias": alias,
                     "nutrition": (self.cortex.get_meta(existing) or {}).get("nutrition")}
-        key = self.cortex.put_chunk(
-            content=name.strip(),
-            meta={"type": "atom", "role": "food", "concept": "recipe", "slug": slug,
-                  "name": name.strip(), "nutrition": nut, "source": source,
-                  "created_at": time.time()},
-            author=author, scopes=scopes)
+        key = self.cortex.put_chunk(content=name.strip(), meta=meta,
+                                    author=author, scopes=scopes)
         self.cortex.set_alias(key, alias, force=bool(existing))
+        return {"status": "updated" if existing else "created", "food_id": key,
+                "name": name.strip(), "slug": slug, "alias": alias, "nutrition": nut}
+
+    def _write_food_shared(self, name: str, alias: str, slug: str,
+                           nut: Dict[str, float], meta: Dict[str, Any],
+                           author: str, existing: Optional[str]) -> Dict[str, Any]:
+        """Write a SHARED-catalogue food into the nucleus (universal, guest-readable). The
+        nucleus is the store `recipe.food.search` scans for every caller; a private-cortex
+        write would be invisible to everyone but the writer, contradicting recipe.food's
+        'shared authoritative catalogue' contract. Content-addressed, so a re-touch with new
+        nutrition re-writes the same key and re-points the alias (upsert). Degrades to a
+        public-scoped cortex write only if no nucleus is attached (single-cell dev)."""
+        if existing and len(nut) <= 1:
+            return {"status": "exists", "food_id": existing, "name": name.strip(),
+                    "slug": slug, "alias": alias,
+                    "nutrition": (self.cortex.get_meta(existing) or {}).get("nutrition")}
+        # USDA-style descriptive content: unique key (no proto-word collision on the bare
+        # name) and re-parseable, matching the boot-loaded catalogue.
+        content = _food_content(name, nut)
+        nuc = getattr(self.session, "nucleus", None)
+        if nuc is None or not hasattr(nuc, "put_atom"):
+            key = self.cortex.put_chunk(content=content, meta=meta, author=author,
+                                        scopes=[f"owner:user_{author}", "view:public"])
+            self.cortex.set_alias(key, alias, force=bool(existing))
+            return {"status": "updated" if existing else "created", "food_id": key,
+                    "name": name.strip(), "slug": slug, "alias": alias, "nutrition": nut}
+        key = nuc.put_atom(content, meta, author=author)   # scope:sys:universal
+        # force=True re-points `food:<slug>` to the (possibly new, content-addressed) key on
+        # a nutrition update; first-wins would otherwise leave the alias on the old atom.
+        nuc.set_alias(key, alias, force=bool(existing))
         return {"status": "updated" if existing else "created", "food_id": key,
                 "name": name.strip(), "slug": slug, "alias": alias, "nutrition": nut}
 
@@ -574,15 +621,18 @@ class RecipeConcept(FormulaConcept):
         """[recipe.food] Define/refresh a SHARED-catalogue food's nutrition — the USDA
         import write endpoint. Restricted to a librarian/admin (catalog manager): the
         shared `food:<slug>` namespace is a curated, authoritative catalogue, so a regular
-        user cannot write it (they use recipe.food.personal for their own foods). Nutrition
-        is stored per `basis_g` grams; the rollup sums whatever numeric keys are present."""
+        user cannot write it (they use recipe.food.personal for their own foods). The atom
+        is written into the NUCLEUS (universal scope), so every session — guests included —
+        can read it, exactly like the boot-loaded `.ak` catalogue. Nutrition is stored per
+        `basis_g` grams; the rollup sums whatever numeric keys are present."""
         if not name or not name.strip():
             raise ValueError("recipe.food requires a food name.")
         if not self._is_catalog_manager():
             raise RuntimeError(
                 "catalog_denied: recipe.food writes the shared food catalogue and requires "
                 "a librarian/admin role. Use recipe.food.personal for your own foods.")
-        return self._write_food(name, f"food:{_slug(name)}", basis_g, nutrients, "recipe.food")
+        return self._write_food(name, f"food:{_slug(name)}", basis_g, nutrients,
+                                "recipe.food", public=True)
 
     def op_food_search(self, q: str = "", name: str = "", limit: Any = "",
                        offset: Any = 0, cursor: Any = "") -> Dict[str, Any]:
@@ -834,6 +884,38 @@ class RecipeConcept(FormulaConcept):
                 "title": created.get("title", ""),
                 "ingredients": len(d["ingredients"]), "steps": len(d["steps"]),
                 **self._version(root)}
+
+    def op_reference_bake(self, limit: Any = 50, offset: Any = 0,
+                          all: Any = "") -> Dict[str, Any]:
+        """[recipe.reference.bake] Materialise the SHARED reference-recipe library
+        (`recipe:<slug>` ontology dishes) into structured recipe-model instances in the
+        NUCLEUS (universal, guest-readable), so they surface in recipe.ls / recipe.suggest's
+        multi-axis search for every session — not just when a user knows the exact id. Each
+        entry is decomposed by recipe.reference.clone (parse → step atoms + ingredient links +
+        axis index); the shared `_bake_catalogue` engine routes the build into the nucleus
+        (public, no per-user quota) and keeps it idempotent (`recipe:card:<slug>`). Bounded per
+        call (default 50; `all=yes` bakes the rest) — page with `next_offset`. Admin only."""
+        if not self._is_catalog_manager():
+            raise RuntimeError(
+                "catalog_denied: recipe.reference.bake writes the shared recipe catalogue "
+                "and requires a librarian/admin role.")
+        all_ = str(all).strip().lower() in ("1", "yes", "true", "y", "all")
+
+        def build(key: str) -> Dict[str, Any]:
+            res = self.op_reference_clone(id=key)
+            return {"root": res.get("recipe_id"), "recipe_id": res.get("recipe_id"),
+                    "title": res.get("title", ""), "steps": res.get("steps", 0),
+                    "ingredients": res.get("ingredients", 0)}
+
+        r = self._bake_catalogue("recipe", build, "recipe:card:",
+                                 limit=limit, offset=offset, all_=all_)
+        return {"type": "recipe:reference_bake", "total": r["total"],
+                "baked": len(r["baked"]), "skipped": r["skipped"], "errors": r["errors"],
+                "processed_to": r["processed_to"], "remaining": r["remaining"],
+                "next_offset": r["next_offset"],
+                "cards": [{"card": b["card"], "recipe_id": b.get("recipe_id"),
+                           "title": b.get("title", ""), "steps": b.get("steps", 0),
+                           "ingredients": b.get("ingredients", 0)} for b in r["baked"][:20]]}
 
     def op_add(self, recipe: str = "", ingredient: str = "", method: str = "",
                hint: str = "", plating: str = "", constraint: str = "",

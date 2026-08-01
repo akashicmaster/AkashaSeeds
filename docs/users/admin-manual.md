@@ -1,6 +1,6 @@
 # AKASHA Administrator Manual
 
-**Version 1.1 — May 2026**
+**Version 1.2 — June 2026**
 
 > This document is for system administrators only.  
 > Commands described here are not visible in the standard `help` output and are not available to regular users.
@@ -518,9 +518,9 @@ akasha/admin $ grp.del old_project
 
 ### Passphrase Storage
 
-Passphrases are stored as SHA-256 hashes in `data/central/nucleus.db`. The plaintext passphrase is never persisted anywhere in the system. The hash is computed in the shell process before the RPC call, so the passphrase does not traverse the kernel dispatcher.
+Passphrases are stored in `data/central/nucleus.db` as **PBKDF2-SHA256 (200,000 iterations) over a per-user random salt**, and verified with a constant-time compare (`hmac.compare_digest`). The plaintext passphrase is never persisted anywhere in the system. The client computes a SHA-256 "presented hash" in the shell process before the RPC call (so the raw passphrase never traverses the kernel dispatcher); the server derives and stores the salted PBKDF2 of that presented hash.
 
-> SHA-256 without a salt is sufficient for a local-first system with physical access control. For deployments that expose the network portal, consider upgrading to bcrypt or Argon2 via a custom authentication plugin.
+> The per-user salt plus 200k PBKDF2 iterations resist offline brute-force even if the nucleus file is exfiltrated. Legacy unsalted records are upgraded transparently to the salted PBKDF2 form on the user's next login.
 
 ### IAM Persistence
 
@@ -570,47 +570,63 @@ Shows all registered services with status, engine type, address or PID, and upti
 ```
 akasha/admin $ svc ls
 
-  name                   status   engine   address / pid          uptime
-  ────────────────────────────────────────────────────────────────────────
-  http_portal            Active   thread   http://0.0.0.0:8000    42s
-  cosmos_visualizer      Active   uvicorn  PID=12345               120s
+  name                   status   engine        address / pid          uptime
+  ─────────────────────────────────────────────────────────────────────────────
+  svc:cell               Active   cell-daemon   PID=4120               930s
+  svc:web-portal         Active   httpd         PID=4310               928s
+  svc:cosmos_visualizer  Active   uvicorn       PID=12345              120s
+  job:onto-load          Done     job           —                      —
 ```
 
-**Engine types:**
+**The registry.** All services are **OS subprocesses** (`substrate: process`) managed by the one
+Harmonia **Supervisor**, recorded in the persistent run-dir (`data/central/run/*`). There is no
+in-process "thread" service — the web portal (httpd or uvicorn) runs as its own subprocess, so it
+survives a CLI disconnect and is respawnable from a saved recipe. `svc ls` is a **cross-process**
+view: any session (even a fresh CLI) sees every unit, because the truth is on disk, not in one
+process's memory. `job:*` rows (e.g. `job:onto-load`) are in-process work, shown for visibility.
 
-- `thread` — runs as a Python daemon thread within the main process (e.g. `http_portal`)
-- `uvicorn` / `httpd` — runs as a managed subprocess spawned by `ServiceManager`
+**Engine column:** `httpd` / `uvicorn` — the web portal subprocess; `cell-daemon` — the writer
+root (`svc:cell`); `job` — an in-process job. Non-operators see a redacted `svc ls` (no recipe,
+pid, or log path); an operator/admin sees the full descriptor.
 
 ### `svc stop <name>` — Stop a Service
 
-Stops the named service. For subprocess-based services, sends SIGTERM and waits up to 5 seconds before SIGKILL. For thread-based services, calls `httpd.shutdown()` cleanly.
+Sends SIGTERM over the run-dir and waits its per-unit grace before SIGKILL. This works
+**cross-process** (a pid + a signal — no spawn authority needed), so a thin CLI client can stop the
+detached daemon or portal it never launched itself. The writer root `svc:cell` gets a generous
+grace so it can checkpoint before exit.
 
 ```
 akasha/admin $ svc stop cosmos_visualizer
-  ✓ cosmos_visualizer stopped
+  ✓ svc:cosmos_visualizer stopped
 ```
 
 ### `svc restart <name>` — Restart a Service
 
-Stops and relaunches the named service using the same parameters it was originally started with.
-
-For `http_portal` (thread-based): the old `HTTPServer` is shut down via `shutdown()` + `server_close()`, and a new instance is started on the same host/port in a fresh daemon thread. The RPC gateway reference is preserved — in-flight requests on the old server may fail during the brief restart window.
+Relaunches the named service **from its persisted recipe (P1)**. The request is routed to the Cell
+daemon (the sole respawn authority, P3), which stops the old process and spawns a new one from the
+saved `argv`/`env`/`cwd` — so restart works from **any** session, not only the one that started it,
+and after a crash the health tick brings an `on-failure`/`always` service back on its own.
 
 ```
-akasha/admin $ svc restart http_portal
-  Restarting http_portal…
-  ✓ http_portal restarted
+akasha/admin $ svc restart web-portal
+  Restarting web-portal…
+  ✓ svc:web-portal restarted (PID 5561)
 ```
 
 ### Registered Services at Boot
 
 | Name | Engine | Description |
 |---|---|---|
-| `http_portal` | thread | Main JSON-RPC web gateway (`/api/rpc`) |
-| `cosmos_visualizer` | subprocess | Graph visualization UI (if launched) |
-| `akashic_note` | subprocess | Note UI service (if launched) |
+| `svc:cell` | cell-daemon | The Cell daemon — owns the engine + the single nucleus writer (root) |
+| `svc:web-portal` | httpd / uvicorn | Main JSON-RPC web gateway (`/api/rpc`), a serve-only subprocess |
+| `svc:cosmos_visualizer` | subprocess | Graph visualization UI (if launched) |
+| `svc:app:<operator>:<name>` | (varies) | Operator-added service programs (see the cookbook) |
 
-> Services launched manually via `ServiceManager.start_service()` are also registered and visible in `svc ls`.
+> Operator-added services (dropped into `services/*` and registered with
+> `supervisor.Supervisor.record_running(spec=…)`) are visible in `svc ls` exactly like the built-in
+> ones. Start/stop/restart require admin locally; on a server deployment an admin can delegate
+> `svc_operate` over a `svc:app:<operator>:*` selector with the `grant` command.
 
 ### Web Service Authentication
 
@@ -641,6 +657,54 @@ Confirm the user is in the group with `grp.ls <group_id>`. If they are, verify t
 ### Passphrase prompt does not appear for `user.add`
 
 Passphrase prompting is implemented in the stdio portal only. When calling `user.add` via the HTTP or MCP portal, provide `passphrase_hash` (SHA-256 hex) directly in the request body.
+
+### The Cell daemon — the CLI is a client, the backend owns the jobs
+
+`python akasha.py` no longer runs the engine inside your terminal. It starts (or reconnects to)
+a persistent **Cell daemon** — a detached backend process that owns the engine, the write queue,
+and every job (including the ontology load) — and attaches your CLI to it as a thin **client**
+over a local socket. This is the intended topology: the backend is the server, the shell is a
+client, exactly as the web portal (httpd) has always been a detached process.
+
+The practical consequence: **closing the CLI never stops the daemon's work.** The first boot of a
+large deployment (e.g. the thesaurus tier) imports the full ontology — including the
+canon-normalize pass over ~120 K entries, which can run for many minutes — and that runs in the
+daemon. You can start it, watch progress, disconnect your SSH session, and reconnect later to a
+load that kept running the whole time:
+
+```
+python akasha.py            # spawns the Cell daemon if needed, attaches your CLI, do genesis
+                            # …watch the load, then just close the terminal / drop SSH…
+python akasha.py            # reconnects to the SAME daemon — the load never stopped
+python akasha.py stop       # cleanly stop the daemon (finishes the in-flight write, checkpoints)
+```
+
+Watch load progress at any time with **`onto.status`** (packs · atoms; shows `Load COMPLETE`
+when every bundled pack is in) and **`job.ls`** (per-step `N/N` for the running canon-normalize
+job).
+
+**Trust / security.** The local socket is created `0600`, owned by your user — only a process of
+the **same UID** can connect, which is why the local CLI keeps its no-passphrase-for-genesis
+convenience (the OS user boundary is the gate, exactly what `TRUST_LOCAL` means for the console).
+A network client cannot reach the socket, so it can never obtain local trust. Design and full
+rationale: `docs/for-llm/backend-daemon-local-ipc-spec.md`.
+
+**Stopping.** `python akasha.py stop` sends the daemon a graceful `SIGTERM` and gives it a
+generous grace window to finish the in-flight write and checkpoint the WAL before any forceful
+kill — SIGKILLing the writer mid-checkpoint is exactly the crash this design avoids. `systemctl
+stop` / `kill <pid>` do the same (the daemon routes `SIGTERM` through the graceful path).
+`SIGHUP` (SSH hangup) is ignored, so a disconnect can never abort the daemon.
+
+**Escape hatch.** To run the old in-process behaviour (engine inside the CLI, no daemon), use
+`python akasha.py --embedded` or set `AKASHA_EMBEDDED=1`. `--stdio` (self-contained CLI, no web
+portal) is also embedded.
+
+**Relocating data.** `AKASHA_DATA_DIR` points the daemon and clients at a different cell
+directory (default `<install>/data`). The daemon inherits it when the CLI spawns it.
+
+> Do **not** run `--embedded` against the same `data/` while a Cell daemon is running — the
+> nucleus is a single-writer store. Stop the daemon first (`python akasha.py stop`). The normal
+> client path already prevents this: it routes every write through the one daemon.
 
 ### Concept model commands return `-32601 Method not found`
 
@@ -702,6 +766,58 @@ akasha/admin(su:librarian) $ onto.reload confirm=RELOAD
 ```
 
 **When to use:** after placing new `.ak` files in `ontology/acquired/`, or after fixing a malformed ontology file that caused a sentinel to be skipped.
+
+#### Updating an existing deployment (overwrite-install)
+
+A running Cell keeps its ontology **load sentinels** in the persistent nucleus. Each pack's
+sentinel is keyed by a **manifest hash of `basename:size:mtime`** over its files, so:
+
+- an **ordinary restart** with untouched files → same hash → the load is skipped instantly;
+- **overwrite-extracting a newer seed → then restarting** → a zip extract stamps every file
+  with a fresh mtime, so every pack's hash changes → the boot **re-imports the whole ontology
+  automatically**, reflecting the new seed's diff. **You do _not_ have to run a migration
+  command** — a restart is the trigger.
+
+The one gotcha is that the trigger is a **boot**: if you overwrite the files but the old
+server process is still running (you only re-logged in), the graph still reflects the *older*
+load until you restart. Symptoms of a not-yet-reloaded process — an empty concept-hierarchy
+pane (its apex atom, e.g. `emo:emotion`, is a newer file), `cur.ls` returning `0 items`, or a
+bundled pack missing from `onto.pack.list`.
+
+**So the normal update is: overwrite-extract → restart the server → wait for the background
+load.** `onto.reload confirm=RELOAD` (admin, librarian mode) is the **fallback** for when you
+want to reload *without* a restart, edited files in place without changing their mtime, or
+want to force a full re-run — it clears the sentinels and re-triggers the same background load.
+Either way the re-import is content-addressed and **additive**: existing atoms are re-written
+idempotently (no data loss, no user atoms touched); it does not purge atoms deleted upstream
+(wipe `data/central`, or `onto.reset`, for a clean slate).
+
+**Watching progress (the load is background, so it is observable, not a blind wait):**
+
+```
+akasha/admin $ onto.status
+  ◐ Load IN PROGRESS   6/29 packs · relations … · curations … · atoms 41,208
+    pending: world, tech, nutrition, drinks_c, …
+  …
+  ● Load COMPLETE   29/29 packs · relations ✓ · curations ✓     ← when done
+```
+
+Re-run `onto.status` to watch `atoms` climb and packs flip to `●`; `relations ✓` means all
+atoms + links are in (the signal the portal and learn daemons gate on), `curations ✓` means
+`cur.ls` is populated. `job.ls` shows the underlying background load jobs.
+
+**Exiting before it finishes is safe.** The load is a background daemon writing each pack's
+sentinel **only on completion**, through the single crash-stop write queue. If the process
+exits (or is killed) mid-load, nothing is half-committed — the unfinished packs simply have no
+sentinel and **re-load on the next boot**; completed packs are skipped. There is no corruption
+and no manual cleanup: start the server again and the load resumes where it left off. (The load
+only makes progress while the loader process is alive, so if you exit early, restart to let it
+finish — then confirm with `onto.status`.)
+
+> Static, pre-published assets do **not** need any reload: the archives Exhibition Room reads
+> its exhibits from bundled `/curation/exports/*.json`, so it renders the moment the new
+> archives are served — the load only repopulates the *graph* side (`cur.ls`, `narrate`, the
+> concept-hierarchy panes, and newer `nar:` / `geo:` links).
 
 ---
 

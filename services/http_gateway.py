@@ -88,6 +88,8 @@ class BaseWebHandler(SimpleHTTPRequestHandler):
 
         if path == '/api/rpc':
             self._handle_rpc()
+        elif path in ('/api/mcp', '/mcp'):
+            self._handle_mcp()
         elif path in self.routes and self.routes[path]['method'] == 'POST':
             self._execute_custom_handler(self.routes[path]['handler'])
         else:
@@ -176,10 +178,29 @@ class BaseWebHandler(SimpleHTTPRequestHandler):
             return f
         return super().send_head()
 
+    def _handle_mcp(self):
+        """MCP (Model Context Protocol) over HTTP — the remote LLM route (TRUST_NETWORK).
+        Delegates protocol + session handling to the shared mcp_http_process; a guest session
+        is minted for anonymous callers (read-only), a Bearer akt: token acts with its scopes."""
+        content_length = int(self.headers.get('Content-Length', 0))
+        raw = self.rfile.read(content_length) if content_length > 0 else b""
+        gw = self.gw or _gw_module.gateway
+        try:
+            from api.portals.mcp import mcp_http_process
+            resp, status, extra = mcp_http_process(
+                gw, raw,
+                session_header=self.headers.get("Mcp-Session-Id", ""),
+                auth_header=self.headers.get("Authorization", ""))
+        except Exception as exc:
+            logger.error(f"[MCP] http error: {exc}")
+            resp, status, extra = ({"jsonrpc": "2.0", "error": {"code": -32603,
+                                    "message": str(exc)}, "id": None}, 200, {})
+        self._send_json(resp, status=status, extra_headers=extra)
+
     def _handle_rpc(self):
         content_length = int(self.headers.get('Content-Length', 0))
         post_data = self.rfile.read(content_length) if content_length > 0 else b""
-        
+
         try:
             req = json.loads(post_data.decode('utf-8'))
             
@@ -229,10 +250,12 @@ class BaseWebHandler(SimpleHTTPRequestHandler):
             logger.error(f"[Custom Handler Failure] {e}")
             self._send_json({"error": "Internal execution error"}, status=500)
 
-    def _send_json(self, data: Any, status: int = 200):
+    def _send_json(self, data: Any, status: int = 200, extra_headers: dict = None):
         self.send_response(status)
         self._send_cors_headers()
         self.send_header('Content-type', 'application/json; charset=utf-8')
+        for _k, _v in (extra_headers or {}).items():
+            self.send_header(_k, _v)
         self.end_headers()
         self.wfile.write(json.dumps(data, ensure_ascii=False).encode('utf-8'))
 

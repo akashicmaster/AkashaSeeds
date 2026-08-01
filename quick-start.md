@@ -75,11 +75,12 @@ You will see filenames like:
 
 | File | Contents | For |
 |---|---|---|
-| `akasha_seeds_seeds.py` | Kernel + browser apps | General use, independent researchers |
+| `akasha_seeds_seeds12.py` | Kernel + browser apps (SQLite backend) | General use, independent researchers |
+| `akasha_seeds_seeds12n.py` | Same, native Silica backend twin | General use, independent researchers |
 | `akasha_seeds_thesaurus.py` | + extended vocabulary library | Libraries, research organizations |
 | `akasha_seeds_server.py` | + multi-client configuration | Programmers, institutional deployments |
 
-Python 3.10 or later is required.
+Python 3.8 or later is required.
 
 ```bash
 python3 --version
@@ -88,7 +89,7 @@ python3 --version
 ### Launch
 
 ```bash
-python3 akasha_seeds_seeds11.py
+python3 akasha_seeds_seeds12.py
 ```
 
 The script unpacks Akasha into the current directory and starts immediately.
@@ -141,19 +142,25 @@ The same principle governs the seeds format: a single dormant file that contains
 Once libraries are ready, Akasha asks you to create the administrator account.
 
 ```
-[ Genesis Rite ]
-  No consciousness has been established.
-  You are the first. Speak your true name.
-  Akasha Name (this installation): MyAkasha
-  Your name (admin client ID):     admin
-  Passphrase:                      ••••••••
-  Confirm passphrase:              ••••••••
+[ The Pact of Genesis ]
+  No consciousness has been established. You are the first.
+
+  Name this system: MyAkasha
+  Your identity (Admin ID): admin
+
+  About to seal the pact:
+    This system will be named  →  MyAkasha
+    You will be known as       →  admin
+  Is this correct? [yes/no]: yes
+
+  Set passphrase: ••••••••
+  Confirm:        ••••••••
 ```
 
 | Field | Meaning |
 |---|---|
-| **Akasha Name** | The name of this installation — appears in the shell prompt |
-| **Your name** | Your administrator user ID |
+| **Name this system** | The name of this installation — appears in the shell prompt |
+| **Your identity (Admin ID)** | Your administrator user ID |
 | **Passphrase** | Login password (stored locally, never transmitted) |
 
 After completion, the shell opens:
@@ -288,7 +295,7 @@ Each dive brings a new neighbourhood into focus. The graph becomes a landscape y
 
 ## Reading the Colon Notation
 
-You have already seen expressions like `sys:part_of`, `history:rival_of`, and `set:ingred:fruit`. The colon (`:`）is Akasha's universal **namespace separator** — it appears in three distinct roles, and knowing which role you are looking at will prevent a great deal of confusion.
+You have already seen expressions like `sys:part_of`, `history:rival_of`, and `set:ingred:fruit`. The colon (`:`) is Akasha's universal **namespace separator** — it appears in three distinct roles, and knowing which role you are looking at will prevent a great deal of confusion.
 
 ### Role 1 — Atom keys
 
@@ -735,13 +742,13 @@ akasha/user $ svc ls
 
   Services
   ─────────────────────────────────────────
-  http_portal   running   http://127.0.0.1:8000
+  svc:web-portal running   http://127.0.0.1:8000
 ```
 
 If the portal shows as stopped for any reason, start it with:
 
 ```
-akasha/user $ svc start http_portal
+akasha/user $ svc start svc:web-portal
 ```
 
 Then open in any browser on the same machine:
@@ -918,7 +925,7 @@ The web server may not be running. Check with `svc ls` at the Akasha prompt and 
 
 ```
 akasha/user $ svc ls
-akasha/user $ svc start http_portal
+akasha/user $ svc start svc:web-portal
 ```
 
 Then open `http://localhost:8000/`.
@@ -936,7 +943,6 @@ Then open `http://localhost:8000/`.
 | [`docs/concept-model/concept-model-spec.md`](docs/concept-model/concept-model-spec.md) | Concept Model API |
 | [`docs/ontology/ontology-spec.md`](docs/ontology/ontology-spec.md) | Built-in ontology reference |
 | [`docs/developer/api-spec.md`](docs/developer/api-spec.md) | JSON-RPC API reference |
-| [`docs/for-llm/akasha-spec-compact.md`](docs/for-llm/akasha-spec-compact.md) | Compact reference for LLM context |
 
 ---
 

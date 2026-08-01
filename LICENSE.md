@@ -34,15 +34,15 @@ THE SOFTWARE.
 
 Akasha includes a built-in ontology distributed as a set of **packs** (`.ak` files under `ontology/`). The ontology packs are not part of the software kernel. They are structured semantic data derived from various open data sources.
 
-Only the **base** pack loads automatically at startup. All other packs are optional and are activated separately.
+Six packs load automatically at startup — `lexicon`, `base1`, `base2`, `base3`, `curation`, and `recipe`. All other packs are optional and are activated separately.
 
-### Default Pack (loads at startup)
+### Default Packs (load at startup)
 
-**Pack: `base`** — Core vocabulary and fundamental concepts
+**Packs: `base1`, `base2`, `base3`** — Core vocabulary and fundamental concepts
 
-The `base` pack includes word definition data derived from **Princeton University WordNet 3.1**:
+The `base1` pack includes word definition data derived from **Princeton University WordNet 3.1**:
 
-> Files: `ontology/base/word_core_01.ak` – `word_core_04.ak`
+> Files: `ontology/base1/word_core_01.ak` – `word_core_04.ak`
 >
 > WordNet Release 3.1  
 > Copyright 2006 by Princeton University  
@@ -50,14 +50,18 @@ The `base` pack includes word definition data derived from **Princeton Universit
 >
 > "WordNet" is a trademark of Princeton University. This software and database is provided "as is" and Princeton University makes no representations about the suitability of this software and database for any purpose.
 
-The `base` pack also includes English frequency lemma data derived from the **Coxhead Academic Word List (AWL, 2000)**:
+The `base1` pack also includes English frequency lemma data derived from the **Coxhead Academic Word List (AWL, 2000)**:
 
-> File: `ontology/base/word_freq_core.ak`
+> File: `ontology/base1/word_freq_core.ak`
 >
 > Academic Word List — Averil Coxhead, Victoria University of Wellington, 2000.  
 > Used as a word-form reference for lemmatisation anchoring. The content stored in Akasha consists only of bare word tokens (not definitions or AWL text).
 
-All remaining content in the `base` pack (geographic coordinates, historical periods, emotional vocabulary, logical relations, etc.) is original editorial content authored by the Akasha Protocol Project and is covered by the MIT license above.
+All remaining content in the `base1`, `base2`, and `base3` packs (geographic coordinates, historical periods, emotional vocabulary, logical relations, etc.) is original editorial content authored by the Akasha Protocol Project and is covered by the MIT license above.
+
+**Packs: `lexicon`, `curation`, `recipe`** — Definitions, curator runtime, and recipe building blocks
+
+These three packs also load automatically at startup. Their content (first-class relation/namespace definitions, curator exhibition scripts, and shared recipe building blocks) is original editorial content authored by the Akasha Protocol Project and is covered by the MIT license above.
 
 ---
 
@@ -92,9 +96,9 @@ The following packs are distributed with Akasha but **do not load automatically*
 
 ### Important Notices
 
-#### WordNet — Required Attribution (base and vocab packs)
+#### WordNet — Required Attribution (base1 and vocab packs)
 
-Any redistribution of Akasha that includes the `base` or `vocab` ontology pack must include the WordNet copyright notice and the license text, available at:
+Any redistribution of Akasha that includes the `base1` or `vocab` ontology pack must include the WordNet copyright notice and the license text, available at:
 
 https://wordnet.princeton.edu/license-and-commercial-use
 
@@ -144,11 +148,11 @@ The following files contain explicit source attribution in their file headers. T
 
 | File(s) | Source noted |
 | :--- | :--- |
-| `base/word_core_01.ak` – `word_core_04.ak` | Princeton University WordNet 3.1 |
+| `base1/word_core_01.ak` – `word_core_04.ak` | Princeton University WordNet 3.1 |
 | `vocab/word_ext_01.ak` – `word_ext_10.ak` | Princeton University WordNet 3.1 |
-| `base/word_freq_core.ak` | Coxhead AWL (2000) · OpenSubtitles/Google frequency lists |
+| `base1/word_freq_core.ak` | Coxhead AWL (2000) · OpenSubtitles/Google frequency lists |
 | `world/iau_constellations.ak` | IAU (1922/1930) — declared Public Domain |
-| `base/si_units.ak` | BIPM · CODATA 2018/NIST — declared Public Domain |
+| `base3/si_units.ak` | BIPM · CODATA 2018/NIST — declared Public Domain |
 | `world/geo_countries_core.ak` | plotly/datasets (world GDP 2014) · Wikipedia URLs (links only, not text) |
 | `space/solar_system.ak` | IAU · JPL · NASA — declared Public Domain |
 | `geology/tectonic_plates.ak` | USGS geological surveys — declared Public Domain |

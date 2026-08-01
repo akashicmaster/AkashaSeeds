@@ -192,7 +192,7 @@ One of the most practical expressions of Akasha's design is the `lens` scanner.
 
 ```
 # Scan the built-in fruits set — sweetness/acidity attributes already in the ontology
-lens src=set:fruits
+lens src=set:ingred:fruit
 
 # Project the scan into a record set
 lens.flatten into=fruit_view

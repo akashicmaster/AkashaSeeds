@@ -87,6 +87,16 @@ def main():
            and ref_era.get("order_applied") == "alpha",
            f"order=era → applied={ref_era.get('order_applied')}")
 
+    # T2b — order=salience ranks by salience descending (the concept-shelf feed), with the
+    # glossary filters engaged (no _SYS_PREFIXES / non-letter headwords). Bounded per-atom reads.
+    ref_sal = d("thesaurus.reference", {"order": "salience", "limit": 5})
+    sconc = ref_sal.get("concepts", [])
+    sal_desc = all(sconc[i]["salience"] >= sconc[i + 1]["salience"] for i in range(len(sconc) - 1))
+    sal_clean = all(c["term"][:1].isalpha() for c in sconc)
+    record("T2b reference salience",
+           ref_sal.get("order_applied") == "salience" and sal_desc and sal_clean and len(sconc) >= 1,
+           f"salience desc={sal_desc} clean={sal_clean} → {[(c['term'], c['salience']) for c in sconc]}")
+
     # T3 — explore search (delegates to the shared discovery core).
     exq = d("thesaurus.explore", {"query": "word:en:mem"})
     hit = {m["term"] for m in exq.get("matches", [])}

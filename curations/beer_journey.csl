@@ -1,0 +1,21 @@
+# beer_journey.csl — the AUTHORED curation "Beer's Journey".
+# Third installment of the exhibition series 「夢追い人の系譜」.
+#
+# AUTHORED mode: a curator's reading of a TWO-BRANCH story — an ancient stem
+# (Mesopotamia → Egypt → the monasteries), then the modern fork of ale vs lager:
+# the warm-fermented ale soul (Benelux → England → Poland) and the cold-fermented
+# lager clarity (Vienna → Germany). The stem and branches are in the graph
+# (chrono:before); the atoms are defined in ontology/curation/beer_journey.ak.
+# No burden of proof — an interpretation (provenance:interpretation).
+#
+# The kernel scans curations/ at boot and runs each .csl. `alias=` makes curation.new
+# idempotent, so re-running on every boot returns the same curation (no duplicates).
+#
+# Read the narrative back with:  narrate curation:beer-journey
+
+$story = curation.new
+    title  = "労働を癒す夢のビバレッジ — ビールの旅"
+    thesis = "Beer read as the dream that soothes labour, forking from one ancient stem. Born of the gods in Mesopotamia and made a wage in Egypt, brewing is kept alive by the medieval monasteries — then the modern age splits it in two: ALE, the warm-fermented soul of the Benelux abbeys, England's porter, and Poland's smoked grodziskie; and LAGER, the cold-fermented clarity of Vienna and Bavaria. Two rivers of the worker's cup, from one barley spring."
+    mode   = "authored"
+    ids    = "beer:origin:mesopotamia, beer:origin:egypt, beer:era:monastery, beer:ale:benelux, beer:ale:england, beer:ale:poland, beer:lager:vienna, beer:lager:germany"
+    alias  = "curation:beer-journey"

@@ -274,13 +274,13 @@ The DNA includes placeholder definitions for alternative philosophical lenses. T
 ## 4. Layer 2 — Acquired Ontology: Startup Files
 
 **Source:** `ontology/` directory — package layout governed by `ontology/REGISTRY.json` v2  
-**Loaded:** The `base1`, `base2`, `base3` packs (autoload=true in REGISTRY.json) load automatically on first startup, in order — base1 first so quick-start works at once, base2/base3 streaming in behind it. All other packages (art, film, tech, world, vocab, …) have autoload=false and are not loaded automatically.  
+**Loaded:** The `lexicon`, `base1`, `base2`, `base3`, `curation`, and `recipe` packs (autoload=true in REGISTRY.json) load automatically on first startup, in REGISTRY order — base1/2/3 stream in so quick-start works at once. All other packages (art, film, tech, world, vocab, nutrition, …) have autoload=false and are not loaded automatically.  
 **Scope:** `sys:universal` (visible to all users)  
 **Mutable:** Yes — add files to the appropriate package directory and they load on next first-boot (or after `onto.reload`)
 
 The acquired ontology extends the DNA with richer vocabulary and concept hubs. It is designed to be the "shared common knowledge" that all users inherit without having to build it themselves.
 
-> **REGISTRY.json v2 package layout:** Loading is **not** a recursive directory walk of `ontology/`. `ontology/REGISTRY.json` lists every package (name + autoload flag). At startup, only packages with `"autoload": true` (currently `base`, `nutrition`, `recipe`, and `curation`) are loaded into the graph. Other packages are loaded on demand or by setting their `"autoload"` flag to `true` and running `onto.reload`. The `ontology/thesaurus/` directory is loaded by the same boot sequence alongside the REGISTRY packages.
+> **REGISTRY.json v2 package layout:** Loading is **not** a recursive directory walk of `ontology/`. `ontology/REGISTRY.json` lists every package (name + autoload flag). At startup, only packages with `"autoload": true` (currently `lexicon`, `base1`, `base2`, `base3`, `curation`, and `recipe`) are loaded into the graph. Other packages are loaded on demand or by setting their `"autoload"` flag to `true` and running `onto.reload`. The `ontology/thesaurus/` directory is loaded by the same boot sequence alongside the REGISTRY packages.
 
 ### 4.1 Shell Script Files (.ak)
 
@@ -352,10 +352,10 @@ On subsequent logins, sentinels are detected and loading is skipped. Use `onto.r
 
 Two commands allow re-loading ontology after modification. Both require **LIBRARIAN** role or above.
 
-**`onto.reload`** — Soft reset. Removes all four boot sentinels and re-triggers the full boot sequence in a background thread. Existing atoms are idempotent (content-addressed: same content = same key = no change). New or modified files will be picked up.
+**`onto.reload confirm="RELOAD"`** — Soft reset. Removes all four boot sentinels and re-triggers the full boot sequence in a background thread. Existing atoms are idempotent (content-addressed: same content = same key = no change). New or modified files will be picked up. The `confirm="RELOAD"` argument is **required** — without it the command returns guidance and does nothing.
 
 ```
-akasha/user $ onto.reload
+akasha/user $ onto.reload confirm="RELOAD"
 {
   "status": "reload_triggered",
   "sentinels_cleared": ["ont:ak:atoms:loaded", "ont:ak:loaded", "ont:csl:loaded", "ont:curation:loaded"],
@@ -428,7 +428,7 @@ Before running, validate and preview:
 
 ```
 akasha/user $ csl.check script="..."   # check for errors
-akasha/user $ csl.dry   script="..."   # preview operations
+akasha/user $ csl.build   script="..."   # preview operations
 akasha/user $ csl.run   script="..."   # execute
 ```
 
@@ -548,7 +548,7 @@ ontology/
 ├── base3/                   autoload=true — the sciences & knowledge map (~4.4k atoms, 57 files)
 │   ├── PACK.json
 │   └── academia.ak, astrophysics.ak, agriculture.ak, phil.ak, sci.ak, geo.ak, … 
-├── nutrition/, recipe/, curation/   autoload=true — food-app packs + curator runtime
+├── lexicon/, curation/, recipe/     autoload=true — relation/namespace definitions, curator runtime, recipe blocks (nutrition/ is autoload=false, tier-C)
 ├── tech/                    autoload=false — technology & computing namespaces
 │   ├── PACK.json
 │   ├── ai.ak, sys.ak, prog.ak, data.ak, … (60+ files)
@@ -568,13 +568,13 @@ curations/                   ← auto-loaded after ont:csl:loaded sentinel
 └── sky_dreamers.csl         curator exhibition scripts (Thesaurus concept model)
 ```
 
-Package loading is driven by `ontology/REGISTRY.json` v2, not by a recursive directory walk. Only packages with `"autoload": true` are loaded at startup — currently `base`, `nutrition`, `recipe`, and `curation`. To activate another package, set its `"autoload"` to `true` in REGISTRY.json and run `onto.reload`.
+Package loading is driven by `ontology/REGISTRY.json` v2, not by a recursive directory walk. Only packages with `"autoload": true` are loaded at startup — currently `lexicon`, `base1`, `base2`, `base3`, `curation`, and `recipe`. To activate another package, set its `"autoload"` to `true` in REGISTRY.json and run `onto.reload confirm="RELOAD"`.
 
 **`curations/`** is at the project root (outside `ontology/`). After the `ont:csl:loaded` sentinel is set, the boot sequence automatically loads all `.csl` files from `curations/`. This triggers on every boot where the `ont:curation:loaded` sentinel is absent — i.e., on first install and after `onto.reload` / `onto.reset`.
 
 ### 7.2 Base Packages (`ontology/base1–3/`)
 
-The `base1`/`base2`/`base3` packs load automatically at startup (progressively, in order), alongside `nutrition`, `recipe`, and `curation`. Together the base packs hold the core vocabulary, everyday life-world, and specialist/knowledge canopy — roughly 16k atoms across ~186 `.ak` files (base1 ≈ words, feelings and the everyday table; base2 ≈ the life-world; base3 ≈ the sciences and the knowledge map). Representative files:
+The `base1`/`base2`/`base3` packs load automatically at startup (progressively, in order), alongside `lexicon`, `curation`, and `recipe`. Together the base packs hold the core vocabulary, everyday life-world, and specialist/knowledge canopy — roughly 16k atoms across ~186 `.ak` files (base1 ≈ words, feelings and the everyday table; base2 ≈ the life-world; base3 ≈ the sciences and the knowledge map). Representative files:
 
 **`emo.ak`** — Extended emotion vocabulary  
 Defines compound emotion concepts with `emo:*` aliases, extending the 8 primary emotions hard-coded in DNA: `emo:admiration`, `emo:adoration`, `emo:aesthetic`, `emo:amusement`, `emo:anxiety`, `emo:awkwardness`, and more.

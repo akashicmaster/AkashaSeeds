@@ -51,6 +51,15 @@ class SQLiteBackend(AkashaBackend):
         # Named after the db file for log clarity in multi-cortex deployments.
         self._wq = WriteQueue(name=f"core-writer:{os.path.basename(db_path)}")
 
+        # Coordinated shutdown: register this backend's close() so the lifecycle teardown
+        # can checkpoint + drain its WriteQueue before connections are closed at exit.
+        self._closed = False
+        try:
+            from lib.akasha import lifecycle
+            lifecycle.register_closer(self.close)
+        except Exception:
+            pass
+
         # Batch-write counter: tracks nested begin_batch() / end_batch() calls.
         # When > 0, PRAGMA synchronous=OFF is active on the WriteQueue connection
         # so commits are instant (no fsync).  Only the WriteQueue thread
@@ -103,13 +112,31 @@ class SQLiteBackend(AkashaBackend):
             # thread writes — no SQLITE_BUSY on read/write overlap.
             # Durability is handled at the layer above (synchronous=FULL for
             # nucleus, filesystem sentinel files) — not by journal mode.
-            c.execute("PRAGMA journal_mode=WAL")
+            # Journal mode is WAL by default (readers never block the single writer). On hosts
+            # whose filesystem does not reliably persist the -wal/-shm sidecars — chiefly iCloud
+            # Drive on iOS, where a lost WAL means lost commits between launches — AKASHA_SQLITE_
+            # JOURNAL=TRUNCATE keeps all data in the single .db file. Single-process embedded (the
+            # iOS mode) has no concurrent-reader requirement, and busy_timeout covers the WQ
+            # thread vs main-thread overlap.
+            _journal = (os.environ.get("AKASHA_SQLITE_JOURNAL", "WAL").strip().upper()
+                        if os.environ.get("AKASHA_SQLITE_JOURNAL") else "WAL")
+            if _journal not in ("WAL", "TRUNCATE", "DELETE", "PERSIST", "MEMORY", "OFF"):
+                _journal = "WAL"
+            c.execute(f"PRAGMA journal_mode={_journal}")
             c.execute(f"PRAGMA synchronous={self._sync_mode}")
             # Retry for up to 5 s on SQLITE_BUSY — guards against any residual
             # overlap between WriteQueue threads writing to the same DB file
             # (e.g. IAM vault writes racing with JCL atom writes on nucleus.db).
             c.execute("PRAGMA busy_timeout=5000")
             self._local.conn = c
+            # Track for the coordinated graceful shutdown, so every per-thread
+            # connection is closed before the interpreter finalizes the sqlite3 C
+            # module (a still-open/in-use connection at teardown can segfault).
+            try:
+                from lib.akasha import lifecycle
+                lifecycle.register_conn(c)
+            except Exception:
+                pass
         return self._local.conn
 
     def _commit(self) -> None:
@@ -175,13 +202,25 @@ class SQLiteBackend(AkashaBackend):
         Called on graceful shutdown (atexit); SIGKILL durability relies on
         synchronous=FULL ensuring each commit reaches disk before returning.
         """
+        if getattr(self, "_closed", False):
+            return                                  # idempotent: called via lifecycle AND atexit
+        self._closed = True
+
         def _checkpoint():
             try:
                 self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
                 self.conn.commit()
             except Exception:
                 pass
-        self._wq.submit(_checkpoint)
+        # Ordered graceful shutdown — this is what stops the `exit`-mid-load segfault:
+        #  1. begin_closing(): background feeders (the boot-load daemon) stop handing the
+        #     worker new SQLite writes — their late submits become no-ops (crash-stop).
+        #  2. checkpoint at HIGH priority (-2) so it runs ahead of any queued backlog.
+        #  3. shutdown(): drop the not-yet-started backlog, then JOIN the worker so it has
+        #     fully exited before the interpreter finalizes the sqlite3 C module. No write
+        #     is in flight at teardown, so there is nothing to crash.
+        self._wq.begin_closing()
+        self._wq.submit(_checkpoint, priority=-2, force=True)
         self._wq.shutdown()
 
     # ── Schema bootstrap & migration ──────────────────────────────────────────
@@ -593,6 +632,25 @@ class SQLiteBackend(AkashaBackend):
             "SELECT alias FROM aliases WHERE key=?", (key,)
         ).fetchall()]
 
+    def get_aliases_for_keys(self, keys) -> Dict[str, List[str]]:
+        """Batched alias lookup — {key: [alias, …]} for many keys in ONE (chunked) query,
+        instead of a get_aliases_by_key call per key. Enumerating a large set-based dictionary
+        (resolving every member's display alias) is otherwise O(N) separate queries, which under
+        read contention (a concurrent boot weave) stalls the cell; this bounds it to
+        ceil(N/CHUNK) queries. Order within a key's list follows insertion (rowid)."""
+        out: Dict[str, List[str]] = {}
+        keys = list(dict.fromkeys(k for k in keys if k))     # de-dup, preserve order, drop falsy
+        if not keys:
+            return out
+        CHUNK = 900                                          # < SQLite default variable limit (999)
+        for i in range(0, len(keys), CHUNK):
+            part = keys[i:i + CHUNK]
+            ph = ",".join("?" * len(part))
+            for r in self.conn.execute(
+                    f"SELECT key, alias FROM aliases WHERE key IN ({ph})", part).fetchall():
+                out.setdefault(r["key"], []).append(r["alias"])
+        return out
+
     def get_aliases_by_pattern(self, pattern: str) -> List[dict]:
         # LOWER() is SQLite built-in and covers ASCII only (U+0000–U+007F).
         # Sufficient while aliases are ASCII namespace:word identifiers.
@@ -620,21 +678,55 @@ class SQLiteBackend(AkashaBackend):
         self._commit()
 
     def get_adjacent_links(self, src: str,
-                           rel_pattern: Optional[str] = None) -> List[dict]:
+                           rel_pattern: Optional[str] = None,
+                           limit: Optional[int] = None,
+                           order_by_weight: bool = False) -> List[dict]:
         query = "SELECT dst, rel, w, dir, type, author, status FROM links WHERE src=?"
         params = [src]
         if rel_pattern:
             query += " AND rel LIKE ?"
             params.append(rel_pattern)
+        if order_by_weight:
+            query += " ORDER BY w DESC"
+        if limit is not None:
+            # Bound the OUTGOING fan-out too — a dense hub in a rich thesaurus can point OUT to
+            # thousands of related concepts; materializing them all is an O(density) spike on a dive.
+            query += " LIMIT ?"
+            params.append(int(limit))
         return [dict(r) for r in self.conn.execute(query, params).fetchall()]
 
+    def count_adjacent_links(self, src: str) -> int:
+        """COUNT of OUTGOING edges of `src` — no row materialization. The dive's per-signpost
+        "branches ahead" cue only needs the number, so a COUNT(*) is strictly cheaper than
+        fetching top-N rows just to len() them."""
+        return int(self.conn.execute(
+            "SELECT COUNT(*) FROM links WHERE src=?", (src,)).fetchone()[0])
+
+    def count_incoming_links(self, dst: str) -> int:
+        """COUNT of INCOMING edges of `dst` — no row materialization."""
+        return int(self.conn.execute(
+            "SELECT COUNT(*) FROM links WHERE dst=?", (dst,)).fetchone()[0])
+
     def get_incoming_links(self, dst: str,
-                           rel_pattern: Optional[str] = None) -> List[dict]:
+                           rel_pattern: Optional[str] = None,
+                           limit: Optional[int] = None,
+                           order_by_weight: bool = False) -> List[dict]:
         query = "SELECT src, rel, w, dir, type, author, status FROM links WHERE dst=?"
         params = [dst]
         if rel_pattern:
             query += " AND rel LIKE ?"
             params.append(rel_pattern)
+        if order_by_weight:
+            # Weight-ordered top-N: with `limit`, keep the STRONGEST incoming edges rather than
+            # the first N in scan order — so a mega-hub's fan-out is bounded WITHOUT dropping its
+            # highest-weight neighbours (the ones the dive/resonance display would pick anyway).
+            query += " ORDER BY w DESC"
+        if limit is not None:
+            # Bound the fetch for a mega-popular target (a common tag like emo:joy — or a hub like
+            # a country/company — can have tens of thousands of incoming edges); an unbounded
+            # materialization of those is the read-storm (and RAM/GIL storm) the dive must avoid.
+            query += " LIMIT ?"
+            params.append(int(limit))
         return [dict(r) for r in self.conn.execute(query, params).fetchall()]
 
     # ── Collections ───────────────────────────────────────────────────────────
@@ -861,7 +953,10 @@ class SQLiteBackend(AkashaBackend):
             "SELECT * FROM chunks ORDER BY rowid DESC LIMIT ?", (limit,)
         ).fetchall()]
 
-    def get_all_chunks(self) -> List[dict]:
+    def get_all_chunks(self, limit: Optional[int] = None) -> List[dict]:
+        if limit is not None:
+            return [dict(r) for r in self.conn.execute(
+                "SELECT * FROM chunks LIMIT ?", (int(limit),)).fetchall()]
         return [dict(r) for r in self.conn.execute("SELECT * FROM chunks").fetchall()]
 
     def get_all_links(self, rel_filter: Optional[str] = None,
@@ -875,8 +970,75 @@ class SQLiteBackend(AkashaBackend):
             "SELECT src, dst, rel, w FROM links ORDER BY rel, src LIMIT ?", (limit,)
         ).fetchall()]
 
+    def distinct_link_dsts(self, rel, limit: int = 200000) -> List[str]:
+        """Every distinct dst key for a relation (or ANY of several relations) — e.g. `sys:is_a`
+        gives the set of concepts that have ≥1 sub-concept (the taxa / branch concepts). `rel` may
+        be a single relation string or an iterable of them (matched with `rel IN (…)`), so the
+        concept navigator can classify children as branch-vs-leaf over the whole is-a FAMILY in
+        ONE query instead of a query per child."""
+        rels = [rel] if isinstance(rel, str) else list(rel)
+        if not rels:
+            return []
+        ph = ",".join("?" * len(rels))
+        return [r[0] for r in self.conn.execute(
+            f"SELECT DISTINCT dst FROM links WHERE rel IN ({ph}) LIMIT ?", (*rels, limit)
+        ).fetchall()]
+
     def get_all_keys(self) -> List[str]:
         return [r["key"] for r in self.conn.execute("SELECT key FROM chunks").fetchall()]
+
+    @_queued
+    def stamp_pack_provenance(self, keys: List[str], pack: str) -> int:
+        """Batch-mark pack-contributed atoms `provenance="ontology"` and append `pack` to their
+        meta `pack` owner list (cross-pack ref-count) in ONE transaction — the reconciler's load
+        stamping, O(1) commits instead of an fsync per atom. FENCED: a key that carries a user
+        access scope (owner:/view:/user:) is skipped, so a content-collided user atom is never
+        marked pack-owned. Idempotent. Returns the number of atoms changed."""
+        keys = [k for k in dict.fromkeys(keys) if k]
+        if not keys:
+            return 0
+        protected: set = set()
+        CH = 900
+        for i in range(0, len(keys), CH):
+            part = keys[i:i + CH]
+            ph = ",".join("?" * len(part))
+            for r in self.conn.execute(
+                    f"SELECT DISTINCT key FROM chunk_access WHERE key IN ({ph}) AND "
+                    "(scope LIKE 'owner:%' OR scope LIKE 'view:%' OR scope LIKE 'user:%')", part):
+                protected.add(r["key"])
+        n = 0
+        for key in keys:
+            if key in protected:
+                continue
+            row = self.conn.execute("SELECT meta FROM chunks WHERE key=?", (key,)).fetchone()
+            if not row:
+                continue
+            try:
+                meta = json.loads(row["meta"]) if row["meta"] else {}
+            except Exception:
+                meta = {}
+            owners = meta.get("pack")
+            owners = list(owners) if isinstance(owners, list) else ([owners] if owners else [])
+            changed = False
+            if meta.get("provenance") != "ontology":
+                meta["provenance"] = "ontology"; changed = True
+            if pack not in owners:
+                owners.append(pack); meta["pack"] = owners; changed = True
+            if changed:
+                self.conn.execute("UPDATE chunks SET meta=? WHERE key=?", (json.dumps(meta), key))
+                n += 1
+        self._commit()
+        return n
+
+    def get_keys_by_status(self, status: str, limit: Optional[int] = None) -> List[str]:
+        """Atom keys in a given lifecycle status (e.g. 'evicted') — used by the ontology
+        reconciler's opt-in hard-compaction vacuum to find already-soft-retired orphans."""
+        q = "SELECT key FROM chunks WHERE status=?"
+        params: list = [status]
+        if limit is not None:
+            q += " LIMIT ?"
+            params.append(int(limit))
+        return [r["key"] for r in self.conn.execute(q, params).fetchall()]
 
     def get_recent_atom_hashes(self, since: float) -> List[str]:
         return [r["key"] for r in self.conn.execute(

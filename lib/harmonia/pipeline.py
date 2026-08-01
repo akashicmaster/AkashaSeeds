@@ -221,8 +221,9 @@ class ResponseSink(Sink):
 # ── Concept-model projection endpoints (base: lens scan + cast) ───────────────────────────
 # The general "project into ANY concept model" path routes through lens: scan an in-graph
 # source into candidate models, then cast the scanned nodes into one. These endpoints wrap
-# that as a pipe. The base is model-agnostic; today only `table` implements the Importable
-# contract, so table is the one working target (other models are a per-model follow-up).
+# that as a pipe. The base is model-agnostic; `table` (schema-first) and `rec` (schema-free
+# universal fallback) implement the Importable contract, and `survey` is Exportable (a survey
+# root scans OUT to its responses); other models are a per-model follow-up.
 # lens.cast consumes the nodes the paired scan staged in the session, so LensScanSource and
 # ConceptCastSink must share a session (run_pipeline runs them in sequence, which they do).
 class LensScanSource(Source):
@@ -247,7 +248,7 @@ class LensScanSource(Source):
 
 class ConceptCastSink(Sink):
     """Cast the current lens scan into a concept model (lens.cast). Works for any model that
-    implements the Importable contract — currently `table`. `into` names the target."""
+    implements the Importable contract — `table` or `rec`. `into` names the target."""
     def __init__(self, dispatch: Callable[[str, dict], dict], model: str = "table",
                  into: Optional[str] = None):
         self.dispatch, self.model, self.into = dispatch, model, into
@@ -505,3 +506,187 @@ class NarrativeSink(Sink):
                 text, llm_used = template, False
         return {"kind": "present", "format": "narrative", "text": text,
                 "focus": (view.get("focus") or {}).get("key"), "llm_used": llm_used}
+
+
+# ── Curation → Presentation → Export (dispatch-injected, akasha-free) ─────────────────────
+# Two hops from a curation's narrative path to a self-contained public export artifact:
+#   HOP A  CurationPathSource → PresentationSink        (curation.project as=presentation)
+#   HOP B  PresentationSceneSource → ExportSink(format) (pres.export as=scroll|kamishibai)
+# Reference, never copy: a frame stores the curation atom's key (ref_id); the export RESOLVES
+# each atom's full card (thesaurus.concept) at export time, so the artifact reflects the live
+# graph yet needs zero graph access to render. Spec: docs/for-llm/curation-presentation-scroll-spec.md
+class CurationPathSource(Source):
+    """HOP A source — a curation's ordered narrative path (curation.narrate) as a table Stream,
+    one row per path atom in narrative order. References atoms by content-addressed key, never
+    copies them."""
+    def __init__(self, dispatch: Callable[[str, dict], dict], curation_id: str):
+        self.dispatch, self.curation_id = dispatch, curation_id
+
+    def read(self) -> Stream:
+        r = self.dispatch("curation.narrate", {"curation_id": self.curation_id}) or {}
+        res = r.get("result")
+        if not res:
+            raise ValueError((r.get("error") or {}).get("message", "curation not found"))
+        rows = [{"order": i, "ref_id": s.get("key"), "name": s.get("name") or "",
+                 "preview": s.get("preview", ""), "rel": "curation:next"}
+                for i, s in enumerate(res.get("steps") or [])]
+        return Stream.table(
+            ["order", "ref_id", "name", "preview", "rel"], rows,
+            meta={"title": res.get("title", ""), "thesis": res.get("thesis", ""),
+                  "grounds": res.get("grounds", {}), "mode": res.get("mode", "")},
+            origin=f"curation:{res.get('curation_id', self.curation_id)}")
+
+
+class PresentationSink(Sink):
+    """HOP A sink — build a presentation deck from a curation-path table: one frame per row
+    (1 atom = 1 scene), narrative order preserved, deck title = curation name. The frame's
+    `ref_id` points back at the curation atom; `preview` rides along as the frame note (caption
+    source). Uses the pres.* verbs via dispatch. Returns {presentation_id, deck_id, frames}."""
+    def __init__(self, dispatch: Callable[[str, dict], dict], title: Optional[str] = None):
+        self.dispatch, self.title = dispatch, title
+
+    def write(self, stream: Stream) -> Dict[str, Any]:
+        if stream.kind != Stream.TABLE:
+            raise ValueError("PresentationSink requires a table stream")
+        title = self.title or stream.meta.get("title") or "Curation"
+        pr = self.dispatch("pres.new", {"title": title,
+                                        "thesis": stream.meta.get("thesis", ""),
+                                        "grounds": stream.meta.get("grounds", {})}) or {}
+        pres_id = (pr.get("result") or {}).get("presentation_id")
+        if not pres_id:
+            raise ValueError((pr.get("error") or {}).get("message", "pres.new failed"))
+        dr = self.dispatch("pres.deck.add", {"title": title}) or {}
+        deck_id = (dr.get("result") or {}).get("deck_id")
+        n = 0
+        for row in stream.rows:
+            fr = self.dispatch("pres.frame.add", {
+                "deck_id": deck_id,
+                "title": row.get("name") or f"Scene {row.get('order')}",
+                "order": float(row.get("order") or 0),
+                "ref_universe": "local", "ref_id": row.get("ref_id"),
+                "note": row.get("preview", "")}) or {}
+            if (fr.get("result") or {}).get("frame_id"):
+                n += 1
+        return {"kind": "presentation", "presentation_id": pres_id, "deck_id": deck_id,
+                "frames": n, "source": stream.origin}
+
+
+class PresentationSceneSource(Source):
+    """HOP B source — a presentation's frames in order, each resolved into a FULL, self-contained
+    atom card via thesaurus.concept (description / external refs / related links / image). For
+    `kamishibai`, each frame's Region→Node layout is resolved into `blocks[]`; for `scroll`,
+    `blocks` is empty. `get_meta(key)->dict` and `get_links(key, rel)->[(dst, rel), …]` are
+    injected (keeps this module akasha-free). Degradation-first: a missing/denied ref becomes a
+    headword-only scene, never a drop."""
+    def __init__(self, dispatch, pres_id, fmt, get_meta, get_links):
+        self.dispatch, self.pres_id, self.fmt = dispatch, pres_id, fmt
+        self.get_meta, self.get_links = get_meta, get_links
+
+    @staticmethod
+    def _readable(leaf: str) -> str:
+        s = (leaf or "").replace("_", " ").strip()
+        return s[:1].upper() + s[1:] if s else s
+
+    @staticmethod
+    def _real_concept(name: str) -> bool:
+        # a deep-linkable concept alias: namespaced, not a system set / hub-shadow / bare proto-word
+        if not name or ":" not in name or name.startswith(("set:", "leaf:", "ns:", "lang:", "scope:")):
+            return False
+        seg = name.split(":")[-1]
+        return not (len(seg) >= 16 and all(c in "0123456789abcdef" for c in seg.lower()))
+
+    def _card(self, ref_id, headword):
+        desc, image, refs, links, href = "", None, [], [], ""
+        if ref_id:
+            cr = self.dispatch("thesaurus.concept", {"atom_id": ref_id}) or {}
+            cc = cr.get("result")
+            if cc:
+                atom = cc.get("atom") or {}
+                name = atom.get("name") or ""
+                # prefer the readable term ("Icarus") over the raw alias ("concept:icarus")
+                headword = self._readable(atom.get("term") or "") or headword or name
+                desc = atom.get("description") or ""
+                href = f"/a/{name}" if name else ""
+                img = (atom.get("meta") or {}).get("image")
+                image = img if isinstance(img, dict) and img.get("url") else None
+                refs = [rf for rf in (cc.get("external_refs") or []) if rf.get("url")]
+                seen = set()
+                for st in (cc.get("related") or []):
+                    nm = st.get("name") or st.get("term")
+                    if nm and nm not in seen and self._real_concept(nm):
+                        seen.add(nm)
+                        links.append({"name": nm, "href": f"/a/{nm}", "rel": st.get("rel", "")})
+                    if len(links) >= 10:
+                        break
+        return headword, desc, image, refs, links, href
+
+    def _blocks(self, frame_key):
+        blocks = []
+        regions = sorted(((self.get_meta(rk) or {}).get("order", 0), rk, self.get_meta(rk) or {})
+                         for rk, _ in (self.get_links(frame_key, "pres:region") or []))
+        for _o, rk, rm in regions:
+            label = rm.get("label", "")
+            for nk, _ in (self.get_links(rk, "pres:node") or []):
+                nm = self.get_meta(nk) or {}
+                body = ""
+                ref = nm.get("ref_id")
+                head = ""
+                if ref:
+                    head, body, _i, _r, _l, _h = self._card(ref, "")
+                blocks.append({"region": label, "order": nm.get("order", 0),
+                               "role": nm.get("role", "item"), "style": nm.get("style"),
+                               "ref_id": ref, "headword": head, "body": body})
+        return blocks
+
+    def read(self) -> Stream:
+        o = self.dispatch("pres.open", {"pres_id": self.pres_id}) or {}
+        if not (o.get("result")):
+            raise ValueError((o.get("error") or {}).get("message", "presentation not found"))
+        inv = (self.dispatch("pres.list", {}) or {}).get("result") or {}
+        frames = sorted(((float((self.get_meta(fk) or {}).get("order", 0) or 0), fk,
+                          self.get_meta(fk) or {}) for fk in (inv.get("frames") or [])),
+                        key=lambda t: t[0])
+        rows = []
+        for i, (_order, fk, fm) in enumerate(frames):
+            headword, desc, image, refs, links, href = self._card(
+                fm.get("ref_id"), fm.get("title") or "")
+            rows.append({
+                "scene": i, "ref_id": fm.get("ref_id"), "headword": headword,
+                "description": desc, "image": image, "refs": refs, "links": links,
+                "caption": fm.get("note") or "", "href": href,
+                "blocks": self._blocks(fk) if self.fmt == "kamishibai" else []})
+        pm = self.get_meta(self.pres_id) or {}
+        return Stream.table(
+            ["scene", "ref_id", "headword", "description", "image", "refs", "links",
+             "caption", "href", "blocks"], rows,
+            meta={"title": pm.get("title", ""), "thesis": pm.get("thesis", ""),
+                  "grounds": pm.get("grounds", {}), "presentation_id": self.pres_id,
+                  "format": self.fmt},
+            origin=f"presentation:{self.pres_id}")
+
+
+class ExportSink(Sink):
+    """HOP B sink — render the scene table into the self-contained export object (§6): the shared
+    spine (title/thesis/grounds/count + ordered scenes[]) for both formats; `kamishibai` adds each
+    scene's `blocks[]`. Format-only, no graph writes (a READ). The export is fully baked — every
+    value the frontend needs is inline, so the archives page renders it with zero graph access."""
+    def __init__(self, fmt: str):
+        self.fmt = fmt if fmt in ("scroll", "kamishibai") else "scroll"
+
+    def write(self, stream: Stream) -> Dict[str, Any]:
+        scenes = []
+        for row in stream.rows:
+            scene = {"scene": row.get("scene"), "ref_id": row.get("ref_id"),
+                     "headword": row.get("headword") or "",
+                     "description": row.get("description") or "",
+                     "image": row.get("image"), "refs": row.get("refs") or [],
+                     "links": row.get("links") or [], "caption": row.get("caption") or "",
+                     "href": row.get("href") or ""}
+            if self.fmt == "kamishibai":
+                scene["blocks"] = row.get("blocks") or []
+            scenes.append(scene)
+        m = stream.meta
+        export = {"format": self.fmt, "presentation_id": m.get("presentation_id"),
+                  "title": m.get("title", ""), "thesis": m.get("thesis", ""),
+                  "grounds": m.get("grounds", {}), "scenes": scenes, "count": len(scenes)}
+        return {"kind": "doc", "format": self.fmt, "export": export}

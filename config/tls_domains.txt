@@ -1,0 +1,14 @@
+# HTTPS domains for this Akasha cell — one hostname per line.
+#
+# To enable HTTPS: remove the '#' from a line below (or add your own domain),
+# then restart akasha. On boot it obtains a free Let's Encrypt certificate for
+# these domains and serves HTTPS on 443 (port 80 redirects to it).
+#
+# Requirements: each domain's DNS A/AAAA record must point at this machine, and
+# ports 80 and 443 must be open. No shell commands or env vars needed — just edit
+# this file. (For email / staging options, use config/tls.json instead — see
+# config/tls.json.example.)
+#
+# Examples (uncomment and edit):
+# akashicarchives.net
+# www.akashicarchives.net

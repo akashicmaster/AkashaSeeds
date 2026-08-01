@@ -35,19 +35,45 @@ class NoteConcept(BaseConcept):
     Bridges the gap between qualitative research and structural graph databases.
     """
 
+    CONCEPT_PREFIX = "note"
+    CONCEPT_LABEL  = "Cognitive Document — hierarchical, editable notes"
+    # The FULL note command surface lives here (issue #50 Stage 2): the model is the ONE
+    # drop-in path, replacing the retired hand-wired note.* / loom.note.* kernel handlers.
+    # Actions are annotated explicitly (they were load-bearing in the retired METHOD_TO_ACTION
+    # block). CONCEPT_NAMESPACES exposes the same ops as `loom.note.*` bound to namespace="loom".
     CONCEPT_METHODS = {
-        "list":    {"op": "op_list_chunks"},
-        "edit":    {"op": "op_edit_chunk",
+        "new":     {"op": "op_new", "action": "write",
+                    "coerce": lambda d: {"title": d.get("title") or d.get("name", "")}},
+        "add":     {"op": "op_add_chunk", "action": "write",
+                    "coerce": lambda d: {"text": d.get("text") if d.get("text") is not None
+                                         else d.get("content", "")}},
+        "section": {"op": "op_section", "action": "write"},
+        "paragraph": {"op": "op_paragraph", "action": "write"},
+        "toc":     {"op": "op_toc", "action": "read"},
+        "read":    {"op": "op_get_sequential_text", "action": "read"},
+        "list":    {"op": "op_list_chunks", "action": "read"},
+        "edit":    {"op": "op_edit_chunk", "action": "write",
                     "coerce": lambda d: {"chunk_id": d.get("chunk_id") or d.get("id", ""),
                                          "text": d.get("text", "")}},
-        "move":    {"op": "op_move_chunk",
+        "move":    {"op": "op_move_chunk", "action": "write",
                     "coerce": lambda d: {"chunk_id": d.get("chunk_id") or d.get("id", ""),
                                          "after": d.get("after")}},
-        "undo":    {"op": "op_undo_edit"},
-        "redo":    {"op": "op_redo_edit"},
-        "restore": {"op": "op_restore_original"},
-        "rename":  {"op": "op_rename"},
+        "undo":    {"op": "op_undo_edit", "action": "write"},
+        "redo":    {"op": "op_redo_edit", "action": "write"},
+        "restore": {"op": "op_restore_original", "action": "write"},
+        "rename":  {"op": "op_rename", "action": "write"},
+        "rm":      {"op": "op_delete", "action": "drop"},
+        "clone":   {"op": "op_clone", "action": "write"},
+        "open":    {"op": "op_open", "action": "write",
+                    "coerce": lambda d: {"note_id": d.get("note_id") or d.get("id", "")}},
+        "ls":      {"op": "op_list_notes", "action": "read"},
+        "export":  {"op": "op_export", "action": "read"},
+        "import":  {"op": "op_import", "action": "write",
+                    "coerce": lambda d: {"capsule": d.get("capsule", "")}},
     }
+    # Namespace-aliased surface: loom.note.* = the note ops instantiated with namespace="loom"
+    # (an isolated active-note cursor; storage/scope are shared — see the Note Loom app).
+    CONCEPT_NAMESPACES = {"loom.note": "loom"}
 
     def __init__(self, session: Any, concept_id: Optional[str] = None, namespace: Optional[str] = None):
         super().__init__(session, concept_id, namespace=namespace)
@@ -679,3 +705,62 @@ class NoteConcept(BaseConcept):
             if text:
                 clone.op_add_chunk(text=text)
         return {"note_id": clone.concept_id, "title": f"(Copy) {title}"}
+
+    # ── Document-level ops (migrated from the retired kernel handlers, #50 Stage 2) ──
+    # These four were inline in kernel.py (_handle_note_export/import/ls/open). They now
+    # live on the model so note dispatches through the ONE registry path. The `namespace`
+    # (loom) behaviour comes free via self._ctx_key / self.namespace — see CONCEPT_NAMESPACES.
+
+    def op_open(self, note_id: str = "") -> Dict[str, Any]:
+        """[note.open] Mount an existing note as the active document (by note_id)."""
+        note_id = (note_id or "").strip()
+        if not note_id:
+            raise ValueError("note.open requires 'note_id'")
+        try:
+            meta = self.cortex.get_meta(note_id)
+        except Exception:
+            meta = {}
+        if not meta or meta.get("concept") != "note":
+            raise RuntimeError(f"Note '{note_id[:12]}' not found")
+        self.session.set_context(self._ctx_key("active_note_root"), note_id)
+        self.session.set_context(self._ctx_key("active_container_id"), note_id)
+        return {"status": "opened", "note_id": note_id, "title": meta.get("title", "")}
+
+    def op_list_notes(self) -> Dict[str, Any]:
+        """[note.ls] List this user's notes (document roots), newest first. No active note needed."""
+        client_id = getattr(self.session, "client_id", "system")
+        rows = self.cortex.fetch_by_meta_field("concept", "note", author=client_id)
+        notes = []
+        for row in rows:
+            try:
+                meta = json.loads(row.get("meta") or "{}")
+            except Exception:
+                meta = {}
+            if meta.get("role") == "document":
+                notes.append({
+                    "note_id":    row["key"],
+                    "title":      meta.get("title", ""),
+                    "created_at": meta.get("created_at", 0),
+                })
+        notes.sort(key=lambda x: x["created_at"], reverse=True)
+        return {"notes": notes}
+
+    def op_export(self) -> Dict[str, Any]:
+        """[note.export] Export the active note as an Akasha capsule (JSON string)."""
+        self._require_concept()
+        from lib.akasha.capsule import KnowledgeCapsule
+        doc_type = f"{self.namespace}:note" if self.namespace else "note"
+        capsule_json = KnowledgeCapsule(self.session).encapsulate_document(
+            concept_id = self.concept_id,
+            set_name   = f"set:note:{self.concept_id}",
+            doc_type   = doc_type,
+            scopes     = self.allowed_scopes,
+        )
+        return {"capsule": capsule_json, "doc_type": doc_type, "concept_id": self.concept_id}
+
+    def op_import(self, capsule: str = "") -> Dict[str, Any]:
+        """[note.import] Import a note from an Akasha capsule; atoms land in a pending isolation scope."""
+        if not capsule:
+            raise ValueError("note.import requires 'capsule' (Akasha capsule JSON string)")
+        from lib.akasha.capsule import KnowledgeCapsule
+        return KnowledgeCapsule(self.session).decapsulate(capsule)

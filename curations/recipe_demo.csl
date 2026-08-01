@@ -1,0 +1,82 @@
+# recipe_demo.csl — example recipes for the recipe concept model.
+#
+# Recipes carry runtime state (recipe.new returns a root id that add/step need),
+# so — like curations — they are authored in CSL and run at boot, NOT as flat
+# ontology .ak. The kernel scans curations/ at boot and runs each .csl; `alias=`
+# makes recipe.new idempotent, so re-running on every boot returns the same
+# recipe (content-addressed + first-wins alias → no duplicates).
+#
+# These three seed the dimensional-axis index so `recipe.suggest` works on a
+# fresh install. They also demonstrate the constraint HARD FILTER: the Thai
+# curry carries a peanut constraint, so:
+#   recipe suggest season=winter have=daikon              → both winter dishes
+#   recipe suggest season=winter have=daikon avoid=peanut → curry is DROPPED
+#
+# The canonical method/constraint vocab (method:simmer, constraint:peanut, …) is
+# defined in ontology/recipe/pantry.ak, loaded before this runs.
+#
+# To preview without writing:  csl.dry script="<paste this file>"
+# To read a card back:         recipe view recipe:demo:daikon_soup
+# To see accumulated nutrition: recipe nutrition recipe:demo:daikon_soup
+
+# ── 0. Food nutrition (USDA-style, per 100 g) ─────────────────────────────────
+# recipe.food is the write endpoint the USDA importer will use; these few let
+# `recipe.nutrition` work on a fresh install. A later USDA load re-points
+# food:<slug> to the full record — recipes resolve nutrition by slug at read time.
+recipe.food  name = "daikon"      kcal = "18"   protein_g = "0.6"  fat_g = "0.1"  carb_g = "4.1"
+recipe.food  name = "pork"        kcal = "242"  protein_g = "27"   fat_g = "14"   carb_g = "0"
+recipe.food  name = "peanut"      kcal = "567"  protein_g = "26"   fat_g = "49"   carb_g = "16"
+recipe.food  name = "tomato"      kcal = "18"   protein_g = "0.9"  fat_g = "0.2"  carb_g = "3.9"
+recipe.food  name = "mozzarella"  kcal = "280"  protein_g = "28"   fat_g = "17"   carb_g = "3.1"
+
+# ── 1. Winter Daikon Soup (japanese · soup · no allergens) ────────────────────
+$soup = recipe.new
+    title  = "冬の大根スープ — Winter Daikon Soup"
+    season = "winter"
+    ethnic = "japanese"
+    course = "soup"
+    alias  = "recipe:demo:daikon_soup"
+
+recipe.add  recipe = $soup.recipe_id  ingredient = "daikon"  qty = "300"  unit = "g"
+recipe.add  recipe = $soup.recipe_id  ingredient = "pork"    qty = "150"  unit = "g"
+recipe.add  recipe = $soup.recipe_id  method = "simmer"
+recipe.add  recipe = $soup.recipe_id  hint = "Skim the foam early for a clear, sweet broth."
+recipe.add  recipe = $soup.recipe_id  plating = "Serve in a warmed bowl; a pinch of yuzu zest on top."
+recipe.add  recipe = $soup.recipe_id  constraint = "kcal<=600"
+# ^ a nutrient TARGET, not an allergen: recipe nutrition checks it against the total.
+
+recipe.step recipe = $soup.recipe_id  text = "Peel the daikon and cut into 2cm rounds."  uses = "daikon"
+recipe.step recipe = $soup.recipe_id  text = "Simmer daikon and pork in dashi 25 min until translucent."  uses = "daikon, pork"  by = "simmer"
+recipe.step recipe = $soup.recipe_id  text = "Season with light soy and rest 5 min before serving."
+
+# ── 2. Winter Thai Curry (thai · curry · CONTAINS PEANUT) ─────────────────────
+$curry = recipe.new
+    title  = "タイ風カレー — Winter Thai Curry"
+    season = "winter"
+    ethnic = "thai"
+    course = "curry"
+    alias  = "recipe:demo:thai_curry"
+
+recipe.add  recipe = $curry.recipe_id  ingredient = "daikon"  qty = "100"  unit = "g"
+recipe.add  recipe = $curry.recipe_id  ingredient = "peanut"  qty = "50"   unit = "g"
+recipe.add  recipe = $curry.recipe_id  method = "fry"
+recipe.add  recipe = $curry.recipe_id  method = "simmer"
+recipe.add  recipe = $curry.recipe_id  constraint = "peanut"
+
+recipe.step recipe = $curry.recipe_id  text = "Fry the curry paste until fragrant."  by = "fry"
+recipe.step recipe = $curry.recipe_id  text = "Add coconut milk, daikon and crushed peanut; simmer 15 min."  uses = "daikon, peanut"  by = "simmer"
+
+# ── 3. Summer Caprese (italian · salad · off-season control) ──────────────────
+$caprese = recipe.new
+    title  = "カプレーゼ — Summer Caprese"
+    season = "summer"
+    ethnic = "italian"
+    course = "salad"
+    alias  = "recipe:demo:caprese"
+
+recipe.add  recipe = $caprese.recipe_id  ingredient = "tomato"     qty = "2"  unit = "pc"
+recipe.add  recipe = $caprese.recipe_id  ingredient = "mozzarella" qty = "1"  unit = "ball"
+recipe.add  recipe = $caprese.recipe_id  plating = "Alternate tomato and mozzarella; basil, olive oil, flaky salt."
+
+recipe.step recipe = $caprese.recipe_id  text = "Slice tomato and mozzarella 1cm thick."
+recipe.step recipe = $caprese.recipe_id  text = "Layer, dress with oil and salt, finish with basil."

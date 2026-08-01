@@ -26,7 +26,7 @@
 - AKASHA is running (`python akasha.py`)
 - At least one user has been created via genesis rite or `user.add`
 - Basic knowledge of HTML and JavaScript `fetch`
-- Recommended: read `docs/cop-tutorial-note.md` (concept-oriented design)
+- Recommended: read `docs/developer/cop-tutorial-note.md` (concept-oriented design)
 
 ---
 
@@ -57,7 +57,7 @@ Before creating `services/static/<name>/index.html`, answer these five questions
 
 Once these five questions are answered, the complete list of JSON-RPC methods is known. The HTML becomes a *form layer over that method list* — no more, no less. The UI never contains application logic; it only reflects concept model state.
 
-See `docs/cop-tutorial-note.md §§1.1–1.5` for a full walkthrough of this design process with NoteConcept, and `docs/cop-tutorial-note.md Part 4` for the general theory of concept-oriented UI/UX design.
+See `docs/developer/cop-tutorial-note.md §§1.1–1.5` for a full walkthrough of this design process with NoteConcept, and `docs/developer/cop-tutorial-note.md Part 4` for the general theory of concept-oriented UI/UX design.
 
 ### 2.3 Handling UX Feedback Without Code Patches
 
@@ -104,7 +104,7 @@ A Presentation UI (`/presentation`) would project `PresentationConcept` in exact
 
 Both UIs follow the same design process; the concept model differs, not the methodology.
 
-The **rendering-agnostic principle** means the same `PresentationConcept` model could also drive a mobile card list or a CLI outline renderer. See `docs/concept-extensions.md §5` for the Presentation model's full operator reference.
+The **rendering-agnostic principle** means the same `PresentationConcept` model could also drive a mobile card list or a CLI outline renderer. See `docs/concept-model/concept-model-spec.md` for the Presentation model's full operator reference.
 
 ### 2.5 The Full Analysis Pipeline in a UI
 
@@ -277,7 +277,7 @@ const toc = await rpc('note.toc', {});
 await rpc('note.rm', {});
 ```
 
-For a full list of available methods see `docs/api-spec.md §10`.
+For a full list of available methods see `docs/developer/api-spec.md §10`.
 
 ---
 
@@ -427,7 +427,7 @@ Common mistakes:
 |---|---|
 | `Identity 'guest' is unknown` | Calling a non-pre-auth method without `session_token`, or using old `auth.login` method |
 | `Authentication failed` | Wrong passphrase, or `session_token` not included in `params` |
-| `Method not found` | Typo in method name; check `docs/api-spec.md §10` |
+| `Method not found` | Typo in method name; check `docs/developer/api-spec.md §10` |
 | Login form pre-fills a username | `value="..."` left on the username input — remove it |
 | `note.ls` returns empty list | No notes created yet for this user, or wrong user logged in |
 | `note.open` returns -32002 | The note_id doesn't exist or belongs to a different user |
@@ -654,11 +654,11 @@ To add a new namespaced service:
 3. Add kernel dispatch that calls `NoteConcept(session, namespace="myservice")`
 4. Use `myservice.note.*` in your client code
 
-See `docs/scope-dimension-model.md §9` and `docs/concept-model-spec.md §12` for the
+See `docs/developer/scope-dimension-model.md §9` and `docs/concept-model/concept-model-spec.md §12` for the
 full specification.
 
 ---
 
-*See `docs/api-spec.md §10.9` for the complete Notes method reference.*  
-*See `docs/concept-extensions.md` for Aggregation, Synthesis, and Presentation concept model references.*  
-*See `docs/cop-tutorial-note.md Part 4` for the general theory of concept-oriented UI/UX design.*
+*See `docs/developer/api-spec.md §10.9` for the complete Notes method reference.*  
+*See `docs/concept-model/concept-model-spec.md` for Aggregation, Synthesis, and Presentation concept model references.*  
+*See `docs/developer/cop-tutorial-note.md Part 4` for the general theory of concept-oriented UI/UX design.*

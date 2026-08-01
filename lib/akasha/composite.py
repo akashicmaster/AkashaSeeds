@@ -88,6 +88,19 @@ _ASSOC_NAMESPACES = (
 # Internal structural namespaces excluded from association traversal
 _EXCLUDED_PREFIXES = ("sys:", "@")
 
+# Bounds for the associative/resonance passes (associate() → dive.look). Both walk OUTGOING
+# semantic links, but a focal atom (or one of its senses) can share a MEGA-POPULAR tag — a
+# common emotion (emo:joy) or concept that tens of thousands of atoms link to. Without a bound,
+# _find_resonance scans every atom linking to that tag (get_chunk_raw + parse + scope-check each)
+# and _traverse_associations fans out per node — an O(popularity) read-storm that turned a ~1s
+# dive into minutes as the graph grew. These caps keep a dive bounded; the surfaced set is a
+# representative sample (ranked), and full enumeration is the explorer/navigator's job.
+_ASSOC_SCAN_CAP = 3000        # max nodes _traverse_associations visits across all hops
+_ASSOC_RESULT_LIMIT = 240     # max associations returned
+_RESONANCE_TAG_FANOUT = 1500  # max incoming edges inspected per shared tag
+_RESONANCE_SCAN_CAP = 3000    # max tag-neighbour atoms _find_resonance inspects in total
+_RESONANCE_LIMIT = 120        # max resonance rows returned
+
 # Bare-word relations that map to a specific semantic namespace.
 # All other bare words default to calc: (general conceptual vocabulary).
 # This table is used at both write-time (new links) and read-time
@@ -696,6 +709,20 @@ class AkashaEngine:
             if bare_lower != bare and not self.core.get_key_by_alias(bare_lower):
                 self.core.put_alias(key, bare_lower)
 
+        # Root the new proto-word in the concept hierarchy: <proto> sys:is_a lexeme, so the
+        # vocabulary is navigable as a field (concept.roots field=lexeme → lemmas → senses via the
+        # specializes ⊂ sys:is_a family). Written to the same store the proto lives in (nucleus =
+        # universal). Guarded: a no-op if the `lexeme` apex is absent (minimal configs). Idempotent
+        # (put_link_raw is keyed by src,dst,rel). Existing proto-words (early-return above) are
+        # back-filled by the canon normalizer instead.
+        try:
+            _store = nucleus.core if nucleus else self.core
+            _lex = _store.get_key_by_alias("lexeme")
+            if _lex and _lex != key:
+                _store.put_link_raw(key, _lex, "sys:is_a")
+        except Exception:
+            pass
+
         # Cross-DB bundle tracking (orchestration-architecture.md E.4). If this NEW
         # proto-word was created inside a tracked conversation bundle, record it in the
         # nucleus's ws:{tx_id} set so the bundle's nucleus footprint is durable and
@@ -776,6 +803,41 @@ class AkashaEngine:
                 aliases = nucleus.core.get_aliases_by_key(key)
         return aliases or []
 
+    def get_aliases_for_keys(self, keys) -> Dict[str, List[str]]:
+        """Federated batched alias lookup ({key: [alias, …]}) — local + nucleus in one query
+        each, not one query per key. Used to enumerate a set-based dictionary's members without
+        an O(N)-query alias storm (see backend.get_aliases_for_keys)."""
+        out = dict(self.core.get_aliases_for_keys(keys) or {})
+        nucleus = getattr(self, '_nucleus', None)
+        if nucleus:
+            for k, al in (nucleus.core.get_aliases_for_keys(keys) or {}).items():
+                if k in out:
+                    out[k] = out[k] + [a for a in al if a not in out[k]]
+                else:
+                    out[k] = list(al)
+        return out
+
+    def member_keys_scoped(self, name: str, allowed_scopes: List[str] = None) -> List[str]:
+        """Scoped, nucleus-merged member KEYS of a collection — the key half of `list_set`
+        without the per-member content read. Mirrors `list_set` visibility exactly: local members
+        scope-filtered (SQL), universal nucleus members merged in for every session, and
+        `allowed_scopes is None` / `role:librarian` an internal bypass. Lets a dictionary
+        enumerate a large superset (meal:all, producer:all) with a bounded number of queries."""
+        if allowed_scopes is not None and "role:librarian" not in allowed_scopes:
+            keys = self.core.get_collection_members_scoped(name, allowed_scopes)
+        else:
+            keys = self.core.get_collection_members(name)
+        nucleus = getattr(self, '_nucleus', None)
+        if nucleus:
+            nuc = nucleus.core.get_collection_members(name) or []
+            if nuc:
+                seen = set(keys)
+                for k in nuc:
+                    if k not in seen:
+                        keys = keys + [k]
+                        seen.add(k)
+        return keys
+
     def get_aliases_by_pattern(self, pattern: str) -> List[Dict[str, str]]:
         # Pattern semantics ('%' / '_' wildcards, case-insensitive) are defined
         # in AkashaBackend.get_aliases_by_pattern and must be honoured by any
@@ -789,18 +851,24 @@ class AkashaEngine:
 
     def get_all_aliases(self) -> List[Dict[str, str]]: return self.core.get_aliases_by_pattern('%')
 
-    def get_adjacent_links(self, key: str, rel_pattern: Optional[str] = None) -> List[List[str]]:
+    def get_adjacent_links(self, key: str, rel_pattern: Optional[str] = None,
+                           limit: Optional[int] = None,
+                           order_by_weight: bool = False) -> List[List[str]]:
         # UNION local + nucleus (dedup by dst+rel), never either/or: an atom's edges
         # can be split across a per-user cell and the shared nucleus (e.g. a proto-word
         # whose ontology `specializes` senses live in the nucleus while the user's own
         # cell holds an unrelated edge to it). An either/or fallback would drop the
         # nucleus edges the moment the local side had ANY edge — hiding the path to the
         # same-leaf namespaced atoms. Correctness over throughput (reads are hash lookups).
-        links = list(self.core.get_adjacent_links(key, rel_pattern) or [])
+        # `limit`/`order_by_weight` bound a mega-hub's fan-out at the SOURCE (each side fetched
+        # top-N by weight) so a dive of a dense node cannot materialize O(density) edges.
+        links = list(self.core.get_adjacent_links(key, rel_pattern, limit=limit,
+                                                  order_by_weight=order_by_weight) or [])
         nucleus = getattr(self, '_nucleus', None)
         if nucleus:
             seen = {(r["dst"], r["rel"]) for r in links}
-            for r in (nucleus.core.get_adjacent_links(key, rel_pattern) or []):
+            for r in (nucleus.core.get_adjacent_links(key, rel_pattern, limit=limit,
+                                                      order_by_weight=order_by_weight) or []):
                 if (r["dst"], r["rel"]) not in seen:
                     links.append(r); seen.add((r["dst"], r["rel"]))
         return [[r["dst"], r["rel"]] for r in links]
@@ -818,6 +886,28 @@ class AkashaEngine:
                     links.append(r); seen.add((r["src"], r["rel"]))
         return [[r["src"], r["rel"]] for r in links]
     
+    def count_adjacent_links(self, key: str) -> int:
+        """OUTGOING edge count across local + nucleus — keys only, no value/row read
+        (Silica: no pread; SQLite: COUNT(*)). This is the dive's per-signpost "branches
+        ahead" cue: a mega-hub neighbour would otherwise cost a full top-N value fetch just
+        to len() it. Union is summed (not deduped) — a display hint tolerates the rare
+        double-count of an edge split across both stores; correctness of the number is not
+        load-bearing, cheapness is."""
+        n = self.core.count_adjacent_links(key)
+        nucleus = getattr(self, '_nucleus', None)
+        if nucleus:
+            n += nucleus.core.count_adjacent_links(key)
+        return n
+
+    # Bound the fan-out (BOTH directions) when building a magnetic neighbourhood. A mega-hub (a
+    # country/company/common thesaurus word) can be pointed at by — and, in a rich thesaurus, point
+    # OUT to — tens of thousands of atoms; an UNBOUNDED materialization of those edges is an
+    # O(density) RAM storm on every dive of such a hub (measured: disk mode, 120k edges → ~46 MB for
+    # a single fetch, ×focus + ×each sense) — enough to OOM a small daemon. We fetch the top-N BY
+    # WEIGHT in EACH direction, so the STRONGEST edges (the ones the dive display and resonance pass
+    # pick anyway) are never dropped while retained memory stays O(cap), independent of hub size.
+    _MAGNETIC_FETCH_CAP = 4096
+
     def get_magnetic_neighborhood(self, key: str, radius_threshold: float = 0.5) -> List[Dict]:
         # UNION local + nucleus for BOTH directions (dedup by endpoint+rel), never
         # either/or — an atom's edges may be split across the per-user cell and the
@@ -826,15 +916,16 @@ class AkashaEngine:
         # senses (nucleus) even when the caller's own cell also links to it. See the
         # get_adjacent_links note for the full rationale.
         nucleus = getattr(self, '_nucleus', None)
-        out_links = list(self.core.get_adjacent_links(key) or [])
-        in_links = list(self.core.get_incoming_links(key) or [])
+        _cap = self._MAGNETIC_FETCH_CAP
+        out_links = list(self.core.get_adjacent_links(key, limit=_cap, order_by_weight=True) or [])
+        in_links = list(self.core.get_incoming_links(key, limit=_cap, order_by_weight=True) or [])
         if nucleus:
             seen_out = {(r["dst"], r["rel"]) for r in out_links}
-            for r in (nucleus.core.get_adjacent_links(key) or []):
+            for r in (nucleus.core.get_adjacent_links(key, limit=_cap, order_by_weight=True) or []):
                 if (r["dst"], r["rel"]) not in seen_out:
                     out_links.append(r); seen_out.add((r["dst"], r["rel"]))
             seen_in = {(r["src"], r["rel"]) for r in in_links}
-            for r in (nucleus.core.get_incoming_links(key) or []):
+            for r in (nucleus.core.get_incoming_links(key, limit=_cap, order_by_weight=True) or []):
                 if (r["src"], r["rel"]) not in seen_in:
                     in_links.append(r); seen_in.add((r["src"], r["rel"]))
         results = []
@@ -1276,9 +1367,16 @@ class AkashaEngine:
             visited.add(sk)
             current_layer.add(sk)
 
+        # Bounded (see _ASSOC_SCAN_CAP): a dense semantic neighbourhood would otherwise fan out
+        # to tens of thousands of nodes over 2 hops, each costing a get_chunk + get_chunk_raw.
+        scanned = 0
         for depth in range(1, scope + 1):
+            if scanned >= _ASSOC_SCAN_CAP or len(results) >= _ASSOC_RESULT_LIMIT:
+                break
             next_layer: set = set()
             for nid in current_layer:
+                if scanned >= _ASSOC_SCAN_CAP or len(results) >= _ASSOC_RESULT_LIMIT:
+                    break
                 raw_links = list(self.core.get_adjacent_links(nid) or [])
                 if _nucleus:
                     seen_pairs = {(l["dst"], l["rel"]) for l in raw_links}
@@ -1288,6 +1386,9 @@ class AkashaEngine:
                             raw_links.append(l)
                             seen_pairs.add(pair)
                 for link in raw_links:
+                    if scanned >= _ASSOC_SCAN_CAP or len(results) >= _ASSOC_RESULT_LIMIT:
+                        break
+                    scanned += 1
                     dst = link["dst"]
                     rel = link["rel"]
 
@@ -1398,10 +1499,19 @@ class AkashaEngine:
         if not focal_tags:
             return []
 
-        # Step 2: gather candidates that share a tag
+        # Step 2: gather candidates that share a tag. BOUNDED — a popular tag (emo:joy, a
+        # common concept) can have tens of thousands of incoming edges; inspecting them all
+        # (get_chunk_raw + parse + scope-check each) is the read-storm that made a dive on a
+        # word with a common tag take minutes. Cap the fetch per tag and the total scanned.
         candidates: Dict[str, Dict[str, Any]] = {}
+        scanned = 0
         for tag_key in focal_tags:
-            for link in self.core.get_incoming_links(tag_key):
+            if scanned >= _RESONANCE_SCAN_CAP:
+                break
+            for link in self.core.get_incoming_links(tag_key, limit=_RESONANCE_TAG_FANOUT):
+                if scanned >= _RESONANCE_SCAN_CAP:
+                    break
+                scanned += 1
                 src = link["src"]
                 if src == focal_key or src in candidates:
                     continue
@@ -1444,7 +1554,7 @@ class AkashaEngine:
             })
 
         results.sort(key=lambda r: r["weight"], reverse=True)
-        return results
+        return results[:_RESONANCE_LIMIT]
 
     def associate(
         self,
@@ -2032,9 +2142,17 @@ class NucleusEngine:
                                        author="system", ts=time.time())
         return {"alias": alias, "key": key}
 
-    def put_link(self, src: str, dst: str, rel: str, w: float = 1.0, author: str = "system") -> None:
-        """Links two nucleus atoms (or a local atom → nucleus atom)."""
-        self.core.put_link_raw(src, dst, rel, w=w, author=author, ts=time.time())
+    def put_link(self, src: str, dst: str, rel: str, w: float = 1.0, author: str = "system",
+                 status: str = "verified") -> None:
+        """Links two nucleus atoms (or a local atom → nucleus atom).
+
+        Accepts `status` (link provenance, e.g. "inferred" for Weaver-derived word links) to
+        match AkashaEngine.put_link and put_link_raw. Without it, the Weaver's
+        `put_link(..., status="inferred")` raised TypeError on EVERY word link — silently
+        (caught + logged DEBUG), so the boot weave wrote NO word links AND, once Akasha.* DEBUG
+        reached the log, flooded system.log with hundreds of thousands of identical failures
+        (a ~100 MB log that can fill a tight VPS disk and take the writer down)."""
+        self.core.put_link_raw(src, dst, rel, w=w, author=author, status=status, ts=time.time())
         # Meaning-density on the shared nucleus (ontology concepts, proto-words) — the corpus
         # thesaurus.explore / gap.scan rank over. Bump the nucleus-resident endpoints.
         _apply_link_salience(self.core, src, dst, rel, w, sign=1.0)
@@ -2103,8 +2221,9 @@ class GroupEngine:
             self.core.put_alias(key, alias)
         return key
 
-    def put_link(self, src: str, dst: str, rel: str, w: float = 1.0, author: str = "system") -> None:
-        self.core.put_link_raw(src, dst, rel, w=w, author=author, ts=time.time())
+    def put_link(self, src: str, dst: str, rel: str, w: float = 1.0, author: str = "system",
+                 status: str = "verified") -> None:
+        self.core.put_link_raw(src, dst, rel, w=w, author=author, status=status, ts=time.time())
 
     # --- Delegation set support ---
     def add_to_set(self, name: str, key: str) -> None:

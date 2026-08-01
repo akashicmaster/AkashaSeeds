@@ -121,6 +121,8 @@ class CastConcept(BaseConcept):
         # Society — publish an avatar into a group, speak as the avatar
         "publish":      {"op": "op_publish"},
         "say":          {"op": "op_say"},
+        "feed":         {"op": "op_feed"},   # read the group's avatar timeline
+        "soc":          {"op": "op_soc"},    # list avatars published into a group
     }
 
     SUBSETS = list(SUBSET_TO_RELATION.keys())
@@ -572,15 +574,20 @@ class CastConcept(BaseConcept):
                 "atoms": copied, "disclosed": show}
 
     def op_say(self, text: str = "", group_id: str = "", group: str = "",
-               disclose: Any = False) -> Dict[str, Any]:
+               disclose: Any = False, cast: str = "") -> Dict[str, Any]:
         """Speak as the avatar into a group (society): post an utterance atom into the
         group space, appended to the group's avatar timeline (soc:<gid>) so members can
         follow the conversation. Persistent, so an absent member reads it on their next
         visit (near-real-time / async).
 
+        `cast=` (id or owned name) selects which avatar speaks WITHOUT a prior cast.open —
+        a stateless path for LLM / MCP callers that pass the avatar every turn. Omit it to
+        speak as the session's active cast.
+
         disclose=False (default) — pseudonymous: authored by the avatar, the human is
           hidden (SNS). disclose=True — the utterance carries the real client_id, so
           the avatar is matched to the member (company/org)."""
+        self._target(cast)
         self._require_concept()
         self._require_owned()
         gid = (group_id or group).strip()
@@ -605,6 +612,87 @@ class CastConcept(BaseConcept):
         ge.add_to_set(f"soc:{gid}", key)
         return {"status": "said", "key": key, "group": gid, "cast_id": self.concept_id,
                 "cast_name": cast_meta.get("name", ""), "disclosed": show}
+
+    def op_feed(self, group_id: str = "", group: str = "", limit: Any = 20) -> Dict[str, Any]:
+        """Read the group's avatar timeline (society feed): the utterances posted by
+        cast.say into soc:<gid>, resolved to {cast_name, from_cast, text, created_at} and
+        ordered oldest→newest. This is the READ side of the society chat — any group member
+        can follow the conversation (persistent, so an absent member catches up on return).
+
+        A member reads utterances authored by OTHER members' avatars (the group scope grants
+        it); it needs no ownership. `limit` keeps the most recent N (default 20)."""
+        gid = (group_id or group).strip()
+        if not gid:
+            raise ValueError("cast.feed requires a group.")
+        ge = self._group_engine_for(gid)
+        try:
+            lim = max(1, min(int(limit), 200))
+        except (TypeError, ValueError):
+            lim = 20
+        items = []
+        for key in ge.core.get_collection_members(f"soc:{gid}"):
+            row = ge.core.get_chunk_raw(key)
+            if not row:
+                continue
+            try:
+                meta = json.loads(row.get("meta") or "{}")
+            except Exception:
+                meta = {}
+            if meta.get("type") != "cast_utterance":
+                continue
+            items.append({
+                "key": key,
+                "from_cast": meta.get("from_cast", ""),
+                "cast_name": meta.get("cast_name", ""),
+                "text": row.get("content") or "",
+                "created_at": meta.get("created_at", 0),
+                "disclosed": bool(meta.get("client_id")),
+                "client_id": meta.get("client_id", ""),
+            })
+        items.sort(key=lambda x: x.get("created_at", 0))
+        items = items[-lim:]
+        return {"group": gid, "count": len(items), "messages": items}
+
+    def op_soc(self, group_id: str = "", group: str = "") -> Dict[str, Any]:
+        """List the avatars published into a group (soc:<gid>:casts) — society discovery,
+        so a member (or an LLM) can see who is present before speaking."""
+        gid = (group_id or group).strip()
+        if not gid:
+            raise ValueError("cast.soc requires a group.")
+        ge = self._group_engine_for(gid)
+        casts = []
+        for cid in ge.core.get_collection_members(f"soc:{gid}:casts"):
+            row = ge.core.get_chunk_raw(cid)
+            meta = {}
+            if row:
+                try:
+                    meta = json.loads(row.get("meta") or "{}")
+                except Exception:
+                    meta = {}
+            casts.append({"cast_id": cid, "name": meta.get("name", ""),
+                          "identity": meta.get("identity", "")})
+        return {"group": gid, "count": len(casts), "casts": casts}
+
+    def _target(self, cast: str) -> None:
+        """Point a stateless op at a specific OWNED avatar (by id or name) instead of the
+        session's active cast — so an LLM / MCP caller can pass `cast=` every turn without a
+        prior cast.open. Resolves against the caller's own cortex only (you act only as an
+        avatar you own); a no-op when `cast` is empty (falls back to the active cast)."""
+        cast = (cast or "").strip()
+        if not cast:
+            return
+        meta = self.cortex.get_meta(cast)
+        if meta and meta.get("concept") == "cast":
+            self.concept_id = cast
+            self.set_name = f"set:concept:{self.concept_id}"
+            return
+        for key in self.cortex.get_collection_members(INDEX_SET):
+            m = self.cortex.get_meta(key)
+            if m and m.get("concept") == "cast" and m.get("name") == cast:
+                self.concept_id = key
+                self.set_name = f"set:concept:{self.concept_id}"
+                return
+        raise RuntimeError(f"No owned avatar '{cast}'.")
 
     # ------------------------------------------------------------------
     # Identity / Physique / Social

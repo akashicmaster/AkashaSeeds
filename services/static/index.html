@@ -146,18 +146,17 @@
       margin: 52px 0;
     }
 
+    /* Open portals, not tile-buttons: no box, border, or surface fill — each
+       entrance is an icon + label + line of description that lifts and glows
+       on hover, in keeping with the page's atmospheric, un-boxed aesthetic. */
     .card {
       display: flex;
       flex-direction: column;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--r);
-      padding: 28px 24px 24px;
+      padding: 24px 20px 22px;
       text-decoration: none;
       color: inherit;
-      transition: border-color 0.2s, transform 0.18s, box-shadow 0.2s;
+      transition: transform 0.2s ease;
       position: relative;
-      overflow: hidden;
     }
     .card::before {
       content: '';
@@ -165,14 +164,11 @@
       inset: 0;
       background: var(--card-glow, transparent);
       opacity: 0;
-      transition: opacity 0.2s;
+      transition: opacity 0.25s;
       border-radius: var(--r);
+      pointer-events: none;
     }
-    .card:hover {
-      transform: translateY(-3px);
-      border-color: var(--card-accent);
-      box-shadow: 0 8px 32px var(--card-shadow, rgba(0,0,0,.4));
-    }
+    .card:hover { transform: translateY(-4px); }
     .card:hover::before { opacity: 1; }
 
     .card-cosmos    { --card-accent: var(--cosmos);   --card-shadow: rgba(0,221,176,.12);  --card-glow: radial-gradient(ellipse at 50% 0%, rgba(0,221,176,.07),   transparent 70%); }

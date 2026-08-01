@@ -38,18 +38,31 @@ class PresentationConcept(BaseConcept):
 
     CONCEPT_PREFIX = "pres"
     CONCEPT_METHODS = {
-        "new":        {"op": "op_new"},
-        "open":       {"op": "op_open",
+        "new":        {"op": "op_new", "action": "write", "args": ["title"],
+                       "desc": "Create a presentation: pres.new <title> [thesis=] "
+                               "(or use curation.project to build one from a curation)"},
+        "open":       {"op": "op_open", "action": "read", "args": ["pres_id"],
+                       "desc": "Mount an existing presentation: pres.open <pres_id>",
                        "coerce": lambda d: {
                            "pres_id": d.get("pres_id") or d.get("presentation_id", ""),
                        }},
-        "ls":         {"op": "op_list_all"},
-        "deck.add":   {"op": "op_add_deck"},
-        "frame.add":  {"op": "op_add_frame"},
-        "region.add": {"op": "op_add_region"},
-        "node.add":   {"op": "op_add_node"},
-        "list":       {"op": "op_list"},
-        "rm":         {"op": "op_delete"},
+        "ls":         {"op": "op_list_all", "action": "read", "args": [],
+                       "desc": "List presentations: pres.ls"},
+        "deck.add":   {"op": "op_add_deck", "action": "write", "args": ["title"],
+                       "desc": "Add a deck (chapter/branch) to the active presentation: "
+                               "pres.deck.add <title> [order=]"},
+        "frame.add":  {"op": "op_add_frame", "action": "write", "args": ["title"],
+                       "desc": "Add a frame (scene) to a deck: pres.frame.add <title> "
+                               "[deck_id=] [ref_id=] [order=] [note=]"},
+        "region.add": {"op": "op_add_region", "action": "write", "args": ["frame_id", "label"],
+                       "desc": "Add a layout region within a frame: pres.region.add <frame_id> <label> [order=]"},
+        "node.add":   {"op": "op_add_node", "action": "write", "args": ["parent_id", "ref_universe", "ref_id"],
+                       "desc": "Attach a content node to a region/frame: "
+                               "pres.node.add <parent_id> <ref_universe> <ref_id> [role=] [style=]"},
+        "list":       {"op": "op_list", "action": "read", "args": [],
+                       "desc": "Structural inventory of the active presentation: pres.list"},
+        "rm":         {"op": "op_delete", "action": "drop", "args": [],
+                       "desc": "Delete the active presentation: pres.rm"},
     }
 
     def __init__(self, session: Any, concept_id: Optional[str] = None):
@@ -108,8 +121,11 @@ class PresentationConcept(BaseConcept):
 
     # ── Operators ─────────────────────────────────────────────────────────────
 
-    def op_new(self, title: str, context_universes: Optional[List[str]] = None) -> Dict[str, Any]:
-        """[pres.new] Create a PresentationRoot with a title and optional context universe list."""
+    def op_new(self, title: str, context_universes: Optional[List[str]] = None,
+               thesis: str = "", grounds: Optional[dict] = None) -> Dict[str, Any]:
+        """[pres.new] Create a PresentationRoot with a title and optional context universe list.
+        `thesis`/`grounds` carry a source curation's lead into the root meta so an export can show
+        it (used by curation.project → PresentationSink)."""
         author_id, scopes = self._author_and_scopes()
 
         pres_id = self.cortex.put_chunk(
@@ -120,6 +136,8 @@ class PresentationConcept(BaseConcept):
                 "role":               "root",
                 "title":              title,
                 "context_universes":  context_universes or [],
+                "thesis":             thesis or "",
+                "grounds":            grounds or {},
                 "created_at":         time.time(),
             },
             author=author_id,
@@ -216,8 +234,11 @@ class PresentationConcept(BaseConcept):
         order: float = 0.0,
         ref_universe: Optional[str] = None,
         ref_id: Optional[str] = None,
+        note: str = "",
     ) -> Dict[str, Any]:
-        """[pres.frame.add] Add a frame (slide/page) to a deck, optionally referencing an external atom."""
+        """[pres.frame.add] Add a frame (slide/page) to a deck, optionally referencing an external
+        atom. `note` is a caption/annotation carried in frame meta (used as the export scene
+        caption)."""
         self._require_concept()
         author_id, scopes = self._author_and_scopes()
 
@@ -241,6 +262,7 @@ class PresentationConcept(BaseConcept):
                 "order":         order,
                 "ref_universe":  ref_universe,
                 "ref_id":        ref_id,
+                "note":          note or "",
                 "created_at":    time.time(),
             },
             author=author_id,

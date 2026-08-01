@@ -176,7 +176,7 @@ class GeoConcept(VisibilityMixin, BaseConcept, TemporalMixin):
         "reveal":         {"op": "op_reveal"},
         "diagnose":       {"op": "op_diagnose"},
         "history":        {"op": "op_history"},
-        "timeview":       {"op": "op_history"},   # alias
+        "timeview":       {"op": "op_history", "action": "read"},   # alias of history (read)
         "time.rebuild":   {"op": "op_time_rebuild"},
         # Future — coordinate transform execution:
         # "analyze": {"op": "op_analyze"},
