@@ -6,6 +6,20 @@
 
 ---
 
+## Abstract
+
+This paper introduces Concept-Oriented Computing, a computational paradigm in which concepts, rather than files, documents, or database records, become the primary unit of computation.
+
+It presents the architectural principles underlying Akasha, a local-first semantic execution substrate designed for humans, Large Language Models (LLMs), and future physical systems.
+
+Unlike conventional software, where implementation determines meaning, Concept-Oriented Computing begins by defining conceptual structures and allows implementations to emerge from them through Concept Models, semantic pipelines, and reusable operators.
+
+The paper argues that recent advances in AI have fundamentally shifted the bottleneck of software development. As implementation becomes increasingly automated, conceptual design becomes the primary source of long-term value. Akasha therefore places human expertise at the center of semantic architecture while treating LLMs as collaborators in implementation rather than generators of meaning.
+
+The resulting architecture proposes a durable semantic substrate in which concepts, workflows, browser applications, knowledge systems, and future autonomous participants coexist within a shared conceptual world.
+
+---
+
 ## Contents
 
 1. [Chapter 1 — Why Concepts?](#chapter-1--why-concepts)
