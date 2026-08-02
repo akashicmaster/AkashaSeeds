@@ -40,12 +40,21 @@ It's to explore it.
 
 > **Explore a live semantic knowledge space in your browser.**
 
-Current portals include:
+Start in the archives themselves:
+
+- 📚 **Reading Hall** — wander the knowledge space the way you would a library, one concept opening onto the next
+- ✨ **Semantic Cosmos Tour** — board a guided flight through the semantic space itself, and watch meaning arrange itself into constellations
+
+Or step into a domain portal:
 
 - 🍽 Akashic Kitchen
 - 🌎 World Flavors
 - 🥘 Regional Recipes
 - 🧀 Pairing Explorer
+
+The semantic space is one.
+
+Each portal is a different projection of it—a different way to enjoy the same intellectual exploration.
 
 More concept worlds are coming.
 
