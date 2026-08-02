@@ -156,7 +156,7 @@ If you'd like to understand **why** Akasha was designed this way—not just how 
 
 please read:
 
-# 📄 THE_AKASHA_WHITE_PAPER.md
+# 📄 [The Akasha White Paper](THE_AKASHA_WHITE_PAPER.md)
 
 The White Paper covers:
 
