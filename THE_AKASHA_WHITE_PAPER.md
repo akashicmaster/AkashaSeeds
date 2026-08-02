@@ -22,6 +22,7 @@ The resulting architecture proposes a durable semantic substrate in which concep
 
 ## Contents
 
+0. [Foreword](#foreword)
 1. [Chapter 1 — Why Concepts?](#chapter-1--why-concepts)
 2. [Chapter 2 — Concept-Oriented Computing](#chapter-2--concept-oriented-computing)
 3. [Chapter 3 — Semantic Pipelines](#chapter-3--semantic-pipelines)
@@ -31,6 +32,30 @@ The resulting architecture proposes a durable semantic substrate in which concep
 7. [Chapter 7 — Society](#chapter-7--society)
 8. [Chapter 8 — Seeds and Continuity](#chapter-8--seeds-and-continuity)
 9. [Epilogue — Toward a Concept-Oriented Future](#epilogue--toward-a-concept-oriented-future)
+
+---
+
+# Foreword
+
+Akasha did not begin as an attempt to build another knowledge management system.
+
+Nor another graph database.
+
+Nor another AI framework.
+
+It began with a much simpler question.
+
+Why does software become obsolete faster than knowledge?
+
+During the development of Akasha, one observation became increasingly difficult to ignore.
+
+Concepts often survive for centuries.
+
+Software rarely survives for decades.
+
+The architecture presented in this paper is an attempt to reconcile those different timescales.
+
+Everything that follows emerges from that single question.
 
 ---
 
