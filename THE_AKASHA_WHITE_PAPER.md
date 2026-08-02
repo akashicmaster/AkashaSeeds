@@ -2254,5 +2254,27 @@ The concepts presented in this paper remain human decisions.
 
 The journey toward them, however, became a genuinely collaborative one.
 
-The author gratefully acknowledges that partnership.
+---
+
+The ideas presented here were shaped by many conversations—
+
+with books,
+
+with history,
+
+with colleagues,
+
+with open-source communities,
+
+and, in recent years,
+
+with Large Language Models.
+
+Like every participant in an Akasha Society,
+
+each contributed a different perspective.
+
+The responsibility for the concepts remains entirely the author's.
+
+The gratitude is shared.
 
