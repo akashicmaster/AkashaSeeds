@@ -94,6 +94,16 @@ def main() -> None:
     from api.portals.cell_ipc import SplitGateway
     gw = SplitGateway(create_gateway(series=args.series, base_dir=data_dir), data_dir)
 
+    # R5 — daemon self-watchdog. This serve-only portal outlives the writer and never writes the
+    # nucleus, so it is the natural place to watch the daemon: if the writer wedges (silent for K
+    # rounds with a stale boot heartbeat) the watchdog reaps it and spawns a fresh one. No-op unless
+    # AKASHA_SERVE_ONLY is set (it is, for this subprocess) and AKASHA_NO_WATCHDOG is unset.
+    try:
+        from api.portals import daemon_watchdog
+        daemon_watchdog.start(data_dir)
+    except Exception:
+        pass
+
     # TLS: if a cert/key pair is present, terminate HTTPS in uvicorn and stand
     # the port-80 responder (ACME http-01 challenge + HTTP→HTTPS redirect). The
     # detached portal process owns the responder thread, so it survives SSH

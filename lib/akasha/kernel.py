@@ -4303,6 +4303,22 @@ class KernelDispatcher:
         # force=True: explicit management command — intentional rebind, bypasses first-wins.
         nucleus = getattr(session, 'nucleus', None)
         _in_nucleus = bool(nucleus and nucleus.core.get_chunk_raw(resolved))
+        # Reject aliasing a target that names no stored atom. Without this guard an
+        # unresolved `target` falls through to the raw string above and a DANGLING
+        # alias is bound (key column holds a literal like "place:france" with no atom
+        # body). That dangling alias then SHADOWS the real nucleus atom of the same
+        # name on every later read — a silent trap (`al place:france france` before
+        # place:france exists locks the user out of the shared `france` atom). A valid
+        # target has a body in the local cortex, the nucleus, or a visible group space.
+        if not _in_nucleus and not ctx.core.get_chunk_raw(resolved):
+            _scopes = getattr(session, "active_scopes", None) or []
+            _in_group = any(
+                ge.check_access(resolved) and ge.get_chunk_raw(resolved)
+                for _gid, ge in self._member_group_engines(session, _scopes)
+            )
+            if not _in_group:
+                return _err(rid, -32602,
+                            f"cannot alias '{target}': no such atom — write or define it first")
         if _in_nucleus:
             result = nucleus.set_alias(resolved, name, force=True)
         else:

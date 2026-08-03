@@ -88,6 +88,8 @@ class BaseWebHandler(SimpleHTTPRequestHandler):
 
         if path == '/api/rpc':
             self._handle_rpc()
+        elif path == '/pulse':
+            self._handle_pulse_beacon()
         elif path in ('/api/mcp', '/mcp'):
             self._handle_mcp()
         elif path in self.routes and self.routes[path]['method'] == 'POST':
@@ -227,6 +229,39 @@ class BaseWebHandler(SimpleHTTPRequestHandler):
         except Exception as e:
             logger.error(f"[RPC Failure] {traceback.format_exc()}")
             self._send_json({"jsonrpc": "2.0", "error": {"code": -32603, "message": str(e)}, "id": None})
+
+    def _handle_pulse_beacon(self):
+        """Access-analytics beacon (parity with the ASGI /pulse route). Server-side capture:
+        buffers the hit and records it asynchronously under a system identity — never a guest
+        write. Privacy enforced here: DNT is honoured; only a coarse referrer/UA and a
+        daily-rotating salted visitor hash are derived (no PII stored). Always answers 204."""
+        try:
+            clen = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(clen) if clen > 0 else b""
+            data = json.loads(body.decode('utf-8')) if body else {}
+        except Exception:
+            data = {}
+        try:
+            from lib.harmonia.pulse_recorder import recorder as _rec
+            gw = self.gw or _gw_module.gateway
+            if not _rec.configured and gw is not None:
+                _rec.configure(gw.dispatch)
+            concept = (data or {}).get("concept") or ""
+            if concept:
+                fwd = self.headers.get('X-Forwarded-For', '')
+                ip = (fwd.split(',')[0].strip() if fwd else (self.client_address[0] if self.client_address else ""))
+                _rec.capture(
+                    concept=concept, surface=(data.get("surface") or ""),
+                    referer=self.headers.get('Referer', ''), prev=(data.get("prev") or ""),
+                    ip=ip, ua=self.headers.get('User-Agent', ''),
+                    dnt=(self.headers.get('DNT') == '1' or self.headers.get('Sec-GPC') == '1'),
+                    own_host=(self.headers.get('Host', '').split(':', 1)[0]),
+                )
+        except Exception:
+            pass
+        self.send_response(204)
+        self._send_cors_headers()
+        self.end_headers()
 
     def _execute_custom_handler(self, handler_func: Callable):
         content_length = int(self.headers.get('Content-Length', 0))

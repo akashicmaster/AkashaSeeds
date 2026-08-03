@@ -26,7 +26,7 @@ logger = logging.getLogger("Harmonia.Portal.ASGI")
 # regardless of which domain the browser came from.
 _RESERVED_PREFIXES = ("/rpc", "/api/rpc", "/api/readme", "/health",
                       "/docs", "/redoc", "/openapi.json",
-                      "/a", "/robots.txt", "/sitemap.xml", "/sitemap")
+                      "/a", "/robots.txt", "/sitemap.xml", "/sitemap", "/pulse")
 
 
 class HostReroute:
@@ -624,6 +624,42 @@ def run_server(gw, host: str = "0.0.0.0", port: int = 8000, static_dirs=None,
 
     app.add_api_route("/rpc",     _rpc_dispatch, methods=["POST"], summary="JSON-RPC 2.0 endpoint")
     app.add_api_route("/api/rpc", _rpc_dispatch, methods=["POST"], summary="JSON-RPC 2.0 endpoint (API path)")
+
+    # ── Pulse analytics beacon (server-side capture; never a guest write) ─────────
+    # The archives pages POST {concept, surface, prev} here once per concept view. Capture is
+    # off the critical path: the recorder buffers and records asynchronously under a system
+    # identity (see lib/harmonia/pulse_recorder). Privacy is enforced server-side — DNT is
+    # honoured, and the visitor id is a daily-rotating salted hash of ip‖ua (no PII stored).
+    try:
+        from lib.harmonia.pulse_recorder import recorder as _pulse_recorder
+        _pulse_recorder.configure(gw.dispatch)
+    except Exception as _pex:                       # analytics must never break the portal
+        _pulse_recorder = None
+        logger.debug("[ASGI] pulse recorder unavailable: %s", _pex)
+
+    async def _pulse_beacon(request: fastapi_mod.Request) -> Any:
+        if _pulse_recorder is None:
+            return Response(status_code=204)
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        concept = (body or {}).get("concept") or ""
+        if concept:
+            hdr = request.headers
+            client = request.client.host if request.client else ""
+            ip = (hdr.get("x-forwarded-for", "").split(",")[0].strip() or client)
+            _pulse_recorder.capture(
+                concept=concept, surface=(body.get("surface") or ""),
+                referer=hdr.get("referer", ""), prev=(body.get("prev") or ""),
+                ip=ip, ua=hdr.get("user-agent", ""),
+                dnt=(hdr.get("dnt") == "1" or hdr.get("sec-gpc") == "1"),
+                own_host=(hdr.get("host", "").split(":", 1)[0]),
+            )
+        return Response(status_code=204)
+
+    app.add_api_route("/pulse", _pulse_beacon, methods=["POST"], include_in_schema=False,
+                      summary="Access-analytics beacon (server-side capture)")
 
     # ── MCP (Model Context Protocol) over HTTP — the remote LLM route (TRUST_NETWORK) ──
     # An anonymous caller is given a guest session (read-only); a Bearer akt: token acts with

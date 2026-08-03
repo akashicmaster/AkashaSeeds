@@ -57,6 +57,13 @@ def main() -> None:
     from api.portals.cell_ipc import SplitGateway
     gw = SplitGateway(create_gateway(series=args.series, base_dir=data_dir), data_dir)
 
+    # R5 — daemon self-watchdog (serve-only portals only; see api/portals/daemon_watchdog.py).
+    try:
+        from api.portals import daemon_watchdog
+        daemon_watchdog.start(data_dir)
+    except Exception:
+        pass
+
     from services.http_gateway import BaseWebService
     svc = BaseWebService(gw=gw, port=args.port, host=args.host, static_dir=static_dir)
     svc.start()   # blocking serve_forever — the subprocess's whole job

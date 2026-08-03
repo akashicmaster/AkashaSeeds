@@ -93,6 +93,11 @@ _ALLOWED_MODULE_PREFIXES = ("services.",)   # bundled app services (cosmos, note
 _ALLOWED_ENV_KEYS = frozenset({
     "PYTHONUNBUFFERED", "AKASHA_SERVE_ONLY", "AKASHA_NO_AUTOLEARN",
     "AKASHA_BACKEND", "AKASHA_HOST", "AKASHA_DATA_DIR", "AKASHA_SERIES",
+    # R5: the daemon's launch argv (JSON of --server/--host/--port/--portal), so a health-tick
+    # respawn keeps the portal's self-watchdog able to spawn an identical daemon. Non-secret
+    # operational data; omitting it made build_process_spec raise → recipe stored spec=None →
+    # the health tick could never respawn the portal (respawnable=False, silent continue).
+    "AKASHA_DAEMON_ARGV",
 })
 _SECRET_HINTS = ("SECRET", "TOKEN", "PASSWORD", "PASSPHRASE", "PRIVATE",
                  "CRED", "APIKEY", "API_KEY", "SIGNING")
@@ -767,15 +772,46 @@ def _tcp_ok(target: str, timeout: float = 2.0) -> bool:
         return False
 
 
-def _http_ok(url: Optional[str], expect: int = 200, timeout: float = 2.0) -> bool:
+def _http_ok(url: Optional[str], expect: int = 200, timeout: float = 2.0,
+             method: Optional[str] = None) -> bool:
+    """HTTP liveness probe. Two modes:
+
+      • GET (method=None): the URL must answer with `expect` (200). A plain /health route.
+      • JSON-RPC POST (method set): POST {"method": method} and treat ANY HTTP-level response —
+        even 4xx/5xx or a JSON-RPC error body — as ALIVE, because the worker had to RUN code to
+        produce it. This is the wedged-process discriminator (RC3/R3): a SIGSTOPped/hung worker
+        completes the kernel TCP handshake into its accept backlog but never runs, so no HTTP (or
+        TLS) response ever comes back and the request TIMES OUT → reported dead. A bare TCP connect
+        (the old probe) passed on such a process; a request that needs the worker to answer does not.
+
+    HTTPS targets are probed with certificate verification OFF — this is a localhost liveness check,
+    not an authentication; a completed TLS handshake already proves the worker ran."""
     if not url:
         return False
-    import urllib.request
+    import urllib.request, urllib.error, json as _json, ssl as _ssl
+    ctx = None
+    if str(url).lower().startswith("https:"):
+        ctx = _ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = _ssl.CERT_NONE
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as resp:   # noqa: S310 (local health url)
+        if method:
+            body = _json.dumps({"jsonrpc": "2.0", "method": method,
+                                "params": {"session_token": "_health_"}, "id": "hp"}).encode()
+            req = urllib.request.Request(
+                url, data=body, headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=timeout, context=ctx):   # noqa: S310
+                return True                          # any HTTP response = the worker ran = alive
+        with urllib.request.urlopen(url, timeout=timeout, context=ctx) as resp:   # noqa: S310
             return resp.status == expect
+    except urllib.error.HTTPError:
+        return True                                  # 4xx/5xx: the worker RAN and answered → alive
+    except urllib.error.URLError as exc:
+        # A TLS handshake that completed proves the worker ran even if the cert failed to verify;
+        # a refused/timed-out connection means dead or wedged.
+        return isinstance(getattr(exc, "reason", None), _ssl.SSLError)
     except Exception:
-        return False
+        return False                                 # timeout / refused / reset → dead or wedged
 
 
 def probe_health(unit: Dict[str, Any]) -> bool:
@@ -783,7 +819,9 @@ def probe_health(unit: Dict[str, Any]) -> bool:
     richer probe as DATA so the Supervisor checks it without importing the service's code:
       {"kind":"pid"}                                   process alive (default)
       {"kind":"tcp","target":"host:port"}              accepting connections
-      {"kind":"http","target":"http://…/healthz","expect":200}   a route answers
+      {"kind":"http","target":"http://…/healthz","expect":200}   a route answers (GET)
+      {"kind":"http","target":"http://…/api/rpc","method":"sys.ping"}   the worker RUNS code
+                                                 (detects a WEDGED process a TCP connect misses)
     """
     if not _pid_alive(unit.get("pid")):
         return False                              # dead → unhealthy, always
@@ -795,7 +833,8 @@ def probe_health(unit: Dict[str, Any]) -> bool:
         target = probe.get("target") or f"{unit.get('host') or '127.0.0.1'}:{unit.get('port')}"
         return _tcp_ok(target)
     if kind == "http":
-        return _http_ok(probe.get("target"), int(probe.get("expect", 200)))
+        return _http_ok(probe.get("target"), int(probe.get("expect", 200)),
+                        timeout=float(probe.get("timeout", 2.0)), method=probe.get("method"))
     return True                                   # unknown probe kind → don't false-kill
 
 

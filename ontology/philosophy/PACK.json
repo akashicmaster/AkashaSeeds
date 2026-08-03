@@ -1,0 +1,8 @@
+{
+  "label": "Philosophy World",
+  "description": "The Philosophy World exhibit ontology (archives portal). The thinkers behind the fields — Socrates, Plato, Aristotle, Descartes, Kant, Nietzsche to start — each linked to the base phil:field:* / phil:* concepts and collected in the phil:thinkers set, with a wp:<Title> Wikipedia exit alias. Tier-B, shared / opt-in load (bundled in every series incl. seeds12, autoloaded by the thesaurus/server tiers). The exhibit's spine is concept-first: how philosophy has handled its concepts, built on the French Baccalauréat philosophy program (17 notions + repères + authors) — see docs/for-llm/philosophy-world-bac-notions.md. Notions, repères and the fuller author spine are added incrementally.",
+  "license": "Public domain (biographical/terminology) + CC BY-SA (Wikipedia exit links).",
+  "source": "French Baccalauréat de philosophie program (education.gouv.fr) | Wikipedia",
+  "size_hint": "~6 thinkers now; grows to the 17 notions + ~30 repères + ~40 authors",
+  "attribution": "Wikipedia (external identity / exit links, CC BY-SA)"
+}

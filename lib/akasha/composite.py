@@ -66,6 +66,15 @@ _onto_logger = logging.getLogger("Akasha.Ontology")
 # never reach SQL permission queries.
 _PERM_PREFIXES: tuple = ("scope:", "owner:", "view:")
 
+_HEXDIGITS: frozenset = frozenset("0123456789abcdef")
+
+def _is_atom_key(key: str) -> bool:
+    """True if `key` looks like a real content-addressed atom key — a 64-char
+    lowercase hex SHA-256 hash. Aliases only ever bind to such keys; a non-hash
+    key on an alias means the alias is dangling (bound to an unresolved raw
+    string, e.g. `al place:france france` before place:france existed)."""
+    return isinstance(key, str) and len(key) == 64 and all(c in _HEXDIGITS for c in key)
+
 def _perm_scopes(scopes: List[str]) -> List[str]:
     """Return only Dimension-1 (access-control) entries from a mixed scope list."""
     return [s for s in scopes if s.startswith(_PERM_PREFIXES)]
@@ -338,7 +347,11 @@ class AkashaEngine:
             role = meta.get("role") if meta else None
             is_primitive = role in [
                 "token", "annotation", "meta:title", "meta:author", "meta:isbn"
-            ] or (meta and meta.get("type") == "primitive:chunk")
+            ] or (meta and meta.get("type") == "primitive:chunk") or (
+                # Analytics events (pulse) are private, high-volume, opaque records —
+                # they must NEVER metabolize into proto-words / weave links, else access
+                # traffic would pollute the word graph and the learned embeddings.
+                meta and meta.get("provenance") == "analytics")
 
             if not is_primitive:
                 self._commit_listener(key, content, meta, scopes or [])
@@ -789,10 +802,22 @@ class AkashaEngine:
 
     def resolve_alias(self, alias: str) -> Optional[str]:
         key = self.core.get_key_by_alias(alias)
-        if not key:
-            nucleus = getattr(self, '_nucleus', None)
-            if nucleus:
-                key = nucleus.core.get_key_by_alias(alias)
+        nucleus = getattr(self, '_nucleus', None)
+        # Dangling-alias self-heal. Real atom keys are 64-hex content hashes; a valid
+        # cross-store alias (local→nucleus / local→group) points to such a hash. A local
+        # alias whose key is NOT a hash and has no local body is dangling — it was bound
+        # to an unresolved raw string (e.g. `al place:france france` before the atom
+        # existed). Left in place it shadows the real nucleus atom of the same name on
+        # every read. Drop it and fall through to the nucleus alias so the shared atom
+        # becomes reachable again. The hash test keeps genuine cross-store aliases intact.
+        if key and not _is_atom_key(key) and not self.core.get_chunk_raw(key):
+            try:
+                self.core.delete_alias(alias)
+            except Exception:
+                pass
+            key = None
+        if not key and nucleus:
+            key = nucleus.core.get_key_by_alias(alias)
         return key
 
     def get_aliases_by_key(self, key: str) -> List[str]:
@@ -941,6 +966,8 @@ class AkashaEngine:
     _SYS_COLLECTION_PREFIXES = (
         "leaf:", "ns:", "lang:", "scope:", "sys:", "temp:",
         "set:word:", "dont:", "ont:", "chunk:", "pending:",
+        # Analytics (pulse) index collections — internal, never a user-facing set.
+        "pulse:", "src:", "visit:",
     )
 
     def add_to_set(self, name: str, key: str):
@@ -952,7 +979,9 @@ class AkashaEngine:
         # `wf:` is RESERVED for named workflow definitions (jcl/workflow_vocab).
         if name.startswith("ws:") or name.startswith("wf:"):
             raise ValueError(f"Set name prefix '{name.split(':', 1)[0]}:' is reserved for internal use.")
-        _SYS_PREFIXES = ("leaf:", "ns:", "lang:", "scope:", "sys:")
+        # `pulse:` / `src:` / `visit:` are internal analytics collections — like the other
+        # system prefixes they must NOT spawn a proto-word (access traffic is not vocabulary).
+        _SYS_PREFIXES = ("leaf:", "ns:", "lang:", "scope:", "sys:", "pulse:", "src:", "visit:")
         if not any(name.startswith(p) for p in _SYS_PREFIXES):
             proto_key = self._ensure_protoword(name)
             if proto_key and proto_key != key:

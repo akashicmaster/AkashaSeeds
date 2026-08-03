@@ -42,6 +42,10 @@
       "autoload": false
     },
     {
+      "name": "philosophy",
+      "autoload": false
+    },
+    {
       "name": "biology",
       "autoload": false
     },

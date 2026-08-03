@@ -11,7 +11,7 @@ class CommandRouter:
     COMMAND_SPECS = {
         # ── Memory ────────────────────────────────────────────────────
         "w":      {"method": "kernel.memory.write",  "args": ["text"],             "desc": "Write an atom into memory"},
-        "def":    {"method": "kernel.memory.define", "args": ["name"],             "desc": "Define a conceptual hub"},
+        "def":    {"method": "kernel.memory.define", "args": ["name", "description"], "desc": "Define a conceptual hub: def \"name\" \"description\""},
         "r":      {"method": "kernel.memory.read",   "args": ["id"],               "desc": "Remember — recall an atom by ID / alias / $ref"},
         "rm":     {"method": "kernel.memory.drop",   "args": ["id"],               "desc": "Drop an atom from memory"},
         "ln":     {"method": "kernel.memory.link",   "args": ["src", "dst", "rel"],"desc": "Link two nodes with a typed relation (quote multi-word names)"},

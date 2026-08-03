@@ -241,6 +241,14 @@ def _stop_recorded_portal(pid_path: str, wait: bool = True, grace_ticks: int = 4
             pid = int(f.read().strip())
     except (FileNotFoundError, ValueError):
         return None
+    # Never signal SELF. The portal's own self-watchdog (R5) reaches here via
+    # _spawn_cell_daemon → _reap_stale_local → _stop_recorded_portal(web-portal.pid), and that
+    # file records the watchdog's OWN pid — SIGTERM-ing it would kill the recovery mid-flight
+    # (the spawn is never reached → daemon AND portal both gone, worse than the wedge it was
+    # healing). _reap_leaked_portals already self-excludes (keep | {os.getpid()}); mirror that
+    # here so every caller is safe. The fresh daemon we spawn reaps this old portal itself.
+    if pid == os.getpid():
+        return None
     # Anti-recycle guard: the recorded process may be long dead and its pid reassigned by the
     # OS to an unrelated process (common on a long-lived server after a crash). Signalling that
     # number blind would kill a stranger. Verify the pid is genuinely one of ours (Cell daemon
@@ -518,6 +526,57 @@ def _resolve_build_id(root: str) -> str:
 
 _HELD_BOOT_LOCK = None   # keeps the boot-lock fd alive for this process's lifetime
 
+
+# ── Boot-progress heartbeat (R4) ────────────────────────────────────────────────
+# A booting daemon touches this file every few seconds. Convergence then distinguishes a
+# HEALTHY-but-slow boot (heartbeat FRESH → keep waiting, NEVER reap) from a genuinely WEDGED
+# process (heartbeat stale/absent AND not answering sys.ping → reap + respawn). This removes the
+# fixed-ceiling false-positive of RC4 — a B-scale nucleus load on a slow VPS disk no longer risks
+# being reaped as "hung" while it is legitimately still binding its socket. The file exists ONLY
+# during boot: once the IPC socket answers, sys.ping is the liveness signal and the file is cleared,
+# so "heartbeat fresh" is an exact synonym for "actively booting".
+_BOOT_HEARTBEAT_STALE_S = float(os.environ.get("AKASHA_BOOT_HEARTBEAT_STALE", "").strip() or 20)
+
+def _boot_heartbeat_path(base_dir: str) -> str:
+    return os.path.join(base_dir, "central", "boot.heartbeat")
+
+def _boot_heartbeat_touch(base_dir: str) -> None:
+    p = _boot_heartbeat_path(base_dir)
+    try:
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w") as fh:
+            fh.write(str(os.getpid()))
+    except OSError:
+        pass
+
+def _boot_heartbeat_age(base_dir: str):
+    """Seconds since the boot heartbeat was last written, or None if absent/unreadable."""
+    import time as _t
+    try:
+        return max(0.0, _t.time() - os.path.getmtime(_boot_heartbeat_path(base_dir)))
+    except OSError:
+        return None
+
+def _boot_heartbeat_fresh(base_dir: str, stale_s: float = _BOOT_HEARTBEAT_STALE_S) -> bool:
+    """True only while a daemon is actively touching the heartbeat (a live, progressing boot)."""
+    age = _boot_heartbeat_age(base_dir)
+    return age is not None and age <= stale_s
+
+def _boot_heartbeat_clear(base_dir: str) -> None:
+    try:
+        os.remove(_boot_heartbeat_path(base_dir))
+    except OSError:
+        pass
+
+def _run_boot_heartbeat(base_dir: str, stop_event) -> None:
+    """Touch the boot heartbeat every few seconds until boot completes (stop_event set) or the
+    process dies. A wedged interpreter (GIL deadlock) or a stalled disk stops the touches, so a
+    stale heartbeat is exactly the 'wedged, not merely slow' signal convergence needs."""
+    _boot_heartbeat_touch(base_dir)
+    while not stop_event.wait(3.0):
+        _boot_heartbeat_touch(base_dir)
+
+
 def _acquire_boot_lock(base_dir: str):
     """Exclusive, non-blocking per-data-dir BOOT LOCK. Only one process may load a given
     nucleus at a time — two daemons booting the SAME data dir concurrently is two writers into
@@ -635,43 +694,57 @@ def _reap_stale_local(base_dir: str, quiet: bool = True) -> int:
     return reaped
 
 
-def _wait_for_daemon_socket(base_dir: str, deadline_s: float = 90.0) -> bool:
-    """Block until an alive-but-booting Cell daemon binds its socket and answers sys.ping, or the
-    deadline passes. Returns True as soon as one answers; False on timeout OR if the booting daemon
-    dies before it binds (the caller then respawns). The socket comes up EARLY — right after the
-    gateway exists, before the heavy ontology load, which runs in a background thread — so a daemon
-    that has not answered within this generous ceiling is genuinely WEDGED in kernel init (not
-    merely slow), and reaping+respawning it is the correct cleanup, not a race against a slow load."""
+def _wait_for_daemon_socket(base_dir: str, deadline_s: float = None) -> bool:
+    """Block until an alive-but-booting Cell daemon binds its socket and answers sys.ping. Returns
+    True as soon as one answers; False if the booting daemon dies, or goes WEDGED (boot heartbeat
+    stale AND still no ping) — the caller then reaps + respawns.
+
+    Heartbeat-gated (R4): while the boot heartbeat is FRESH the daemon is progressing, so it is
+    NEVER timed out — this removes the RC4 false-positive of reaping a healthy-but-slow B-scale
+    load on a slow VPS disk. The fixed ceiling (AKASHA_BOOT_WAIT, default 90 s) applies only as a
+    fallback when no heartbeat file exists (an older daemon build that predates the heartbeat)."""
     import time as _t
     from api.portals import cell_ipc
+    if deadline_s is None:
+        deadline_s = float(os.environ.get("AKASHA_BOOT_WAIT", "").strip() or 90)
     end = _t.time() + deadline_s
-    while _t.time() < end:
+    while True:
         if cell_ipc.ping(base_dir, timeout=2.0):
             return True
         if _daemon_process_alive(base_dir) is None:
             return False                            # it died while booting → caller respawns
+        if _boot_heartbeat_fresh(base_dir):
+            _t.sleep(0.5)                           # progressing boot → wait, no ceiling-kill
+            continue
+        # No fresh heartbeat → either an old daemon (no file) or a wedged one. Honour the fixed
+        # ceiling as a fallback; once it passes, report 'not answering' so the caller reaps.
+        if _t.time() >= end:
+            return False
         _t.sleep(0.5)
-    return False
 
 
-def _ensure_daemon(root: str, base_dir: str, args, quiet: bool = False) -> bool:
-    """Guarantee exactly ONE Cell daemon is answering on this data dir, WITHOUT ever creating a
-    second nucleus writer and WITHOUT ever killing a healthy booting daemon. The single entry every
-    client path (CLI, MCP) uses to reach a live daemon. Returns True if a daemon answers ping, False
-    if none could be brought up (caller falls back to an embedded engine). Convergence, code-side:
+def _converge_daemon(root: str, base_dir: str, args, *, spawn: bool, quiet: bool = False,
+                     wait_ceiling: float = None) -> str:
+    """The ONE convergence routine every entry path shares (R1) — the actual fix for "client and
+    server paths are not equivalent". From ANY daemon state it drives this data dir toward exactly
+    one answering daemon, WITHOUT ever creating a second nucleus writer and WITHOUT ever reaping a
+    daemon whose boot heartbeat is fresh. Returns one of:
 
-      1. A daemon ANSWERS            → attach (True).
-      2. A daemon process is ALIVE but still booting (socket not bound) → WAIT for its socket and
-         attach. NEVER spawn a second, NEVER reap it, NEVER embed alongside it — reaping a healthy
-         booting daemon is exactly the restart loop. If it never binds a socket (genuinely HUNG),
-         Akasha reaps it (no user pkill) and spawns a fresh one.
-      3. No live daemon process      → spawn one.
+        "answering" — a daemon answers sys.ping (attach to it).
+        "spawned"   — none was answering; a fresh one was spawned and now answers (spawn=True only).
+        "gone"      — no answering daemon and none could/should be spawned (spawn=False, or the
+                      spawn attempt failed). The caller chooses the exit code / embedded fallback.
 
-    This is robust to an abrupt SSH-drop CLI death: the detached daemon keeps booting, and the next
-    reconnect finds it (case 1 or 2) and attaches instead of piling on a second writer.
+    Cases:
+      1. A daemon ANSWERS                         → "answering".
+      2. A daemon process is ALIVE but not yet answering → WAIT for its socket (heartbeat-gated:
+         a fresh-heartbeat boot is never reaped). If it answers → "answering"; if it dies or goes
+         wedged (heartbeat stale + no ping) → reap it (never a user pkill) and fall through.
+      3. No live daemon process                   → spawn one if spawn=True, else "gone".
 
-    `quiet` routes status to the log instead of stdout — the MCP transport OWNS stdout, so a banner
-    there would corrupt its JSON-RPC stream."""
+    Robust to an abrupt SSH-drop: the detached daemon keeps booting and the next reconnect finds it
+    (case 1/2) and attaches instead of piling on a second writer. `quiet` routes status to the log
+    (the MCP transport owns stdout — a banner there would corrupt its JSON-RPC stream)."""
     import logging as _lg
     from api.portals import cell_ipc
     log = _lg.getLogger("Harmonia.Boot")
@@ -683,21 +756,31 @@ def _ensure_daemon(root: str, base_dir: str, args, quiet: bool = False) -> bool:
             print(f"  {msg}", flush=True)
 
     if cell_ipc.ping(base_dir):
-        return True
+        return "answering"
     alive = _daemon_process_alive(base_dir)
     if alive:
         _say(f"[*] A Cell daemon is starting up (PID {alive}) — attaching once it is ready…")
-        if _wait_for_daemon_socket(base_dir):
+        if _wait_for_daemon_socket(base_dir, wait_ceiling):
             _say("[+] Cell daemon online.")
-            return True
-        # Alive but never bound a socket within the ceiling → wedged. Clean up after ourselves
-        # (the user is never asked to kill/pkill) and respawn a healthy one.
+            return "answering"
+        # Alive but not answering and no fresh boot heartbeat → WEDGED. Clean up after ourselves
+        # (the user is never asked to kill/pkill) so a healthy replacement can bind a clean socket.
         if _daemon_process_alive(base_dir) is not None:
-            log.warning("[Cell] daemon PID %s is alive but never bound its socket — reaping the "
-                        "hung daemon and respawning.", alive)
+            log.warning("[Cell] daemon PID %s is alive but not answering (boot heartbeat stale) — "
+                        "reaping the wedged daemon.", alive)
             _reap_stale_daemon(base_dir)
             _reap_leaked_portals(base_dir)
-    return _spawn_cell_daemon(root, base_dir, args, quiet=quiet)
+    if not spawn:
+        return "gone"
+    return "spawned" if _spawn_cell_daemon(root, base_dir, args, quiet=quiet) else "gone"
+
+
+def _ensure_daemon(root: str, base_dir: str, args, quiet: bool = False) -> bool:
+    """Client-path convenience wrapper (interactive CLI, MCP): converge with spawn=True and reduce
+    to a bool — True if a daemon is answering (attached or freshly spawned), False if none could be
+    brought up (the caller falls back to an embedded engine). All three convergence cases live in
+    the shared `_converge_daemon`, so every entry path exercises the SAME logic."""
+    return _converge_daemon(root, base_dir, args, spawn=True, quiet=quiet) in ("answering", "spawned")
 
 
 def _reap_leaked_portals(base_dir: str, keep_pids=()):
@@ -823,6 +906,18 @@ def _cell_pid_path(base_dir: str) -> str:
     return os.path.join(base_dir, "central", "cell.pid")
 
 
+def _recorded_daemon_pid(base_dir: str):
+    """The pid recorded in cell.pid (int), or None — regardless of whether it is still alive.
+    'A daemon was EXPECTED' (R2) means this file names a pid: a daemon ran on this data dir and
+    should be reachable, so an embedded single-shot fallback here must exit non-zero."""
+    try:
+        with open(_cell_pid_path(base_dir)) as fh:
+            pid = int((fh.read() or "0").strip() or 0)
+    except (OSError, ValueError):
+        return None
+    return pid or None
+
+
 def _supervisor_health_tick(base_dir: str, interval: float = 15.0) -> None:
     """IDLE maintenance loop (P4): periodically health-check every service unit and respawn the
     unhealthy ones per their restart policy. Runs in the Cell daemon (the sole respawner, P3),
@@ -899,7 +994,13 @@ def _spawn_cell_daemon(root: str, base_dir: str, args, quiet: bool = False) -> b
     # this path is reached only when no healthy daemon is being attached to.
     _reap_stale_local(base_dir, quiet=quiet)
 
-    entry = os.path.abspath(sys.argv[0]) if (sys.argv and sys.argv[0].endswith(".py")) \
+    # Pick the akasha.py entry to re-exec. Must match "akasha.py", NOT any ".py": the R5 portal
+    # watchdog reaches here from inside a portal subprocess launched with `-m services.http_portal`
+    # (or api.portals.web_worker), so sys.argv[0] is `http_portal.py`/`web_worker.py`. Selecting
+    # that as the entry spawned `python http_portal.py --daemon …` → argparse died on the unknown
+    # `--daemon` and the daemon never came up (convergence returned "gone"). Falling back to
+    # root/akasha.py when argv[0] is not the akasha entry fixes the watchdog re-spawn (B3).
+    entry = os.path.abspath(sys.argv[0]) if (sys.argv and sys.argv[0].endswith("akasha.py")) \
         else os.path.join(root, "akasha.py")
     if not os.path.exists(entry):
         entry = os.path.join(root, "akasha.py")
@@ -925,21 +1026,39 @@ def _spawn_cell_daemon(root: str, base_dir: str, args, quiet: bool = False) -> b
         return False
 
     _say("[*] Starting Cell daemon (backend) — owns the engine and its jobs…")
-    deadline = _t.time() + 45
+    # Heartbeat-gated spawn wait (F1 — the R4 gate applied to the ONE loop every spawn goes
+    # through; the fixed 45 s ceiling here used to declare a healthy, still-booting B-scale daemon
+    # dead). A spawned daemon touches boot.heartbeat every ~3 s from before create_gateway, so a
+    # migrate-drain / orphan-scan / IAM-load / one-time-reload window that legitimately exceeds the
+    # ceiling is NEVER timed out — we keep waiting while the heartbeat advances. The fallback
+    # ceiling (AKASHA_BOOT_WAIT, default 90 s) applies only when there is NO fresh heartbeat (an old
+    # daemon build, or the brief pre-touch startup gap). F4: a progress line every ~15 s so a long
+    # legitimate wait on a VPS is not mistaken for a hang.
+    _ceiling = float(os.environ.get("AKASHA_BOOT_WAIT", "").strip() or 90)
+    _end = _t.time() + _ceiling
     _proc_gone_since = None
-    while _t.time() < deadline:
-        # Check the SOCKET first: attach to whichever daemon binds it, not necessarily the one
-        # WE spawned. A restart can spawn a daemon that correctly DEFERS (boot-lock/handshake) to
-        # a sibling that is already booting — that sibling will bind the socket shortly.
+    _last_progress = _t.time()
+    _gave_up = False
+    while True:
+        # Check the SOCKET first: attach to whichever daemon binds it, not necessarily the one WE
+        # spawned. A restart can spawn a daemon that correctly DEFERS to a sibling already booting.
         if cell_ipc.ping(base_dir, timeout=2.0):
             _say("[+] Cell daemon online.")
             return True
+        # A FRESH heartbeat (from our proc OR a sibling we deferred to) means the boot is
+        # progressing → wait with NO ceiling. Checked BEFORE the proc-exit grace so a deferred-to
+        # sibling that is still advancing is honoured too.
+        if _boot_heartbeat_fresh(base_dir):
+            if _t.time() - _last_progress >= 15:
+                _last_progress = _t.time()
+                _say("[*] Cell daemon is booting (heartbeat advancing) — a large ontology can "
+                     "take several minutes…")
+            _t.sleep(0.5)
+            continue
         if proc.poll() is not None:
-            # OUR spawned daemon exited. It may have deferred to a sibling that is still booting;
-            # keep waiting a short grace for the socket. A CLI must NEVER fall back to an embedded
-            # engine while a daemon is coming up — that would make the frontend a SECOND nucleus
-            # writer (the responsibility violation behind the two-writers crash). Only give up
-            # (→ embedded, the genuine no-backend case) if no daemon binds the socket in time.
+            # OUR spawned daemon exited and there is no fresh heartbeat. It may have deferred to a
+            # sibling that is about to bind the socket; keep a short grace, then give up. A CLI must
+            # NEVER embed while a daemon is coming up (a SECOND nucleus writer).
             if _proc_gone_since is None:
                 _proc_gone_since = _t.time()
                 log.info("[Cell] spawned daemon exited (likely deferred to a sibling) — waiting "
@@ -947,9 +1066,34 @@ def _spawn_cell_daemon(root: str, base_dir: str, args, quiet: bool = False) -> b
             elif _t.time() - _proc_gone_since > 15:
                 log.error("[Cell] daemon exited during startup and no sibling bound the socket "
                           "(see logs/cell-daemon.log).")
-                return False
+                _gave_up = True
+                break
+            _t.sleep(0.5)
+            continue
+        # Alive, not answering, and NO fresh heartbeat → apply the fallback ceiling.
+        if _t.time() >= _end:
+            log.error("[Cell] daemon did not answer within the startup timeout and its boot "
+                      "heartbeat is stale — treating it as wedged.")
+            _gave_up = True
+            break
         _t.sleep(0.5)
-    log.error("[Cell] daemon did not answer within the startup timeout.")
+
+    # F2 — a False return MUST mean "no live daemon process exists", because every caller embeds on
+    # False. We only reach here with a STALE/absent heartbeat, so a still-alive daemon is genuinely
+    # wedged: reap it (+ any leaked portal) before returning, so the caller's embedded fallback is
+    # never a second writer beside a wedged spawn. (A fresh-heartbeat boot never falls through here.)
+    if _gave_up:
+        if _daemon_process_alive(base_dir) is not None:
+            log.warning("[Cell] reaping the wedged spawned daemon before falling back "
+                        "(a False return must mean no live daemon).")
+            _reap_stale_daemon(base_dir)
+            _reap_leaked_portals(base_dir)
+        else:
+            try:
+                if proc.poll() is None:
+                    proc.terminate()
+            except Exception:
+                pass
     return False
 
 
@@ -980,9 +1124,20 @@ def _run_cell_client(root: str, base_dir: str, args, interactive: bool) -> bool:
             # _bind_unix already unlinks a stale IPC socket).
             _stop_recorded_portal(os.path.join(base_dir, "web-portal.pid"))
             _reap_leaked_portals(base_dir)
+            # F3 — we have already STOPPED the healthy old daemon, so falling back to embedded here
+            # is the worst option: a SECOND writer beside the still-booting replacement AND a
+            # minutes-long foreground load (the VPS "idle at startup" report). With F1 the false
+            # timeout is gone; a residual GENUINE failure retries the spawn once, then exits
+            # NON-ZERO with a truthful message — it never embeds. (_spawn_cell_daemon's F2 guarantee
+            # means a False return already left no live daemon behind.)
             if not _spawn_cell_daemon(root, base_dir, args):
-                log.warning("[Cell] replacement daemon failed to start — falling back to embedded.")
-                return False
+                log.warning("[Cell] replacement daemon did not come up — retrying the spawn once.")
+                if not _spawn_cell_daemon(root, base_dir, args):
+                    print("  [!] The replacement Cell daemon failed to boot (see "
+                          "logs/cell-daemon.log). The previous daemon was stopped for the upgrade; "
+                          "NOT falling back to an embedded engine (that would be a second nucleus "
+                          "writer). Re-run  python akasha.py  to retry.", flush=True)
+                    sys.exit(1)
     else:
         # No daemon answers — bring exactly one up WITHOUT ever becoming a second writer or killing
         # a healthy booting daemon. `_ensure_daemon` attaches to an alive-but-booting daemon (SSH
@@ -1274,9 +1429,32 @@ def main() -> None:
             global _HELD_BOOT_LOCK
             _HELD_BOOT_LOCK = _acquire_boot_lock(base_dir)
             if _HELD_BOOT_LOCK is None:
-                print("  [i] Another Cell daemon is already booting this data dir — deferring "
-                      "(avoids two writers into one nucleus).", flush=True)
-                return
+                # R1/R2 — the boot lock is held by another process. Do NOT blindly "defer" (RC1):
+                # a WEDGED holder is neither answering nor progressing, and deferring to it with
+                # EXIT 0 leaves the daemon dead forever while systemd (`Restart=on-failure`) records
+                # a clean start. Run the SHARED convergence routine (spawn=False): let the holder
+                # answer, or reap it if it is genuinely wedged.
+                _state = _converge_daemon(_root, base_dir, args, spawn=False)
+                if _state == "answering":
+                    print("  [i] A Cell daemon is already serving this data dir — deferring to it "
+                          "(avoids two writers into one nucleus).", flush=True)
+                    return                               # correct defer to an ANSWERING daemon → exit 0
+                # The holder was wedged and reaped (or it died). Try ONCE more to take the boot lock
+                # and continue booting THIS process into the writer role.
+                _HELD_BOOT_LOCK = _acquire_boot_lock(base_dir)
+                if _HELD_BOOT_LOCK is None:
+                    # Another process grabbed the lock in the gap — give it a moment to bind, then
+                    # defer if it serves, else refuse (non-zero) rather than defer to a wedged holder.
+                    if _wait_for_daemon_socket(base_dir):
+                        print("  [i] Another Cell daemon took over and is serving — deferring.",
+                              flush=True)
+                        return
+                    print("  [!] Could not acquire the boot lock and no daemon is answering — "
+                          "refusing to defer to a wedged/re-locked holder.", flush=True)
+                    sys.exit(1)
+                print("  [~] Reaped a wedged boot-lock holder — taking over as the Cell daemon.",
+                      flush=True)
+                # fall through with the lock now held → record pid + continue booting.
             # Record our pid from the START of boot — NOT late (svc:cell registers only after the
             # whole ontology load). A restart during the multi-second load window must be able to
             # FIND and reap this daemon (_reap_stale_daemon reads cell.pid); writing it late left a
@@ -1295,14 +1473,35 @@ def main() -> None:
                 return
             # else: build the embedded engine below, then serve MCP over it.
         elif not _server_mode and not _embedded:
-            from api.portals import cell_ipc
             if not args.cmd:                             # interactive REPL
                 if _run_cell_client(_root, base_dir, args, interactive=True):
                     return
-            elif cell_ipc.ping(base_dir):                # single-shot, daemon already up
-                if _run_cell_client(_root, base_dir, args, interactive=False):
-                    return
-            # else: no daemon for a one-off command → embedded (built below).
+            else:                                        # single-shot one-off command
+                # R1/R2: converge to a live daemon BEFORE ever running embedded. A one-off command
+                # used to run silently EMBEDDED next to a wedged daemon (RC2) — a second nucleus
+                # writer that also MASKS the outage (a `akasha.py sys.ping` cron probe then HIDES
+                # daemon death). Embedded is now the LAST resort, reached only when no daemon
+                # process exists at all.
+                _state = _converge_daemon(_root, base_dir, args, spawn=True)
+                if _state in ("answering", "spawned"):
+                    if _run_cell_client(_root, base_dir, args, interactive=False):
+                        return
+                # Converge did not yield an answering daemon. If a daemon process is nonetheless
+                # ALIVE (wedged, unreachable), refuse to embed beside it (that is the second-writer
+                # hazard) — exit non-zero so the outage surfaces instead of being masked.
+                if _daemon_process_alive(base_dir) is not None:
+                    print("  [!] A Cell daemon process is alive but not reachable — refusing to run "
+                          "this command in an embedded engine beside it (a second nucleus writer is "
+                          "unsafe).\n      Recover with:  python akasha.py stop   then retry.",
+                          flush=True)
+                    sys.exit(3)
+                # Genuinely no daemon process: run embedded (built below), but say so plainly, and
+                # remember to exit non-zero if a daemon was EXPECTED (a recorded pid existed) so
+                # cron/scripts can react to the daemon being down.
+                print("  [!] No daemon reachable — running this command in an embedded engine; the "
+                      "persistent daemon/portal are NOT running.", flush=True)
+                args._embedded_singleshot_expected = _recorded_daemon_pid(base_dir) is not None
+            # else / fall-through: build the embedded engine below for the one-off command.
 
     # ── Boot the kernel ──────────────────────────────────────────────
     from api.gateway import create_gateway
@@ -1324,6 +1523,21 @@ def main() -> None:
     # Series may be pinned out-of-band (e.g. a thesaurus deployment on shared
     # hosting via CGI) without editing code; defaults to the public seeds tier.
     _series = os.environ.get("AKASHA_SERIES", "seeds").strip() or "seeds"
+
+    # ── Boot-progress heartbeat (R4) ──────────────────────────────────
+    # A process that will OWN the cell socket (a daemon, or a portal-spawning foreground) touches
+    # the boot heartbeat through the create_gateway window — which scales with the nucleus (migrate
+    # drain, orphan scan, IAM load) and can run for many seconds on a B-scale DB + slow VPS disk.
+    # A converging client/server then sees this boot as PROGRESSING (heartbeat fresh) and NEVER
+    # reaps it as wedged. The thread is stopped and the file cleared once the socket is up
+    # (sys.ping becomes the liveness signal); a wedged create_gateway stops the touches → stale.
+    _hb_stop = None
+    if not _is_cgi and args is not None and (
+            args.serve or args.daemon
+            or (not args.stdio and not args.mcp and not args.cmd)):
+        _hb_stop = threading.Event()
+        threading.Thread(target=_run_boot_heartbeat, args=(base_dir, _hb_stop),
+                         name="boot-heartbeat", daemon=True).start()
 
     try:
         live_gw = create_gateway(series=_series, base_dir=base_dir)
@@ -1420,6 +1634,13 @@ def main() -> None:
         except Exception as _ipc_exc:
             log.warning("[Cell] local IPC socket failed to start (%s) — "
                         "the web portal will fall back to read-only serving.", _ipc_exc)
+        finally:
+            # Boot's socket-bind milestone is reached (or IPC failed) — either way the boot
+            # heartbeat has done its job. Stop touching it and clear the file so 'heartbeat fresh'
+            # never lingers past boot (post-boot liveness is sys.ping). Cleared again on shutdown.
+            if _hb_stop is not None:
+                _hb_stop.set()
+            _boot_heartbeat_clear(base_dir)
 
         # Share the session-signing secret with the portal subprocess (fixes "Guest binding:
         # signature mismatch"). gbk:/akt: tokens are self-verifying (HMAC, no server state),
@@ -1529,7 +1750,10 @@ def main() -> None:
     if args.cmd:
         from api.portals.stdio import run_single_shot
         print(run_single_shot(" ".join(args.cmd), live_gw))
-        sys.exit(0)
+        # R2: if a daemon was EXPECTED (a recorded pid existed) but we ran embedded because it was
+        # unreachable, exit non-zero so a cron/script probe reflects that the daemon is down —
+        # rather than reporting success from a masking embedded run.
+        sys.exit(2 if getattr(args, "_embedded_singleshot_expected", False) else 0)
 
     # ── Archives detection ─────────────────────────────────────────────
     # In deployed bundles (seeds/thesaurus): reproductor/ is absent, so
@@ -1732,6 +1956,10 @@ def main() -> None:
             # violation that kills the worker on first boot ("Dead").
             env["AKASHA_NO_AUTOLEARN"] = "1"
             env["AKASHA_SERVE_ONLY"] = "1"
+            # R5: hand the portal this daemon's launch args so its self-watchdog can spawn an
+            # IDENTICAL replacement (same --server/--host/--port/--portal) if the writer wedges.
+            import json as _json_argv
+            env["AKASHA_DAEMON_ARGV"] = _json_argv.dumps(sys.argv[1:])
             try:
                 log_fh = open(log_path, "a")
                 # start_new_session: own session so an SSH SIGHUP on disconnect does not kill
@@ -1755,15 +1983,21 @@ def main() -> None:
                 _portal_recipe = _sv_mod.build_process_spec(
                     argv=cmd, cwd=_root,
                     env_add={"PYTHONUNBUFFERED": "1", "AKASHA_NO_AUTOLEARN": "1",
-                             "AKASHA_SERVE_ONLY": "1"},
+                             "AKASHA_SERVE_ONLY": "1",
+                             "AKASHA_DAEMON_ARGV": _json_argv.dumps(sys.argv[1:])},
                     log=log_path, base_dir=base_dir)
             except Exception as _rex:
                 log.debug("[Boot] portal recipe not persisted: %s", _rex)
                 _portal_recipe = None
-            # Health probe (P4): a TCP connect to the actual serve port catches a portal that
-            # is alive-but-not-listening (hung), which the pid floor would miss. The health tick
-            # debounces so a transient blip never respawns a healthy portal.
-            _portal_health = ({"kind": "tcp", "target": f"127.0.0.1:{int(_web_port)}"}
+            # Health probe (P4/R3): a JSON-RPC POST that the worker must RUN code to answer, NOT a
+            # bare TCP connect. A SIGSTOPped/hung portal still completes the kernel TCP handshake
+            # into its accept backlog, so the old TCP probe reported it healthy and it was never
+            # respawned (RC3). A sys.ping POST to /api/rpc gets NO response from a wedged worker →
+            # the probe times out → unhealthy → respawn. Any HTTP response (even an auth error)
+            # counts as alive. The health tick debounces so a transient blip never false-respawns.
+            _portal_health = ({"kind": "http",
+                               "target": f"{scheme}://127.0.0.1:{int(_web_port)}/api/rpc",
+                               "method": "sys.ping", "timeout": 3.0}
                               if _web_port else None)
             _supervisor.record_running(
                 "svc:web-portal", proc.pid, engine=engine, host=_web_host, port=_web_port,
