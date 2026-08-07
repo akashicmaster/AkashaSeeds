@@ -24,13 +24,30 @@ import threading
 
 
 def _is_recorded_portal(base_dir: str) -> bool:
-    """True only for the web-portal process RECORDED in the run-dir — so a leaked/orphaned portal
-    from a prior crash never also tries to revive the daemon (no thundering herd)."""
+    """True only for the web-portal process RECORDED as authoritative — so a leaked/orphaned portal
+    from a prior crash never also tries to revive the daemon (no thundering herd).
+
+    Two records, EITHER of which is authoritative (F7): the legacy `web-portal.pid` file (written by
+    the daemon's own portal spawn) AND the Supervisor run-dir `svc:web-portal` unit (written by
+    record_running). A health-tick RESPAWN updates the run-dir unit's pid but NOT the legacy file,
+    so a watchdog that only checked the legacy file was muted forever after the first respawn — and
+    with F8's TLS-flip churn respawning the portal every boot, that was every deployment. Accepting
+    the run-dir pid keeps the guard true for the currently-live portal after any respawn."""
+    my = os.getpid()
     try:
         with open(os.path.join(base_dir, "web-portal.pid")) as fh:
-            return int((fh.read() or "0").strip() or 0) == os.getpid()
+            if int((fh.read() or "0").strip() or 0) == my:
+                return True
     except (OSError, ValueError):
-        return False
+        pass
+    try:
+        from lib.harmonia import supervisor as _sv
+        u = _sv.read_unit(base_dir, "svc:web-portal")
+        if u and int(u.get("pid") or 0) == my:
+            return True
+    except Exception:
+        pass
+    return False
 
 
 def _system_log(root: str, msg: str) -> None:

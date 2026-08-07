@@ -4310,7 +4310,18 @@ class KernelDispatcher:
         # name on every later read — a silent trap (`al place:france france` before
         # place:france exists locks the user out of the shared `france` atom). A valid
         # target has a body in the local cortex, the nucleus, or a visible group space.
-        if not _in_nucleus and not ctx.core.get_chunk_raw(resolved):
+        #
+        # ⚠️ EXEMPT explicit 64-hex content-addresses (F6). A `write`→`alias` pair (the
+        # global-relations phase COMPLETION SENTINEL is exactly this) aliases the key the
+        # write just returned; that key is a legitimate content-address even when the
+        # cross-context get_chunk_raw here cannot see it (separate re-authenticated JCL
+        # step contexts / an async commit). Rejecting it made the sentinel alias fail →
+        # the sentinel never landed → the relations phase REPLAYED on every boot → RSS
+        # climbed into the OOM ceiling and the daemon was killed. Only NON-hash raw
+        # strings (the true dangling-alias case) are rejected.
+        _is_hexkey = (len(resolved) == 64
+                      and all(c in "0123456789abcdef" for c in resolved.lower()))
+        if not _is_hexkey and not _in_nucleus and not ctx.core.get_chunk_raw(resolved):
             _scopes = getattr(session, "active_scopes", None) or []
             _in_group = any(
                 ge.check_access(resolved) and ge.get_chunk_raw(resolved)

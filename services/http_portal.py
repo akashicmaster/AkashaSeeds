@@ -64,6 +64,14 @@ def main() -> None:
     except Exception:
         pass
 
+    # F9 — signal readiness before serving so the health tick's boot grace ends here (a slow-booting
+    # portal is never respawned mid-boot; a hung one is still caught after this point).
+    try:
+        from lib.harmonia import supervisor as _sv
+        _sv.mark_unit_ready(data_dir, "svc:web-portal")
+    except Exception:
+        pass
+
     from services.http_gateway import BaseWebService
     svc = BaseWebService(gw=gw, port=args.port, host=args.host, static_dir=static_dir)
     svc.start()   # blocking serve_forever — the subprocess's whole job

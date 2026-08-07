@@ -102,6 +102,15 @@ _ALLOWED_ENV_KEYS = frozenset({
 _SECRET_HINTS = ("SECRET", "TOKEN", "PASSWORD", "PASSPHRASE", "PRIVATE",
                  "CRED", "APIKEY", "API_KEY", "SIGNING")
 
+# F9 — how long a freshly-(re)spawned service may take to become READY before the health tick is
+# allowed to probe-kill it. A B-scale serve-only worker needs ~45-60 s of substrate load before it
+# binds its port; without this the 15 s tick would respawn every fresh portal before it could ever
+# answer (the churn that, with the double-worker memory spike, OOM-kills the daemon). Generous by
+# design; a worker that binds signals readiness (mark_unit_ready) and ends the grace early, and the
+# ceiling only bounds a worker that hangs before ever signaling. Per-unit override via the
+# descriptor's boot_grace_s; env override AKASHA_BOOT_GRACE.
+_DEFAULT_BOOT_GRACE_S = float(os.environ.get("AKASHA_BOOT_GRACE", "").strip() or 300)
+
 
 class SupervisorError(Exception):
     """A respawn was refused (recipe missing, gate failed) or a spawn failed."""
@@ -394,6 +403,42 @@ def read_unit(base_dir: str, unit_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+def update_unit_health(base_dir: str, unit_id: str, health: Optional[Dict[str, Any]]) -> bool:
+    """Update ONLY the `health` probe of an existing unit descriptor (atomic; F8).
+
+    A serve-only portal that resolves its EFFECTIVE scheme/port AFTER the daemon registered it —
+    a TLS activation moves service from plain-HTTP :80 to HTTPS :443 inside the worker — must be
+    able to correct its own probe, else the daemon's health tick keeps probing the port the portal
+    no longer serves, gets no answer, and respawns a perfectly HEALTHY portal every tick. `health`
+    lives on the unit envelope, NOT inside the signed recipe (`spec.sig`), so updating it does not
+    invalidate the respawn signature. Returns True if the unit existed and was updated."""
+    unit = read_unit(base_dir, unit_id)
+    if not unit:
+        return False
+    unit["health"] = health
+    try:
+        write_unit(base_dir, unit)
+        return True
+    except OSError:
+        return False
+
+
+def mark_unit_ready(base_dir: str, unit_id: str) -> bool:
+    """Stamp `ready_at` on a unit when its worker is about to serve (F9). Until this is set (or the
+    unit's boot_grace_s elapses) the health tick treats the unit as BOOTING and never probe-kills
+    it — so a slow B-scale worker is not respawned before it can bind its port. Atomic; health-only
+    sibling of update_unit_health, so it does not touch the signed recipe. Returns True on success."""
+    unit = read_unit(base_dir, unit_id)
+    if not unit:
+        return False
+    unit["ready_at"] = time.time()
+    try:
+        write_unit(base_dir, unit)
+        return True
+    except OSError:
+        return False
+
+
 def remove_unit(base_dir: str, unit_id: str) -> None:
     for p in (_unit_path(base_dir, unit_id), _pid_path(base_dir, unit_id)):
         try:
@@ -514,6 +559,7 @@ class Supervisor:
                        substrate: str = SUBSTRATE_PROCESS, trust: str = "",
                        serve_only: Optional[bool] = None,
                        health: Optional[Dict[str, Any]] = None,
+                       boot_grace_s: Optional[float] = None,
                        log_fd: Optional[Any] = None) -> None:
         """Persist a service unit as running. Used both when the Supervisor spawns a child and
         when an already-launched process (e.g. the daemon itself, or a portal started elsewhere)
@@ -537,6 +583,8 @@ class Supervisor:
             desc["serve_only"] = bool(serve_only)
         if health:
             desc["health"] = health
+        if boot_grace_s:
+            desc["boot_grace_s"] = float(boot_grace_s)     # F9 — readiness grace for this unit
         if spec is not None:
             desc["spec"] = spec
         write_unit(self.base_dir, desc)
@@ -568,7 +616,7 @@ class Supervisor:
             restart=unit.get("restart", RESTART_NEVER), deps=unit.get("deps", []),
             proc=proc, spec=unit.get("spec"), substrate=unit.get("substrate", SUBSTRATE_PROCESS),
             trust=unit.get("trust", ""), serve_only=unit.get("serve_only"),
-            health=unit.get("health"))
+            health=unit.get("health"), boot_grace_s=unit.get("boot_grace_s"))
         logger.info("[Supervisor] respawned '%s' from recipe → PID %s", unit["id"], proc.pid)
         return {"status": "started", "id": unit["id"], "pid": proc.pid, "via": "recipe"}
 
@@ -721,6 +769,21 @@ class Supervisor:
             uid = u["id"]
             if u.get("kind") != KIND_SERVICE or uid == "svc:cell":
                 continue
+            # F9 — readiness gating: NEVER probe-kill a unit that has not become ready yet. A
+            # B-scale serve-only worker needs ~45-60 s to load its substrate before it binds its
+            # port; the 15 s tick (× threshold 2 ≈ 30 s) would otherwise declare EVERY fresh portal
+            # hung and respawn it before it can possibly answer — the ~5-minute churn that, with the
+            # double-worker memory spike, OOM-killed the daemon all night. A unit that has SIGNALED
+            # readiness (mark_unit_ready → ready_at) is probed normally; one that has not is treated
+            # as BOOTING while its pid is alive and within boot_grace_s — the R4 lesson (readiness
+            # vs a fixed ceiling), one layer up. Past the ceiling it falls through to a normal probe,
+            # which passes if it actually bound and fails (→ respawn) only if it truly hung.
+            if not u.get("ready_at") and _pid_alive(u.get("pid")):
+                _grace = float(u.get("boot_grace_s") or _DEFAULT_BOOT_GRACE_S)
+                _started = u.get("started_at") or 0
+                if _started and (time.time() - _started) < _grace:
+                    self._health_fails.pop(uid, None)  # booting → not a failure; reset any debounce
+                    continue                           # skip the probe entirely
             if probe_health(u):
                 self._health_fails.pop(uid, None)     # healthy → reset the counter
                 continue

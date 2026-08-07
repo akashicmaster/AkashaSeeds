@@ -1999,11 +1999,15 @@ def main() -> None:
                                "target": f"{scheme}://127.0.0.1:{int(_web_port)}/api/rpc",
                                "method": "sys.ping", "timeout": 3.0}
                               if _web_port else None)
+            # F9 — a B-scale serve-only worker takes ~45-60 s to load its substrate before it binds
+            # its port; give it a generous readiness grace so the health tick never respawns it
+            # mid-boot (the worker ends the grace early by stamping ready_at once it serves).
+            _portal_boot_grace = float(os.environ.get("AKASHA_BOOT_GRACE", "").strip() or 300)
             _supervisor.record_running(
                 "svc:web-portal", proc.pid, engine=engine, host=_web_host, port=_web_port,
                 grace_s=5.0, restart="on-failure", deps=["svc:cell"], proc=proc,
                 spec=_portal_recipe, trust="network", serve_only=True,
-                health=_portal_health, log_fd=log_fh)
+                health=_portal_health, boot_grace_s=_portal_boot_grace, log_fd=log_fh)
             log.info(f"[Boot] Web portal ({engine}) PID {proc.pid} on {_web_host}:{_web_port}")
             from services.http_gateway import portal_banner
             for _line in portal_banner(_web_host, _web_port, scheme=scheme):

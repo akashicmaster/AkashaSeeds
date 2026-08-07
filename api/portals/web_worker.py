@@ -135,6 +135,26 @@ def main() -> None:
         ssl_cert = ssl_key = None
         serve_port = args.port
 
+    # F8 — the daemon registered this portal's health probe with the scheme/port it THOUGHT we'd
+    # serve, but a TLS activation just moved service to HTTPS on the https port. Correct the probe
+    # in the run-dir so the daemon's health tick pings the port we actually serve — else it gets no
+    # answer and respawns a perfectly healthy portal every tick (the "respawned svc:web-portal
+    # (unhealthy)" churn on every boot, which also structurally muted the R5 watchdog).
+    try:
+        from lib.harmonia import supervisor as _sv
+        _scheme = "https" if ssl_cert else "http"
+        _sv.update_unit_health(data_dir, "svc:web-portal", {
+            "kind": "http",
+            "target": f"{_scheme}://127.0.0.1:{int(serve_port)}/api/rpc",
+            "method": "sys.ping", "timeout": 3.0,
+        })
+        # F9 — signal readiness: substrate is loaded and we are about to bind. This ends the health
+        # tick's boot grace so a genuinely-hung portal is still caught quickly, while a slow-booting
+        # one is never respawned before this point.
+        _sv.mark_unit_ready(data_dir, "svc:web-portal")
+    except Exception:
+        pass
+
     from api.portals.asgi import run_server
     run_server(gw, host=args.host, port=serve_port, static_dirs=static_dirs or None,
                ssl_certfile=ssl_cert, ssl_keyfile=ssl_key)

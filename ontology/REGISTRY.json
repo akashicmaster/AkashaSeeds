@@ -129,6 +129,11 @@
       "name": "kitchen_index",
       "autoload": false,
       "tier": "C"
+    },
+    {
+      "name": "primary_examples",
+      "autoload": false,
+      "tier": "C"
     }
   ]
 }

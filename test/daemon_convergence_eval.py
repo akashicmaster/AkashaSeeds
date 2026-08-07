@@ -331,6 +331,109 @@ def c7_spawn_wait(base):
             os.environ["AKASHA_BOOT_WAIT"] = orig["bootwait"]
 
 
+def c8_sentinel_alias():
+    """F6 — aliasing an explicit 64-hex atom key must be allowed (the global-relations completion
+    sentinel is a write→alias of the just-written key; rejecting it made the sentinel never land →
+    relations REPLAYED every boot → RSS climbed into the OOM ceiling). A NON-hex dangling target is
+    still rejected (B2 preserved)."""
+    import hashlib
+    import tempfile as _tf
+    from lib.akasha.kernel import KernelDispatcher
+    from api.router import CommandRouter
+    KernelDispatcher._boot_load_ontology = lambda self: None
+    k = KernelDispatcher(series="seeds", base_dir=_tf.mkdtemp(prefix="akasha_f6_"))
+    k.dispatch({"jsonrpc": "2.0", "method": "kernel.genesis_rite",
+                "params": {"session_token": "admin",
+                           "data": {"user_name": "admin",
+                                    "passphrase": hashlib.sha256(b"pw").hexdigest()}},
+                "id": "g"}, "local")
+
+    def run(cli):
+        p = CommandRouter.build_rpc_request(cli, "admin")
+        return k.dispatch(p, "local") if p else {"error": {"code": -1}}
+
+    fakekey = hashlib.sha256(b"sentinel-nonexistent").hexdigest()      # a 64-hex key with no body
+    r_hex = run(f"al {fakekey} ont:ak:relations:all:testsentinel")
+    hex_ok = r_hex.get("error", {}).get("code") != -32602              # F6: created, not rejected
+    r_raw = run("al place:nowhere nowherenick")
+    raw_rejected = r_raw.get("error", {}).get("code") == -32602        # B2: still rejected
+    record("C8 F6 sentinel", hex_ok and raw_rejected,
+           f"hexkey_aliased={hex_ok} nonhex_rejected={raw_rejected}")
+
+
+def c9_recorded_portal(base):
+    """F7 — the watchdog guard must accept the Supervisor run-dir pid (a health-tick respawn
+    updates the run-dir unit pid but NOT web-portal.pid), else the watchdog is muted after the
+    first respawn."""
+    from api.portals import daemon_watchdog as dw
+    from lib.harmonia import supervisor as sv
+    os.makedirs(sv.run_dir(base), exist_ok=True)
+    with open(os.path.join(base, "web-portal.pid"), "w") as fh:
+        fh.write("999999")                                            # legacy file names ANOTHER pid
+    sv.write_unit(base, {"id": "svc:web-portal", "kind": sv.KIND_SERVICE, "pid": os.getpid()})
+    ok = dw._is_recorded_portal(base)                                 # run-dir pid is authoritative
+    record("C9 F7 recorded", ok, f"run-dir pid honoured={ok} (legacy file stale)")
+
+
+def c10_health_update(base):
+    """F8 — a portal that flips to HTTPS after registration must be able to correct its own probe
+    (health-only update, no re-sign) so the daemon stops respawning a healthy TLS portal."""
+    from lib.harmonia import supervisor as sv
+    os.makedirs(sv.run_dir(base), exist_ok=True)
+    sv.write_unit(base, {"id": "svc:web-portal", "kind": sv.KIND_SERVICE, "pid": os.getpid(),
+                         "health": {"kind": "http", "target": "http://127.0.0.1:80/api/rpc",
+                                    "method": "sys.ping"},
+                         "spec": {"substrate": "process", "sig": "abc"}})
+    sv.update_unit_health(base, "svc:web-portal",
+                          {"kind": "http", "target": "https://127.0.0.1:443/api/rpc",
+                           "method": "sys.ping", "timeout": 3.0})
+    u = sv.read_unit(base, "svc:web-portal")
+    ok = (u["health"]["target"] == "https://127.0.0.1:443/api/rpc"
+          and u["spec"]["sig"] == "abc" and u["pid"] == os.getpid())
+    record("C10 F8 health", ok, f"target={u['health']['target']} sig_intact={u['spec']['sig']=='abc'}")
+
+
+def c11_readiness_gate(base):
+    """F9 — the health tick must NOT respawn a portal that is still BOOTING (alive, not yet ready,
+    within boot_grace_s) even though its probe fails; once it signals readiness OR the grace
+    expires, the normal probe/debounce resumes. Uses a live child pid + a non-respawnable spec so
+    the assertion never triggers a real stop/respawn."""
+    import subprocess
+    from lib.harmonia import supervisor as sv
+    os.makedirs(sv.run_dir(base), exist_ok=True)
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        sup = sv.Supervisor(base)
+        H = {"kind": "http", "target": "http://127.0.0.1:59999/api/rpc",
+             "method": "sys.ping", "timeout": 1.0}                    # always fails (dead port)
+        # (a) BOOTING — alive, no ready_at, within grace, failing probe → skipped (no debounce count)
+        sup.record_running("svc:web-portal", child.pid, restart="on-failure", serve_only=True,
+                           spec={"substrate": "thread"}, boot_grace_s=300, health=H)
+        sup.maintain()
+        booting_skipped = sup._health_fails.get("svc:web-portal", 0) == 0
+        # (b) grace EXPIRED — start far in the past → gate no longer skips → probe path runs
+        u = sv.read_unit(base, "svc:web-portal"); u["started_at"] = time.time() - 10000
+        sv.write_unit(base, u)
+        sup.maintain()
+        expired_probed = sup._health_fails.get("svc:web-portal", 0) >= 1
+        # (c) READY — fresh start but ready_at set → probe path runs immediately
+        sup._health_fails.clear()
+        u = sv.read_unit(base, "svc:web-portal"); u["started_at"] = time.time()
+        u.pop("ready_at", None); sv.write_unit(base, u)
+        sv.mark_unit_ready(base, "svc:web-portal")
+        sup.maintain()
+        ready_probed = sup._health_fails.get("svc:web-portal", 0) >= 1
+        ok = booting_skipped and expired_probed and ready_probed
+        record("C11 F9 readiness", ok,
+               f"booting_skipped={booting_skipped} expired_probed={expired_probed} "
+               f"ready_probed={ready_probed}")
+    finally:
+        child.terminate()
+        try: child.wait(timeout=3)
+        except Exception: child.kill()
+
+
 def main():
     print("\n  daemon convergence eval — R1 shared convergence · R3 wedge probe · R4 heartbeat\n")
     if not sys.platform.startswith("linux") or not os.path.isdir("/proc"):
@@ -349,6 +452,10 @@ def main():
     c5_no_self_kill()
     c6_entry_pick(base)
     c7_spawn_wait(base)
+    c8_sentinel_alias()
+    c9_recorded_portal(base)
+    c10_health_update(base)
+    c11_readiness_gate(base)
 
     print()
     passed = sum(1 for _, ok, _ in _results if ok)
