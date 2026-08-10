@@ -113,9 +113,33 @@ The substrate is shipped; the immediate work is to *use* it and polish for relea
   completeness surface — never written canonically by an LLM directly); condition-driven
   autonomous bot avatars; and a "secretary" avatar that grounds command recall via a command-
   catalogue read tool instead of hallucinating syntax.
-- **Society-scoped governance / workflow** — deliberation, voting, and decision by the
-  responsible cast, turning a society into the *unit of workflow control* (proposals = steps,
-  the decider gates transitions). The bridge to governance-driven multi-agent collaboration.
+- **seeds13 — Space · Process · Time: society ≡ workflow on the chronon network** (the next
+  release's integrating refactor; spec finalized, implementation phased P0–P7). Three new
+  primitives complete the collaboration ladder: an **agent** is a cast admitted to a society
+  (the cast×society binding atom — one cast may be an agent of many societies, each with its
+  own per-workflow state); a **responsible** (chairman / scribe / broadcaster / workflow-defined)
+  is the accountability relation an agent bears there, deliberately separate from the
+  permission line and crossing it at exactly one point — the admin-appointed chairman, to whom
+  admission and responsible-setting are delegated per society. On top, the **chronon** layer:
+  a chronon is a *semantic state boundary* sealed by the scribe — its members are the
+  references bound to that meaning (neither a snapshot nor a delta; the transition lives in
+  `chronon:mutates` and the executable body), and the succession-and-mutation of the chronon
+  network **is Akasha Time** — traversable both ways, branching, decoupled from wall-clock.
+  The laws that fall out: **society ≡ workflow** (two faces of one chronon graph — feed
+  utterances become members, the `chronon:next` topology is the DAG, responsibles are the
+  gates) and **record ≡ scenario** (one structure; PERFECTIVE looks back, PROSPECTIVE plans
+  forward, and running a scenario flips it into the record). Harmonia keeps executing at CPU
+  grain underneath; the chronon network is the coarse, client-visible, programmable face.
+  **Concept Laboratory becomes the canonical exemplar** — a research workflow bound to a
+  research society on this same network: hypotheses, thesis-argument clusters, key proofs,
+  turning points, and first-class *conclusions* (plural, competing, traceable — the lab does
+  not avoid conclusions; it avoids forcing the conceptual world to collapse into one), with
+  an explicit ontology-promotion boundary so experimental concepts never silently mutate the
+  canonical graph. A read-only **Concept Laboratory Projection Model** rides on top for the
+  archives GUI: research graphs project deterministically into visual primitives (concepts,
+  clusters, family regions, key proofs, turning points, conclusions, tensions) with semantic
+  layout hints — depth from `chronon:next` topology, never wall-clock or pixels — on the rule
+  that *projection decides how to see, not what is true*.
 - **Multi-LLM pipeline + async handoff** (#29) —
   one agent explores, another generates CSL; `pending_links` gives disruption tolerance (DTN),
   so agents collaborate without being online at the same moment. Remove the human relay.
