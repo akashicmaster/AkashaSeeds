@@ -53,7 +53,9 @@ LOCATOR_FIELDS = ("page", "pages", "section", "chapter", "figure", "table", "par
 
 # Operand kinds (meta.clab_kind).
 KINDS = ("question", "observation", "example", "claim", "hypothesis", "interpretation",
-         "bridge", "tension", "assessment", "concept", "proposal", "consensus")
+         "bridge", "tension", "assessment", "concept", "proposal", "consensus",
+         # seeds13 research primitives (Part C.9)
+         "master_thesis", "cluster", "key_proof", "turning_point", "conclusion", "family")
 
 EXAMPLE_KINDS = ("ordinary", "primary_candidate", "counterexample", "boundary", "failed",
                  "central_case", "prototype", "exemplar")
@@ -140,6 +142,47 @@ class ClabConcept(BaseConcept):
                       "desc": "Record a scoped consensus (does NOT erase dissent): clab.consensus subject=<id> agreement=<level> [participants=] [scope=]"},
         "aliases": {"op": "op_aliases", "action": _R, "cli": "clab.aliases", "args": [],
                     "desc": "List the canonical→short alias table (aliases are semantically identical): clab.aliases"},
+        # ── seeds13 research primitives (Part C.9 — the 7 minimal + relations) ──
+        "master_thesis": {"op": "op_master_thesis", "action": _W, "cli": "clab.master_thesis", "args": ["text"],
+                          "desc": "State the overall intended dynamic (\"prove X via Y\"): clab.master_thesis text=\"...\" [agent=]"},
+        "cluster.new":   {"op": "op_cluster_new", "action": _W, "cli": "clab.cluster.new", "args": ["name"],
+                          "desc": "Open a Thesis-Arguments Cluster (a semantic structure, references only): clab.cluster.new name=\"...\""},
+        "cluster.add":   {"op": "op_cluster_add", "action": _W, "cli": "clab.cluster.add", "args": ["cluster", "members"],
+                          "desc": "Add references (claims/args/evidence/…) to a cluster: clab.cluster.add cluster=<id> members=<a,b,...>"},
+        "key_proof":     {"op": "op_key_proof", "action": _W, "cli": "clab.key_proof", "args": ["cluster", "hypothesis"],
+                          "desc": "Judge a cluster decisive for a hypothesis/thesis (agent-attributed judgement, not intrinsic): clab.key_proof cluster=<id> hypothesis=<id> [agent=] [rationale=]"},
+        "turning_point": {"op": "op_turning_point", "action": _W, "cli": "clab.turning_point", "args": ["cluster", "hypothesis"],
+                          "desc": "Mark a cluster that redirects the trajectory AGAINST a hypothesis (distinct from a mere challenge): clab.turning_point cluster=<id> hypothesis=<id> [agent=] [rationale=]"},
+        "conclude":      {"op": "op_conclude", "action": _W, "cli": "clab.conclude", "args": ["hypothesis", "judgement"],
+                          "desc": "Reach a first-class conclusion (multiple may coexist; non-forcing): clab.conclude hypothesis=<id> judgement=affirm|negate|mixed|undetermined [agent=] [rationale=]"},
+        "family.new":    {"op": "op_family_new", "action": _W, "cli": "clab.family.new", "args": ["name"],
+                          "desc": "Open a Theoretical Family (a semantic neighborhood at one trajectory stage): clab.family.new name=\"...\" [stage=initial|intermediate|destination]"},
+        "family.add":    {"op": "op_family_add", "action": _W, "cli": "clab.family.add", "args": ["family", "members"],
+                          "desc": "Add concepts/clusters to a family: clab.family.add family=<id> members=<a,b,...>"},
+        "family.next":   {"op": "op_family_next", "action": _W, "cli": "clab.family.next", "args": ["from", "to"],
+                          "desc": "Chain one family to the next along a trajectory: clab.family.next from=<family> to=<family>"},
+        "family.bridge": {"op": "op_family_bridge", "action": _W, "cli": "clab.family.bridge", "args": ["from", "to"],
+                          "desc": "Bridge one family to the next along a trajectory (Rubik bridge; = family_next): clab.family.bridge from=<family> to=<family>"},
+        "theory.new":    {"op": "op_theory_new", "action": _W, "cli": "clab.theory.new", "args": ["name"],
+                          "desc": "Declare a Competing Theory (a traceable trajectory through families): clab.theory.new name=\"...\""},
+        "theory.path":   {"op": "op_theory_path", "action": _W, "cli": "clab.theory.path", "args": ["theory", "family"],
+                          "desc": "Append a family to a theory's trajectory path: clab.theory.path theory=<id> family=<id>"},
+        "neighborhood.new": {"op": "op_neighborhood_new", "action": _W, "cli": "clab.neighborhood.new", "args": ["name"],
+                          "desc": "Open a Theoretical Neighborhood (a research area grouping families — a Nebula input): clab.neighborhood.new name=\"...\""},
+        "neighborhood.add": {"op": "op_neighborhood_add", "action": _W, "cli": "clab.neighborhood.add", "args": ["neighborhood", "family"],
+                          "desc": "Group a family into a neighborhood: clab.neighborhood.add neighborhood=<id> family=<id>"},
+        "conclusion.compare": {"op": "op_conclusion_compare", "action": _R, "cli": "clab.conclusion.compare", "args": [],
+                          "desc": "Compare all conclusions side by side — every polarity kept, none overwrites another: clab.conclusion.compare"},
+        # ── Concept Laboratory Projection Model v0.1 (read-only GUI projection) ──
+        "project":       {"op": "op_project", "action": _R, "cli": "clab.project", "args": [],
+                          "desc": ("Project the research field into a GUI-ready view (read-only, derived, "
+                                   "never writes canonical): clab.project [target=<nebula>] "
+                                   "[mode=trajectory|family|evidence|time] [at=<chronon>] [include=rejected] "
+                                   "[society=] [workflow=]")},
+        "rubik":         {"op": "op_rubik", "action": _R, "cli": "clab.rubik", "args": [],
+                          "desc": ("Rubik projection — theoretical families as pseudo-3D pages with "
+                                   "precomputed transformation deltas (read-only, never writes canonical): "
+                                   "clab.rubik [target=<nebula>] [trajectory=<theory>] [society=]")},
     }
 
     # Short aliases (iteration 0.3): each resolves to exactly ONE canonical operator, with identical
@@ -173,9 +216,24 @@ class ClabConcept(BaseConcept):
         try:
             if self.cortex.get_chunk(ref) is not None:
                 return ref
-            return self.cortex.resolve_alias(ref)
+            k = self.cortex.resolve_alias(ref)
+            if k:
+                return k
         except Exception:
-            return None
+            pass
+        # by-NAME fallback: operands minted with a name (family / cluster / theory / neighborhood)
+        # are keyed by content-hash, so callers naturally reference them by their human name. Match
+        # an active-nebula member whose content (or clab_name/title/concept_name meta) equals ref.
+        try:
+            for mk in self._members():
+                mm = self.cortex.get_meta(mk) or {}
+                if ref in (mm.get("clab_name"), mm.get("title"), mm.get("concept_name")):
+                    return mk
+                if (self.cortex.get_chunk(mk) or "").strip() == ref:
+                    return mk
+        except Exception:
+            pass
+        return None
 
     def _alias(self, key: str) -> str:
         try:
@@ -401,6 +459,277 @@ class ClabConcept(BaseConcept):
             raise ValueError("clab.hypothesize requires text.")
         return {"type": "clab:hypothesis",
                 **self._mk("hypothesis", text.strip(), extra={"status": "proposed"})}
+
+    # ── seeds13 research primitives (Part C.9) — extend, never replace, the existing clab.* ──
+    def op_master_thesis(self, text: str = "", agent: str = "") -> Dict[str, Any]:
+        """The overall intended dynamic of an investigation ("prove X via Y") — broader than one
+        hypothesis, an optional global orientation. Never auto-accepted as ontology truth."""
+        if not (text or "").strip():
+            raise ValueError("clab.master_thesis requires text.")
+        extra = {"agent": (agent or self._author())}
+        return {"type": "clab:master_thesis", **self._mk("master_thesis", text.strip(), extra=extra)}
+
+    def op_cluster_new(self, name: str = "") -> Dict[str, Any]:
+        """Open a Thesis-Arguments Cluster — a structured local reasoning unit that holds REFERENCES
+        (claims/args/evidence/examples/interpretations/…), never copies. A semantic structure, not a
+        paragraph (the members-are-references rule, SC2/SC6)."""
+        if not (name or "").strip():
+            raise ValueError("clab.cluster.new requires name.")
+        return {"type": "clab:cluster", **self._mk("cluster", name.strip(), alias_hint=name)}
+
+    def op_cluster_add(self, cluster: str = "", members: str = "", member: str = "") -> Dict[str, Any]:
+        """Add references to a cluster (clab:contains links — references, never copies). Accepts
+        `members=<a,b,…>` or a single `member=<x>`."""
+        ck = self._need(cluster, "cluster")
+        joined = ",".join(x for x in (members, member) if x)
+        refs = [self._resolve(r) for r in joined.split(",") if r.strip()]
+        added = 0
+        for rk in refs:
+            if rk:
+                try:
+                    self.cortex.put_link(ck, rk, "clab:contains", author=self._author())
+                    added += 1
+                except Exception:
+                    pass
+        return {"type": "clab:cluster_add", "id": self._alias(ck), "added": added}
+
+    def op_key_proof(self, cluster: str = "", hypothesis: str = "", target: str = "", agent: str = "",
+                     rationale: str = "") -> Dict[str, Any]:
+        """Judge a cluster DECISIVE for a hypothesis/thesis (or the case it is about) — a research
+        judgement (keeps agent, rationale, provenance), not an intrinsic property; agents may
+        disagree. Accepts `hypothesis=` or `target=` for the decisively-supported atom."""
+        ck = self._need(cluster, "cluster")
+        hk = self._need(hypothesis or target, "hypothesis/target")
+        extra = {"agent": (agent or self._author()), "rationale": rationale}
+        # kind-tag the content so a judgement never collides (content-address) with another operand
+        # that happens to share the same rationale text (a conclusion, a turning point, …).
+        r = self._mk("key_proof", f"[key_proof cluster={self._alias(ck)}] {rationale}".strip(), extra=extra,
+                     links=[(ck, "clab:key_proof"), (hk, "clab:decisively_supports")])
+        return {"type": "clab:key_proof", **r}
+
+    def op_turning_point(self, cluster: str = "", hypothesis: str = "", target: str = "", agent: str = "",
+                         rationale: str = "") -> Dict[str, Any]:
+        """Mark a cluster that REDIRECTS the trajectory against a hypothesis/thesis (or the case it
+        is about) — distinct from a mere challenge (it changes the trajectory, making conceptual
+        change observable as process). Accepts `hypothesis=` or `target=`."""
+        ck = self._need(cluster, "cluster")
+        hk = self._need(hypothesis or target, "hypothesis/target")
+        extra = {"agent": (agent or self._author()), "rationale": rationale}
+        r = self._mk("turning_point", f"[turning_point cluster={self._alias(ck)}] {rationale}".strip(), extra=extra,
+                     links=[(ck, "clab:turning_point"), (hk, "clab:challenges")])
+        return {"type": "clab:turning_point", **r}
+
+    def op_conclude(self, hypothesis: str = "", target: str = "", judgement: str = "", agent: str = "",
+                    rationale: str = "", text: str = "") -> Dict[str, Any]:
+        """Reach a FIRST-CLASS conclusion about a hypothesis/thesis (or the case it is about) —
+        polarity affirm/negate/mixed/undetermined. Multiple conclusions may coexist (per agent/
+        branch); a conclusion CLOSES a trajectory, not the conceptual world (non-forcing). Never
+        auto-promotes to ontology truth. Accepts `hypothesis=` or `target=`, and `rationale=`/`text=`."""
+        hk = self._need(hypothesis or target, "hypothesis/target")
+        j = (judgement or "undetermined").strip().lower()
+        if j not in ("affirm", "negate", "mixed", "undetermined"):
+            raise ValueError("judgement must be affirm|negate|mixed|undetermined.")
+        rationale = rationale or text
+        extra = {"agent": (agent or self._author()), "judgement": j, "rationale": rationale,
+                 "status": "proposed"}
+        r = self._mk("conclusion", f"[conclusion:{j} about={self._alias(hk)}] {rationale}".strip(), extra=extra,
+                     links=[(hk, "clab:concludes_about")])
+        return {"type": "clab:conclusion", "judgement": j, **r}
+
+    def op_family_new(self, name: str = "", stage: str = "intermediate") -> Dict[str, Any]:
+        """Open a Theoretical Family — a semantic neighborhood of mutually-meaningful concepts/
+        clusters at one stage of a trajectory (initial | intermediate | destination)."""
+        if not (name or "").strip():
+            raise ValueError("clab.family.new requires name.")
+        st = (stage or "intermediate").strip().lower()
+        if st not in ("initial", "intermediate", "destination"):
+            raise ValueError("stage must be initial|intermediate|destination.")
+        return {"type": "clab:family",
+                **self._mk("family", name.strip(), extra={"stage": st}, alias_hint=name)}
+
+    def op_family_add(self, family: str = "", members: str = "", member: str = "") -> Dict[str, Any]:
+        """Add concepts/clusters to a theoretical family (clab:belongs_to_family — references).
+        Accepts `members=<a,b,…>` or a single `member=<x>`. Unknown atoms are skipped (not fatal)."""
+        fk = self._need(family, "family")
+        joined = ",".join(x for x in (members, member) if x)
+        refs = [self._resolve(r) for r in joined.split(",") if r.strip()]
+        added, skipped = 0, 0
+        for rk in refs:
+            if rk:
+                try:
+                    self.cortex.put_link(rk, fk, "clab:belongs_to_family", author=self._author())
+                    added += 1
+                except Exception:
+                    skipped += 1
+            else:
+                skipped += 1
+        return {"type": "clab:family_add", "id": self._alias(fk), "added": added, "skipped": skipped}
+
+    def op_family_next(self, from_: str = "", to: str = "", **kw) -> Dict[str, Any]:
+        """Chain one theoretical family to the next along a trajectory (clab:family_next)."""
+        src = self._need(kw.get("from", from_), "family (from)")
+        dst = self._need(to, "family (to)")
+        self.cortex.put_link(src, dst, "clab:family_next", author=self._author())
+        return {"type": "clab:family_next", "from": self._alias(src), "to": self._alias(dst)}
+
+    def op_family_bridge(self, from_: str = "", to: str = "", **kw) -> Dict[str, Any]:
+        """[Rubik bridge] Bridge one theoretical family to the next along a trajectory. A branch-only
+        transformation that never mutates canonical ontology; here it lays the clab:family_next edge
+        the trajectory/projection reads."""
+        src = self._need(kw.get("from", from_), "family (from)")
+        dst = self._need(to, "family (to)")
+        self.cortex.put_link(src, dst, "clab:family_next", author=self._author())
+        return {"type": "clab:family_bridge", "from": self._alias(src), "to": self._alias(dst)}
+
+    def op_theory_new(self, name: str = "") -> Dict[str, Any]:
+        """Declare a Competing Theory — a traceable trajectory through theoretical families (not a
+        duplicated ontology). Build its path with clab.theory.path."""
+        if not (name or "").strip():
+            raise ValueError("clab.theory.new requires name.")
+        return {"type": "clab:theory", **self._mk("theory", name.strip(), alias_hint=name)}
+
+    def op_theory_path(self, theory: str = "", family: str = "") -> Dict[str, Any]:
+        """Append a family to a theory's trajectory path (clab:contains, ordered by call)."""
+        tk = self._need(theory, "theory")
+        fk = self._need(family, "family")
+        self.cortex.put_link(tk, fk, "clab:contains", author=self._author())
+        n = len(self.cortex.get_adjacent_links(tk, "clab:contains") or [])
+        return {"type": "clab:theory_path", "theory": self._alias(tk), "family": self._alias(fk),
+                "path_len": n}
+
+    def op_neighborhood_new(self, name: str = "") -> Dict[str, Any]:
+        """Open a Theoretical Neighborhood — a research-area grouping of families (organizational/
+        exploratory, NOT a truth classification; a natural input to Nebula)."""
+        if not (name or "").strip():
+            raise ValueError("clab.neighborhood.new requires name.")
+        return {"type": "clab:neighborhood", **self._mk("neighborhood", name.strip(), alias_hint=name)}
+
+    def op_neighborhood_add(self, neighborhood: str = "", family: str = "") -> Dict[str, Any]:
+        """Group a family into a neighborhood (clab:contains)."""
+        nk = self._need(neighborhood, "neighborhood")
+        fk = self._need(family, "family")
+        self.cortex.put_link(nk, fk, "clab:contains", author=self._author())
+        n = len(self.cortex.get_adjacent_links(nk, "clab:contains") or [])
+        return {"type": "clab:neighborhood_add", "neighborhood": self._alias(nk),
+                "family": self._alias(fk), "count": n}
+
+    def op_conclusion_compare(self) -> Dict[str, Any]:
+        """Compare every conclusion in the active field side by side — all polarities kept, none
+        overwrites another (the non-forcing invariant made observable). Read-only."""
+        rows = []
+        by_pol: Dict[str, int] = {}
+        for r in self._rows(kind="conclusion"):
+            mm = r.get("_meta", {})
+            pol = mm.get("judgement", "undetermined")
+            by_pol[pol] = by_pol.get(pol, 0) + 1
+            rows.append({"id": r["id"], "polarity": pol, "agent": mm.get("agent", r.get("by", "")),
+                         "lifecycle": mm.get("status", "proposed"), "rationale": mm.get("rationale", ""),
+                         "text": r["text"]})
+        return {"type": "clab:conclusion_compare", "count": len(rows), "by_polarity": by_pol,
+                "coexist": len(by_pol) > 1, "conclusions": rows}
+
+    # ── Concept Laboratory Projection Model v0.1 (read-only) ──────────────────────
+    def op_project(self, target: str = "", mode: str = "trajectory", at: str = "",
+                   include: str = "", society: str = "", workflow: str = "") -> Dict[str, Any]:
+        """[clab.project] Project the research field into a GUI-ready view — the Concept Laboratory
+        Projection Model v0.1. READ-ONLY and derived: it casts the canonical clab operands/relations
+        into visual primitives (pv:concept/cluster/family/hypothesis/key_proof/turning_point/
+        conclusion/tension/source) + typed edges + trajectories + timepoints + layout hints, and
+        NEVER writes canonical state (invariant V1). Every projected object keeps its source_atom
+        (V7 — GUI → CLI → clab.trace is reversible). `mode=trajectory|family|evidence|time`;
+        `target=` a nebula (default: the active one); `include=rejected` surfaces hidden paths (V3).
+        Archives reads this JSON directly."""
+        from lib.akasha.clab_projection import ClabProjectionBuilder
+        target = (target or "").strip()
+        if target in ("", "active"):
+            root = self._active()
+        else:
+            resolved = self._resolve(target)
+            # a Nebula projects itself; any operand inside the field (a neighborhood/theory/family
+            # named as target) projects the field that contains it — the active nebula.
+            root = resolved if (resolved and (self.cortex.get_meta(resolved) or {}).get("clab_kind") == "nebula") else self._active()
+        if not root:
+            raise RuntimeError("clab.project: no active nebula (open one with clab.open, or pass target=).")
+        m = self.cortex.get_meta(root) or {}
+        if m.get("clab_kind") != "nebula":
+            raise ValueError("clab.project target must be a Nebula (research field).")
+        try:
+            now_ts = time.time()
+        except Exception:
+            now_ts = 0.0
+        builder = ClabProjectionBuilder(self.cortex, self._alias, now_ts)
+        members = self._members(root)
+        include_rejected = (include or "").strip().lower() in ("rejected", "all", "yes", "true", "1")
+        return builder.build(root, members, title=m.get("title", ""), mode=mode, at=at,
+                             include_rejected=include_rejected, source_society=society,
+                             source_workflow=workflow, source_chronon_root="",
+                             source_frontier=self._society_frontier(society))
+
+    def op_rubik(self, target: str = "", trajectory: str = "", society: str = "",
+                 workflow: str = "concept-labo") -> Dict[str, Any]:
+        """[clab.rubik] Rubik projection v0.1 — the read-only, PRECOMPUTED spatial projection that
+        shows how theoretical families TRANSFORM as a theory's path is built (vs the Trajectory view,
+        which shows where research went). Akasha computes every page coordinate, page depth, per-page
+        concept coordinate, and the transformation delta (added/removed/retained); the GUI only
+        renders + animates. Three axes stay separate: (x,y)=semantic, z=transformation depth (NOT
+        time), t=Akasha-Time. NEVER writes canonical (V1); every object keeps source_atom (V7).
+        `trajectory=<theory>` restricts to one competing theory's families (e.g. the LIGO branch)."""
+        from lib.akasha.clab_rubik_projection import RubikProjectionBuilder
+        target = (target or "").strip()
+        if target in ("", "active"):
+            root = self._active()
+        else:
+            resolved = self._resolve(target)
+            root = resolved if (resolved and (self.cortex.get_meta(resolved) or {}).get("clab_kind") == "nebula") else self._active()
+        if not root:
+            raise RuntimeError("clab.rubik: no active nebula (open one with clab.open, or pass target=).")
+        m = self.cortex.get_meta(root) or {}
+        if m.get("clab_kind") != "nebula":
+            raise ValueError("clab.rubik target must be a Nebula (research field).")
+        # optional trajectory filter → the families of that theory (clab.theory contains)
+        restrict = None
+        traj = (trajectory or "").strip()
+        if traj:
+            tk = self._resolve(traj)
+            if not tk or (self.cortex.get_meta(tk) or {}).get("clab_kind") != "theory":
+                raise ValueError(f"clab.rubik: trajectory '{traj}' is not a theory (clab.theory.new).")
+            restrict = []
+            for lk in self.cortex.get_adjacent_links(tk, "clab:contains"):
+                dst = lk[0] if isinstance(lk, (list, tuple)) else lk.get("dst")
+                if dst and (self.cortex.get_meta(dst) or {}).get("clab_kind") == "family":
+                    restrict.append(dst)
+        try:
+            now_ts = time.time()
+        except Exception:
+            now_ts = 0.0
+        builder = RubikProjectionBuilder(self.cortex, self._alias, now_ts)
+        return builder.build(root, self._members(root), restrict, title=m.get("title", ""),
+                             society=society, workflow=workflow)
+
+    def _society_frontier(self, society: str) -> List[str]:
+        """The society's current chronon frontier(s) (society:now) at generation time — baked into
+        the projection meta so a consumer detects 'canonical changed' by comparing against the live
+        frontier (society.now). Empty when no society is bound or it is not reachable."""
+        society = (society or "").strip()
+        if "/" not in society:
+            return []
+        gid, _, space = society.partition("/")
+        gid, space = gid.strip(), (space.strip() or "main")
+        ge = getattr(self.session, "group_engines", {}).get(gid)
+        if ge is None:
+            return []
+        try:
+            skey = ge.resolve_alias(f"society:{gid}:{space}")
+            if not skey:
+                return []
+            out = []
+            for l in ge.core.get_adjacent_links(skey, "society:now"):
+                dst = l.get("dst")
+                al = next((a for a in ge.get_aliases_by_key(dst) if a.startswith("chronon:")), dst)
+                out.append(al)
+            return out
+        except Exception:
+            return []
 
     def op_interpret(self, target: str = "", text: str = "", agent: str = "",
                      status: str = "") -> Dict[str, Any]:

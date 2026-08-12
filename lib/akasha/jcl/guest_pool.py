@@ -14,7 +14,7 @@ Slot lifecycle:
 
 Configurable via environment:
   AKASHA_GUEST_POOL_SIZE  (default: 20)
-  AKASHA_GUEST_TTL        (default: 600 seconds = 10 minutes)
+  AKASHA_GUEST_TTL        (default: 1800 seconds = 30 minutes)
 """
 import threading
 import time

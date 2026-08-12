@@ -55,6 +55,18 @@ class SocietyConcept(BaseConcept):
         "world":  {"op": "op_world"},
         "info":   {"op": "op_info"},
         "decider": {"op": "op_decider"},   # designate the responsible cast (coworking anchor)
+        # ── seeds13 governance (Agent / Responsible / Chairman delegation) ──
+        "admit":       {"op": "op_admit"},        # admit a cast → mint its agent binding
+        "chairman":    {"op": "op_chairman"},     # appoint the chairman (admin-only delegation)
+        "responsible": {"op": "op_responsible"},  # set scribe/broadcaster/… (admin or chairman)
+        "now":         {"op": "op_now"},          # read the society's chronon frontier(s)
+        "workflow":    {"op": "op_workflow"},     # bind a wf: → compile it to a prospective chronon graph
+        "project":     {"op": "op_project"},      # projection: view a society/workflow/chronon face
+        # ── seeds13 deliberation (協議 / 採決 / 意思決定 — typed feed atoms, no schema change) ──
+        "propose":     {"op": "op_propose"},      # table a proposal (step of a workflow)
+        "vote":        {"op": "op_vote"},         # cast a vote on a proposal
+        "tally":       {"op": "op_tally"},        # count the votes on a proposal
+        "decide":      {"op": "op_decide"},       # record the decision (chairman/decider/admin, or tally)
         "guest":  {"op": "op_guest"},      # toggle the open_guest gate (external-LLM guests)
         "public": {"op": "op_public"},     # toggle the public-broadcast gate (archives live view)
         "broadcast": {"op": "op_broadcast"},  # read a public society's feed + AI disclosures
@@ -511,14 +523,17 @@ class SocietyConcept(BaseConcept):
                 m = json.loads(row.get("meta") or "{}")
             except Exception:
                 m = {}
-            if m.get("type") != "cast_utterance":
-                continue
+            mtype = m.get("type", "")
+            if mtype not in ("cast_utterance", "proposal", "decision"):
+                continue        # raw votes stay out of the chat timeline (query them via society.tally)
             items.append({"key": key, "from_cast": m.get("from_cast", ""),
                           "cast_name": m.get("cast_name", ""), "text": row.get("content") or "",
                           "created_at": m.get("created_at", 0), "reply_to": m.get("reply_to", ""),
                           "disclosed": bool(m.get("client_id")), "client_id": m.get("client_id", ""),
                           "agent": m.get("agent", ""), "provider": m.get("provider", ""),
-                          "model": m.get("model", "")})
+                          "model": m.get("model", ""), "msg_type": mtype,
+                          "step": m.get("step", ""), "proposal": m.get("proposal", ""),
+                          "outcome": m.get("outcome", "")})
         items.sort(key=lambda x: x.get("created_at", 0))
         if thread:
             items = [m for m in items if m["key"] == thread or m.get("reply_to") == thread]
@@ -595,6 +610,413 @@ class SocietyConcept(BaseConcept):
         if key:
             ge.core.remove_from_collection(f"societies:{gid}", key)
         return {"status": "deleted", "society_id": self._sid(gid, name)}
+
+    # ── seeds13 governance: Agent · Responsible · Chairman delegation ─────────────
+    @staticmethod
+    def _agents_set(gid: str, name: str) -> str:
+        return f"soc:{gid}:agents" if name == DEFAULT_SPACE else f"soc:{gid}:{name}:agents"
+
+    @staticmethod
+    def _cast_slug(cast_name: str, cast_id: str) -> str:
+        import re as _re
+        slug = _re.sub(r"[^a-z0-9]+", "_", (cast_name or "").lower()).strip("_")
+        return slug or (cast_id or "")[:8]
+
+    def _agent_alias(self, gid: str, name: str, slug: str) -> str:
+        return f"agent:{gid}:{name}:{slug}"
+
+    def _is_admin(self) -> bool:
+        role = getattr(self.session, "role", None)
+        return getattr(role, "value", str(role)) == "admin"
+
+    def _society_meta(self, ge, key: str) -> Dict[str, Any]:
+        row = ge.core.get_chunk_raw(key) or {}
+        try:
+            return json.loads(row.get("meta") or "{}")
+        except Exception:
+            return {}
+
+    def _is_chairman(self, ge, society_key: str, client: str) -> bool:
+        return bool(client) and self._society_meta(ge, society_key).get("chairman_client") == client
+
+    def _gate_admin_or_chairman(self, ge, society_key: str, what: str) -> None:
+        """The single delegation crossing (B.4): admit + responsible-setting are gated by
+        'requester is admin OR the chairman of THIS society'. Every other gate is by responsible:*."""
+        client = self._client()
+        if self._is_admin() or self._is_chairman(ge, society_key, client):
+            return
+        raise RuntimeError(f"only an admin or this society's chairman may {what}.")
+
+    def _mint_agent(self, ge, gid: str, name: str, society_key: str,
+                    cast_id: str, cast_name: str, client: str) -> Dict[str, str]:
+        """Mint (idempotently) the cast×society binding — the agent atom. Content-addressed on
+        (agent|sid|cast), so re-admitting the same cast unifies. Records the controlling client
+        (governance metadata; the feed stays pseudonymous). Adds agent:as→cast, agent:in→society,
+        and joins soc:<sid>:agents (readable from every member — the R1 invariant)."""
+        sid = self._sid(gid, name)
+        slug = self._cast_slug(cast_name, cast_id)
+        content = f"[ Agent: {cast_name or slug} in {sid} ]\x00{cast_id}"
+        meta = {"type": "agent", "concept": "agent", "group": gid, "space": name, "sid": sid,
+                "cast": cast_id, "cast_name": cast_name, "cast_slug": slug, "client": client,
+                "created_by": self._client(), "created_at": time.time()}
+        key = ge.put_atom(content, meta, author=self._client())
+        ge.core.put_alias(key, self._agent_alias(gid, name, slug))
+        ge.put_link(key, cast_id, "agent:as", author=self._client())
+        ge.put_link(key, society_key, "agent:in", author=self._client())
+        ge.add_to_set(self._agents_set(gid, name), key)
+        return {"key": key, "alias": self._agent_alias(gid, name, slug), "slug": slug}
+
+    def _resolve_agent(self, ge, gid: str, name: str, agent: str = "",
+                       cast: str = "") -> Optional[str]:
+        """Resolve a target agent atom key from either an agent ref (alias/key) or a cast ref
+        (id/name → its agent binding in this space)."""
+        agent = (agent or "").strip()
+        if agent:
+            row = None
+            try:
+                row = ge.core.get_chunk_raw(agent)
+            except Exception:
+                row = None
+            return agent if row else ge.resolve_alias(agent)
+        cast = (cast or "").strip()
+        if cast:
+            for akey in ge.core.get_collection_members(self._agents_set(gid, name)):
+                m = self._society_meta(ge, akey)
+                if m.get("concept") != "agent":
+                    continue
+                if cast in (akey, m.get("cast"), m.get("cast_name"), m.get("cast_slug")):
+                    return akey
+        return None
+
+    def op_admit(self, cast: str = "", client: str = "", society: str = "", group: str = "",
+                 name: str = "", space: str = "") -> Dict[str, Any]:
+        """Admit a cast into a society — mint its AGENT binding (a cast admitted to a society).
+        Gate: admin OR this society's chairman (the delegation, B.4). The cast becomes an agent OF
+        this society; the same cast may be an agent of several societies at once.
+
+        `client=` names the controlling client of the admitted cast (who may act as this agent).
+        Resolve order: explicit `client=`; else the caller's own client when the caller owns the
+        cast (self-join is still gated — a plain member cannot self-admit unless admin/chairman);
+        else "" (bound later when the owner first acts). Feed anonymity is unaffected — this is the
+        same client-level governance bookkeeping society.created_by already keeps."""
+        gid, name = self._resolve(group, name, society, space)
+        ge = self._group_engine(gid)
+        society_key = self._society_key(ge, gid, name)
+        if not society_key:
+            raise RuntimeError(f"Society '{self._sid(gid, name)}' does not exist — create it first.")
+        self._gate_admin_or_chairman(ge, society_key, "admit a cast")
+        cid, cname = self._owned_or_roster_cast_lenient(ge, gid, name, cast)
+        owner_client = (client or "").strip()
+        if not owner_client:
+            # bind to the caller only if the caller actually owns the cast
+            try:
+                own_cid, _ = self._owned_cast(cast)
+                if own_cid == cid:
+                    owner_client = self._client()
+            except Exception:
+                owner_client = ""
+        minted = self._mint_agent(ge, gid, name, society_key, cid, cname, owner_client)
+        ge.add_to_set(self._roster_set(gid, name), cid)   # an agent is also a roster participant
+        return {"status": "admitted", "society_id": self._sid(gid, name), "agent": minted["alias"],
+                "key": minted["key"], "cast": cid, "cast_name": cname, "client": owner_client}
+
+    def op_chairman(self, agent: str = "", cast: str = "", client: str = "", society: str = "",
+                    group: str = "", name: str = "", space: str = "") -> Dict[str, Any]:
+        """Appoint the society's CHAIRMAN — the one place the permission line meets the
+        responsibility line (B.4). **Admin only.** Appointing a chairman DELEGATES two powers for
+        THIS society to that chairman: admit-a-cast and set-`responsible:*` (the chairman need not
+        be an admin). Recorded as a single society→agent `responsible:chairman` link plus a fast
+        `chairman_client` on the society (the gate reads it). Generalises society.decider; the
+        decider read-alias continues to resolve to the chairman."""
+        gid, name = self._resolve(group, name, society, space)
+        ge = self._group_engine(gid)
+        society_key = self._society_key(ge, gid, name)
+        if not society_key:
+            raise RuntimeError(f"Society '{self._sid(gid, name)}' does not exist — create it first.")
+        if not self._is_admin():
+            raise RuntimeError("only an admin may appoint the chairman (this is the delegation).")
+        akey = self._resolve_agent(ge, gid, name, agent, cast)
+        if not akey:
+            raise RuntimeError("chairman target must be an admitted agent (admit the cast first).")
+        am = self._society_meta(ge, akey)
+        chairman_client = (client or "").strip() or am.get("client", "")
+        # single responsible:chairman link (replace any prior)
+        for l in ge.core.get_adjacent_links(society_key, "responsible:chairman"):
+            ge.core.remove_link_raw(society_key, l.get("dst"), "responsible:chairman")
+        ge.put_link(society_key, akey, "responsible:chairman", author=self._client())
+        # persist the chairman's controlling client on the society for the fast gate
+        smeta = self._society_meta(ge, society_key)
+        smeta["chairman_client"] = chairman_client
+        row = ge.core.get_chunk_raw(society_key) or {}
+        ge.core.put_chunk_raw(society_key, row.get("content") or f"[ Society: {self._sid(gid, name)} ]",
+                              json.dumps(smeta, ensure_ascii=False), row.get("author") or self._client(),
+                              "verified", time.time())
+        ge.core.put_chunk_access(society_key, [ge.scope])
+        return {"status": "chairman_set", "society_id": self._sid(gid, name), "agent": agent or cast,
+                "key": akey, "chairman_client": chairman_client}
+
+    def op_responsible(self, kind: str = "", agent: str = "", cast: str = "", society: str = "",
+                       group: str = "", name: str = "", space: str = "") -> Dict[str, Any]:
+        """Set a responsibility (責務) on an agent — scribe / broadcaster / approve:<step> /
+        exec:<step> / an open workflow role (proposer / critic / …). Gate: admin OR chairman.
+        `responsible:<kind>` society→agent. Chairman is appointed separately (society.chairman)."""
+        gid, name = self._resolve(group, name, society, space)
+        ge = self._group_engine(gid)
+        society_key = self._society_key(ge, gid, name)
+        if not society_key:
+            raise RuntimeError(f"Society '{self._sid(gid, name)}' does not exist — create it first.")
+        self._gate_admin_or_chairman(ge, society_key, "set a responsible")
+        kind = (kind or "").strip()
+        if not kind or kind == "chairman":
+            raise ValueError("kind is required and must not be 'chairman' (use society.chairman).")
+        akey = self._resolve_agent(ge, gid, name, agent, cast)
+        if not akey:
+            raise RuntimeError("responsible target must be an admitted agent (admit the cast first).")
+        rel = f"responsible:{kind}"
+        # a single-holder responsibility (scribe/broadcaster) replaces; a per-step one may coexist.
+        if kind in ("scribe", "broadcaster"):
+            for l in ge.core.get_adjacent_links(society_key, rel):
+                ge.core.remove_link_raw(society_key, l.get("dst"), rel)
+        ge.put_link(society_key, akey, rel, author=self._client())
+        return {"status": "responsible_set", "society_id": self._sid(gid, name), "kind": kind,
+                "rel": rel, "agent": agent or cast, "key": akey}
+
+    def op_now(self, society: str = "", group: str = "", name: str = "", space: str = "") -> Dict[str, Any]:
+        """Read the society's chronon FRONTIER(s) — the present of Akasha Time (society:now). A
+        society may hold several frontiers (branches / alternative futures). Read-level."""
+        gid, name = self._resolve(group, name, society, space)
+        ge = self._group_engine(gid)
+        society_key = self._society_key(ge, gid, name)
+        if not society_key:
+            return {"society_id": self._sid(gid, name), "frontiers": [], "count": 0}
+        fr = [l.get("dst") for l in ge.core.get_adjacent_links(society_key, "society:now")]
+        rows = []
+        for k in fr:
+            m = self._society_meta(ge, k)
+            rows.append({"chronon": next((a for a in ge.get_aliases_by_key(k) if a.startswith("chronon:")), k),
+                         "key": k, "aspect": m.get("aspect", ""), "label": m.get("label", "")})
+        return {"society_id": self._sid(gid, name), "count": len(rows), "frontiers": rows}
+
+    # ── seeds13 deliberation: propose / vote / tally / decide (typed feed atoms) ──
+    def op_propose(self, text: str = "", cast: str = "", step: str = "", society: str = "",
+                   group: str = "", name: str = "", space: str = "") -> Dict[str, Any]:
+        """Table a proposal in a society (協議) — a typed feed atom (type=proposal) authored by an
+        owned avatar. `step=` names the workflow step it advances (optional). Proposals/votes/
+        decisions ride the SAME feed substrate as chat (no schema change); society.feed shows them."""
+        gid, name = self._resolve(group, name, society, space)
+        ge = self._group_engine(gid)
+        cast_id, cast_name = self._owned_cast(cast)
+        msg = (text or "").strip()
+        if not msg:
+            raise ValueError("society.propose requires text.")
+        sid = self._sid(gid, name)
+        meta = {"type": "proposal", "concept": "cast", "society": sid, "from_cast": cast_id,
+                "cast_name": cast_name, "step": (step or "").strip(), "created_at": time.time()}
+        key = ge.put_atom(f"[proposal] {msg}", meta, author=cast_id)
+        ge.add_to_set(self._feed_set(gid, name), key)
+        ge.add_to_set(self._roster_set(gid, name), cast_id)
+        return {"status": "proposed", "key": key, "society_id": sid, "cast_id": cast_id,
+                "cast_name": cast_name, "step": meta["step"]}
+
+    def op_vote(self, proposal: str = "", choice: str = "yes", cast: str = "", society: str = "",
+                group: str = "", name: str = "", space: str = "") -> Dict[str, Any]:
+        """Cast a vote on a proposal (採決) — a typed feed atom (type=vote) referencing the proposal
+        by key, authored by an owned avatar. choice=yes|no|abstain. One vote per (cast, proposal):
+        re-voting replaces the avatar's prior vote."""
+        gid, name = self._resolve(group, name, society, space)
+        ge = self._group_engine(gid)
+        cast_id, cast_name = self._owned_cast(cast)
+        proposal = (proposal or "").strip()
+        if not proposal:
+            raise ValueError("society.vote requires proposal=<key>.")
+        ch = (choice or "yes").strip().lower()
+        if ch not in ("yes", "no", "abstain"):
+            raise ValueError("choice must be yes|no|abstain.")
+        # replace this avatar's prior vote on the same proposal
+        for k in ge.core.get_collection_members(self._feed_set(gid, name)):
+            m = self._society_meta(ge, k)
+            if m.get("type") == "vote" and m.get("proposal") == proposal and m.get("from_cast") == cast_id:
+                ge.core.remove_from_collection(self._feed_set(gid, name), k)
+        sid = self._sid(gid, name)
+        meta = {"type": "vote", "concept": "cast", "society": sid, "from_cast": cast_id,
+                "cast_name": cast_name, "proposal": proposal, "choice": ch, "created_at": time.time()}
+        key = ge.put_atom(f"[vote:{ch}] {proposal[:12]} · {cast_id[:8]}", meta, author=cast_id)
+        ge.add_to_set(self._feed_set(gid, name), key)
+        return {"status": "voted", "key": key, "society_id": sid, "proposal": proposal,
+                "choice": ch, "cast_name": cast_name}
+
+    def op_tally(self, proposal: str = "", society: str = "", group: str = "", name: str = "",
+                 space: str = "") -> Dict[str, Any]:
+        """Count the votes on a proposal — yes / no / abstain and the leading choice. Read-level."""
+        gid, name = self._resolve(group, name, society, space)
+        ge = self._group_engine(gid)
+        proposal = (proposal or "").strip()
+        counts = {"yes": 0, "no": 0, "abstain": 0}
+        for k in ge.core.get_collection_members(self._feed_set(gid, name)):
+            m = self._society_meta(ge, k)
+            if m.get("type") == "vote" and m.get("proposal") == proposal:
+                counts[m.get("choice", "abstain")] = counts.get(m.get("choice", "abstain"), 0) + 1
+        lead = max(("yes", "no", "abstain"), key=lambda c: counts[c])
+        decided = counts["yes"] != counts["no"]
+        return {"society_id": self._sid(gid, name), "proposal": proposal, "counts": counts,
+                "leading": lead if decided else "tie", "total": sum(counts.values())}
+
+    def op_decide(self, proposal: str = "", outcome: str = "", cast: str = "", society: str = "",
+                  group: str = "", name: str = "", space: str = "") -> Dict[str, Any]:
+        """Record the decision on a proposal (意思決定) — a typed feed atom (type=decision).
+        Authority = the chairman/decider or an admin; `outcome=` may be given explicitly, else it
+        falls to the tally's leading choice. A tie with no explicit outcome is refused."""
+        gid, name = self._resolve(group, name, society, space)
+        ge = self._group_engine(gid)
+        society_key = self._society_key(ge, gid, name)
+        if not society_key:
+            raise RuntimeError(f"Society '{self._sid(gid, name)}' does not exist.")
+        # authority: chairman OR admin OR the (legacy) decider cast's owner
+        client = self._client()
+        authorized = self._is_admin() or self._is_chairman(ge, society_key, client)
+        if not authorized:
+            raise RuntimeError("only the chairman or an admin may record a decision.")
+        proposal = (proposal or "").strip()
+        if not proposal:
+            raise ValueError("society.decide requires proposal=<key>.")
+        out = (outcome or "").strip().lower()
+        if not out:
+            t = self.op_tally(proposal=proposal, society=society, group=group, name=name, space=space)
+            if t["leading"] == "tie":
+                raise RuntimeError("the vote is tied — supply outcome= explicitly to decide.")
+            out = t["leading"]
+        sid = self._sid(gid, name)
+        meta = {"type": "decision", "concept": "cast", "society": sid, "proposal": proposal,
+                "outcome": out, "decided_by": client, "created_at": time.time()}
+        if cast:
+            try:
+                meta["from_cast"], meta["cast_name"] = self._owned_or_roster_cast(ge, gid, name, cast)
+            except Exception:
+                pass
+        key = ge.put_atom(f"[decision:{out}] {proposal[:12]}", meta, author=client)
+        ge.add_to_set(self._feed_set(gid, name), key)
+        return {"status": "decided", "key": key, "society_id": sid, "proposal": proposal,
+                "outcome": out, "decided_by": client}
+
+    def op_project(self, society: str = "", group: str = "", name: str = "", space: str = "",
+                   as_: str = "dag", **kw) -> Dict[str, Any]:
+        """Projection (P7, Part A/B.9) — view a society/workflow/chronon face WITHOUT changing the
+        underlying representation. `as=feed|dag|table|narrative`:
+          • feed      — the timeline utterances/proposals/decisions (society ≡ chat face).
+          • dag       — the chronon:next topology (society ≡ workflow face) + frontiers.
+          • table     — chronon counts by aspect (record vs scenario) + frontier count.
+          • narrative — a deterministic prose summary (degradation-first; no LLM required).
+        Read-level; the same selection can be rendered any of these ways."""
+        as_ = (kw.get("as") or as_ or "dag").strip().lower()
+        gid, name = self._resolve(group, name, society, space)
+        ge = self._group_engine(gid)
+        sid = self._sid(gid, name)
+        from lib.akasha.concepts.chronon import ChrononConcept
+        chr = ChrononConcept(self.session)
+        if as_ == "feed":
+            feed = self.op_feed(society=society, group=group, name=name, space=space, limit=200)
+            return {"projection": "feed", "society_id": sid, "count": feed["count"],
+                    "messages": feed["messages"]}
+        ls = chr.op_list(society=society, group=group, name=name, space=space)
+        chronons = ls["chronons"]
+        if as_ == "table":
+            by_aspect: Dict[str, int] = {}
+            for r in chronons:
+                by_aspect[r["aspect"]] = by_aspect.get(r["aspect"], 0) + 1
+            return {"projection": "table", "society_id": sid, "chronons": len(chronons),
+                    "by_aspect": by_aspect, "frontiers": len(ls["frontiers"])}
+        if as_ == "narrative":
+            perf = [r for r in chronons if r["aspect"] == "perfective"]
+            pros = [r for r in chronons if r["aspect"] == "prospective"]
+            labels = ", ".join(r["label"] or r["cid"] for r in perf) or "nothing yet"
+            plan = ", ".join(r["label"] or r["cid"] for r in pros)
+            text = (f"The society {sid} has recorded {len(perf)} state(s) ({labels}). "
+                    + (f"It has {len(pros)} planned step(s) ahead ({plan}). " if pros else "")
+                    + f"Akasha Time stands at {len(ls['frontiers'])} frontier(s).")
+            return {"projection": "narrative", "society_id": sid, "text": text,
+                    "recorded": len(perf), "planned": len(pros)}
+        # default: dag — the chronon:next topology
+        edges = []
+        for r in chronons:
+            for e in ge.core.get_adjacent_links(r["key"], "chronon:next"):
+                edges.append([r["chronon"], chr._alias_of(ge, e.get("dst"))])
+        return {"projection": "dag", "society_id": sid, "nodes": [r["chronon"] for r in chronons],
+                "edges": edges, "frontiers": ls["frontiers"]}
+
+    def op_workflow(self, wf: str = "", society: str = "", group: str = "", name: str = "",
+                    space: str = "") -> Dict[str, Any]:
+        """Bind a workflow to a society — the law **society ≡ workflow** made concrete (B.9/SC4).
+        Reads the `wf:<name>` CSL template (the authoring template) from the caller's cortex,
+        **COMPILES it to a PROSPECTIVE chronon graph** in the society's group space (one chronon per
+        step, chained by chronon:next), links society --society:workflow--> the root, and aliases the
+        root as `scenario:<gid>:<space>:<wf>` so scenario.run drives it (workflow ≡ scenario). Gate:
+        admin OR chairman. Step gates are set separately with society.responsible kind=approve:<step>."""
+        gid, name = self._resolve(group, name, society, space)
+        ge = self._group_engine(gid)
+        society_key = self._society_key(ge, gid, name)
+        if not society_key:
+            raise RuntimeError(f"Society '{self._sid(gid, name)}' does not exist — create it first.")
+        self._gate_admin_or_chairman(ge, society_key, "bind a workflow")
+        wfname = (wf or "").strip()
+        if not wfname:
+            raise ValueError("society.workflow requires wf=<name>.")
+        wf_key = self.cortex.resolve_alias(f"wf:{wfname}") if not self.cortex.get_chunk(wfname) else wfname
+        if not wf_key:
+            raise RuntimeError(f"No workflow 'wf:{wfname}' defined (workflow.def it first).")
+        script = self.cortex.get_chunk(wf_key) or ""
+        steps = [s.strip() for s in script.replace(";", "\n").split("\n")
+                 if s.strip() and not s.strip().startswith("#")]
+        if not steps:
+            raise ValueError(f"workflow 'wf:{wfname}' has no steps.")
+        from lib.akasha.concepts.chronon import ChrononConcept, PROSPECTIVE
+        chr = ChrononConcept(self.session)
+        prev, root, made = "", "", []
+        for i, body in enumerate(steps):
+            res = chr._mint(ge, gid, name, society_key, body, label=f"{wfname}:{i+1}",
+                            members=[], aspect=PROSPECTIVE, from_key=prev, mutates_key="",
+                            scribe=self._client(), advance_now=False)
+            if i == 0:
+                root = res["key"]
+                ge.core.put_alias(root, f"scenario:{gid}:{name}:{wfname}")
+            prev = res["key"]
+            made.append(res["chronon"])
+        # single society:workflow link (replace any prior binding)
+        for l in ge.core.get_adjacent_links(society_key, "society:workflow"):
+            ge.core.remove_link_raw(society_key, l.get("dst"), "society:workflow")
+        ge.put_link(society_key, root, "society:workflow", author=self._client())
+        return {"status": "workflow_bound", "society_id": self._sid(gid, name), "wf": wfname,
+                "root": made[0] if made else "", "steps": len(made), "chronons": made,
+                "scenario": f"scenario:{gid}:{name}:{wfname}"}
+
+    def _owned_or_roster_cast_lenient(self, ge, gid: str, name: str, cast: str) -> (str, str):
+        """Resolve a cast id/name to (cast_id, cast_name). Accepts a cast present in the roster OR
+        one the caller owns (admission may bring in a cast not yet in the roster). Unlike say, it
+        does not require ownership — admission is a governance act by admin/chairman. The display
+        name is enriched from the published cast root in the group engine when the feed has none."""
+        cid, cname = "", ""
+        try:
+            cid, cname = self._owned_or_roster_cast(ge, gid, name, cast)
+        except Exception:
+            cast_s = (cast or "").strip()
+            row = ge.core.get_chunk_raw(cast_s) if cast_s else None
+            if row:
+                try:
+                    m = json.loads(row.get("meta") or "{}")
+                except Exception:
+                    m = {}
+                if m.get("concept") == "cast":
+                    cid, cname = cast_s, m.get("name", "")
+            if not cid:
+                cid, cname = self._owned_cast(cast)   # last resort — raises if truly unknown
+        if cid and not cname:                          # enrich name from the published root
+            row = ge.core.get_chunk_raw(cid)
+            if row:
+                try:
+                    mm = json.loads(row.get("meta") or "{}")
+                except Exception:
+                    mm = {}
+                cname = mm.get("name", "") or cname
+        return cid, cname
 
     # ── helpers ──────────────────────────────────────────────────────────────────
     def _link_world(self, ge, society_key: str, world: str) -> str:

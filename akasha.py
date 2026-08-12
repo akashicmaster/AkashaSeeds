@@ -1204,6 +1204,172 @@ def _run_mcp_client(root: str, base_dir: str, args) -> bool:
     return True
 
 
+# ── 7c. Outer guardian (F12a) ───────────────────────────────────────────────────
+# The mutual daemon↔portal guardianship has one gap: when OOM takes BOTH in a single respawn
+# window there is no reviver left (the F12 7.5-hour outage). The outer guardian closes it — an
+# OS-level systemd service (Restart=on-failure) or a cron tick that runs convergence and exits.
+# It is trivially safe: a healthy system defers (exit 0, touches nothing); a dead/wedged one
+# converges to one daemon + portal (R1–F9). Nothing is ever installed implicitly.
+_GUARD_UNIT_PATH = "/etc/systemd/system/akasha.service"
+_GUARD_CRON_TAG = "# akasha-guard"
+
+def _guard_log(root: str, msg: str) -> None:
+    import time as _t
+    try:
+        p = os.path.join(root, "logs", "system.log")
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "a") as fh:
+            fh.write(f"{_t.strftime('%Y-%m-%d %H:%M:%S', _t.localtime())} [guard] {msg}\n")
+    except OSError:
+        pass
+
+def _guard_systemd_unit(py: str, entry: str, root: str, daemon_flags) -> str:
+    _flags = (" " + " ".join(daemon_flags)) if daemon_flags else ""
+    # Type=simple, NOT forking: `akasha.py --daemon` runs the daemon in the FOREGROUND (it does not
+    # double-fork), so systemd tracks that process directly and Restart=on-failure restarts it on
+    # death. R2's truthful exit codes keep this correct (a healthy defer exits 0, a real failure
+    # non-zero) — though under systemd the daemon is the sole instance, so it never defers.
+    return ("[Unit]\n"
+            "Description=Akasha Cell daemon (outer guardian)\n"
+            "After=network-online.target\nWants=network-online.target\n\n"
+            "[Service]\nType=simple\n"
+            f"WorkingDirectory={root}\n"
+            f"ExecStart={py} {entry} --daemon{_flags}\n"
+            "Restart=on-failure\nRestartSec=30\n\n"
+            "[Install]\nWantedBy=multi-user.target\n")
+
+def _guard_cron_line(py: str, entry: str, root: str, daemon_flags) -> str:
+    _flags = (" " + " ".join(daemon_flags)) if daemon_flags else ""
+    log = os.path.join(root, "logs", "cron-heal.log")
+    return (f"*/5 * * * * cd {root} && {py} {entry} guard --tick{_flags} "
+            f">> {log} 2>&1  {_GUARD_CRON_TAG}")
+
+def _guard_read_crontab():
+    import subprocess as _sp
+    try:
+        r = _sp.run(["crontab", "-l"], capture_output=True, text=True)
+        return r.stdout if r.returncode == 0 else ""
+    except (FileNotFoundError, OSError):
+        return None                                   # no crontab on this host
+
+def _guard_write_crontab(text: str) -> bool:
+    import subprocess as _sp
+    try:
+        return _sp.run(["crontab", "-"], input=text, text=True).returncode == 0
+    except (FileNotFoundError, OSError):
+        return False
+
+def _guard_tick(root: str, base_dir: str, daemon_flags) -> int:
+    """Run convergence ONCE and exit — the cron guardian's periodic action. Logs a heal line only
+    when it actually revived something (convergence 'spawned', not 'answering')."""
+    try:
+        args = _build_arg_parser().parse_args(["--daemon"] + list(daemon_flags))
+    except SystemExit:
+        args = _build_arg_parser().parse_args(["--daemon"])   # bad passthrough → bare daemon
+    state = _converge_daemon(root, base_dir, args, spawn=True, quiet=True)
+    if state == "spawned":
+        _guard_log(root, "revived cell daemon (convergence: spawned)")
+    return 0 if state in ("answering", "spawned") else 1
+
+def _run_guard(argv, root: str, base_dir: str) -> int:
+    import subprocess as _sp
+    action = "install"
+    passthrough = []
+    for a in argv:
+        _s = a.lstrip("-")
+        if _s in ("install", "status", "remove", "tick"):
+            action = _s
+        else:
+            passthrough.append(a)                     # daemon flags to embed (--server uvicorn …)
+    py = os.path.abspath(sys.executable)
+    entry = os.path.join(root, "akasha.py")
+
+    if action == "tick":
+        return _guard_tick(root, base_dir, passthrough)
+
+    have_systemd = os.path.isdir("/run/systemd/system")
+
+    if action == "status":
+        found = False
+        if os.path.isfile(_GUARD_UNIT_PATH):
+            print(f"  [guard] systemd unit present: {_GUARD_UNIT_PATH}")
+            for _q in ("is-enabled", "is-active"):
+                try:
+                    r = _sp.run(["systemctl", _q, "akasha.service"], capture_output=True, text=True)
+                    print(f"          {_q}: {(r.stdout or r.stderr).strip()}")
+                except (FileNotFoundError, OSError):
+                    pass
+            found = True
+        _ct = _guard_read_crontab()
+        if _ct and _GUARD_CRON_TAG in _ct:
+            print("  [guard] crontab guardian present (every 5 min).")
+            found = True
+        if not found:
+            print("  [guard] no guardian installed. Install with:  python akasha.py guard "
+                  f"({'systemd' if have_systemd else 'cron'} on this host).")
+        return 0
+
+    if action == "remove":
+        removed = False
+        if os.path.isfile(_GUARD_UNIT_PATH):
+            try:
+                _sp.run(["systemctl", "disable", "--now", "akasha.service"], check=False)
+                os.remove(_GUARD_UNIT_PATH)
+                _sp.run(["systemctl", "daemon-reload"], check=False)
+                print(f"  [guard] removed systemd guardian {_GUARD_UNIT_PATH}.")
+                removed = True
+            except (PermissionError, FileNotFoundError, OSError):
+                print(f"  [guard] cannot remove {_GUARD_UNIT_PATH} (need root):  "
+                      f"sudo systemctl disable --now akasha.service && sudo rm {_GUARD_UNIT_PATH}")
+        _ct = _guard_read_crontab()
+        if _ct and _GUARD_CRON_TAG in _ct:
+            _new = "".join(l + "\n" for l in _ct.splitlines() if _GUARD_CRON_TAG not in l)
+            if _guard_write_crontab(_new):
+                print("  [guard] removed crontab guardian.")
+                removed = True
+        if not removed:
+            print("  [guard] nothing to remove.")
+        return 0
+
+    # ── install ──
+    if have_systemd:
+        unit = _guard_systemd_unit(py, entry, root, passthrough)
+        try:
+            with open(_GUARD_UNIT_PATH, "w") as fh:
+                fh.write(unit)
+        except (PermissionError, OSError):
+            print("  [guard] systemd is present but writing the unit needs root. Run as root:")
+            print(f"      sudo tee {_GUARD_UNIT_PATH} >/dev/null <<'UNIT'\n{unit.rstrip()}\nUNIT")
+            print("      sudo systemctl daemon-reload && sudo systemctl enable --now akasha.service")
+            return 1
+        _sp.run(["systemctl", "daemon-reload"], check=False)
+        _sp.run(["systemctl", "enable", "--now", "akasha.service"], check=False)
+        print(f"  [guard] installed systemd guardian → {_GUARD_UNIT_PATH}")
+        print("          enabled + started · Restart=on-failure, RestartSec=30")
+        print("          status: python akasha.py guard --status   ·   remove: guard --remove")
+        print("  ⚠ If you also start the daemon by hand, stop it first (python akasha.py stop) so "
+              "systemd owns the single instance.")
+        return 0
+
+    _ct = _guard_read_crontab()
+    if _ct is None:
+        print("  [guard] no systemd and no crontab on this host. Run  python akasha.py guard --tick "
+              " from your own scheduler every ~5 min (it converges and exits).")
+        return 1
+    if _GUARD_CRON_TAG in _ct:
+        print("  [guard] crontab guardian already installed (every 5 min).")
+        return 0
+    line = _guard_cron_line(py, entry, root, passthrough)
+    _new = (_ct if not _ct or _ct.endswith("\n") else _ct + "\n") + line + "\n"
+    if _guard_write_crontab(_new):
+        print("  [guard] installed crontab guardian (every 5 min):")
+        print(f"      {line}")
+        print("          remove: python akasha.py guard --remove")
+        return 0
+    print("  [guard] failed to write crontab.")
+    return 1
+
+
 # ── 8. Main ───────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -1267,6 +1433,15 @@ def main() -> None:
             try: os.remove(os.path.join(_base, _f))
             except OSError: pass
         return
+
+    # ── `guard` — install / inspect / remove the OUTER guardian (F12a), or run one --tick ──
+    # Guardianship is mutual (the daemon revives the portal, the portal's watchdog revives the
+    # daemon); when OOM takes BOTH in one respawn window there is no reviver left. The outer
+    # guardian is an OS-level timer/service that runs convergence and exits — trivially safe because
+    # a healthy system defers (exit 0) and a dead/wedged one converges to one daemon+portal.
+    if not _is_cgi and len(sys.argv) >= 2 and sys.argv[1] == "guard":
+        _base = os.environ.get("AKASHA_DATA_DIR", "").strip() or os.path.join(_root, "data")
+        sys.exit(_run_guard(sys.argv[2:], _root, _base))
 
     # Data dir defaults to <root>/data; AKASHA_DATA_DIR relocates it (relocatable
     # deployment, and lets a test point the daemon at a scratch cell). The client and
@@ -1661,6 +1836,32 @@ def main() -> None:
             except Exception as _sx:
                 log.warning("[Cell] could not share the session secret (%s) — guest tokens "
                             "may mismatch across the portal split; set AKASHA_SECRET.", _sx)
+
+        # Provision the Concept Laboratory research client. The clab projection surface
+        # (archives/labo/concept) carries Radu Tulai's unpublished research as DISPLAY data;
+        # it is private to one account until his paper is out. Create the `radu` user ONLY on
+        # a deployment that actually ships that surface (thesaurus/enterprise archives) and
+        # only here on the writer. Idempotent — never overwrites an existing (possibly rotated)
+        # password. Passphrase from AKASHA_RADU_PASS, else a baked default (rotate via sys.passwd).
+        try:
+            _labo_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                     "archives", "labo", "concept")
+            if os.path.isdir(_labo_dir):
+                _iam = live_gw.kernel_client.iam
+                _n = _iam._nucleus()
+                _exists = bool(_n and _n.vault_retrieve("iam", "user:radu"))
+                if not _exists:
+                    import hashlib as _hl
+                    from lib.akasha.identity import Role as _Role
+                    _rpw = os.environ.get("AKASHA_RADU_PASS") or "Radu-PrimaryExamples-2026"
+                    _iam.register_client("radu", _Role.USER,
+                                         passphrase_hash=_hl.sha256(_rpw.encode("utf-8")).hexdigest(),
+                                         created_by="system",
+                                         display_name="Radu Tulai · Concept Laboratory")
+                    log.info("[Cell] provisioned the Concept Laboratory research client 'radu'.")
+        except Exception as _rx:
+            log.warning("[Cell] could not provision the 'radu' research client: %s", _rx)
+
         # Register this process as the Supervisor root (svc:cell) and reconcile the
         # run-dir (scrub descriptors whose pid died in a prior crash). The writer is
         # Akasha's service init: its children (the web portal, deps=["svc:cell"]) are
@@ -1995,9 +2196,13 @@ def main() -> None:
             # respawned (RC3). A sys.ping POST to /api/rpc gets NO response from a wedged worker →
             # the probe times out → unhealthy → respawn. Any HTTP response (even an auth error)
             # counts as alive. The health tick debounces so a transient blip never false-respawns.
+            # F14b#2 — 10 s probe timeout (was 3 s). With the loop-starvation fix (F14b#1) the
+            # worker answers sys.ping promptly even under a heavy crawler read, but a generous
+            # timeout × the 3-fail threshold (≈45 s) means only a truly wedged worker is replaced —
+            # a brief stall no longer triggers a respawn whose memory spike can OOM the daemon.
             _portal_health = ({"kind": "http",
                                "target": f"{scheme}://127.0.0.1:{int(_web_port)}/api/rpc",
-                               "method": "sys.ping", "timeout": 3.0}
+                               "method": "sys.ping", "timeout": 10.0}
                               if _web_port else None)
             # F9 — a B-scale serve-only worker takes ~45-60 s to load its substrate before it binds
             # its port; give it a generous readiness grace so the health tick never respawns it

@@ -22,11 +22,14 @@ any newline inside string values, so the newline is an unambiguous message bound
 
 Stdlib only (socket + json) — no runtime dependency, portable to any Python 3.8+.
 """
+import hashlib
+import hmac
 import json
 import logging
 import os
 import socket
 import threading
+import time
 from typing import Optional
 
 logger = logging.getLogger("Akasha.CellIPC")
@@ -50,6 +53,63 @@ def _effective_trust(ceiling: str, requested) -> str:
     if not isinstance(requested, str) or requested not in _TRUST_RANK:
         return ceiling
     return requested if _TRUST_RANK[requested] <= _TRUST_RANK.get(ceiling, 2) else ceiling
+
+
+# ── F16 — signed trust ELEVATION for the analytics writer over the local socket ──────
+#
+# The DOWNGRADE-ONLY rule above is correct for arbitrary local processes, but it structurally
+# kills the split-topology pulse capture: PulseRecorder emits as `system.librarian` asking for
+# `internal`, the socket clamps it to `local`, and the kernel then rejects the system identity
+# (-32001). The narrow, safe exception: a request may be RAISED to `internal` iff it carries a
+# valid HMAC signature over (method, params, ts) with the deployment's shared AKASHA_SECRET, the
+# ts is fresh (±_ELEVATION_SKEW_S, replay-bounded), and the method is on a tiny allowlist. A
+# same-UID process without the secret still cannot elevate (it clamps exactly as before), and the
+# blast radius is analytics-only even if the secret leaked. The secret is the SAME one the daemon
+# already shares into the portal's env (akasha.py — "shared the session-signing secret").
+_INTERNAL_ELEVATION_METHODS = frozenset({"pulse.emit", "pulse.compact"})
+_ELEVATION_SKEW_S = 60.0
+
+
+def _elevation_secret() -> Optional[bytes]:
+    s = os.environ.get("AKASHA_SECRET")
+    if not s:
+        return None
+    try:
+        return bytes.fromhex(s)                       # the daemon exports it as .hex()
+    except ValueError:
+        return s.encode("utf-8")                      # operator-set raw string → use as-is
+
+
+def _elevation_canonical(method, params, ts) -> bytes:
+    """Deterministic bytes bound by the signature — method + params + ts, so a captured sig
+    cannot be replayed for a different method/content/time."""
+    return json.dumps({"m": method, "p": params, "t": ts},
+                      sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+
+
+def sign_internal(method, params, ts) -> Optional[str]:
+    """Client side: HMAC-SHA256 over the canonical (method, params, ts), or None if no secret is
+    available (embedded topology needs no elevation — the dispatch stays in-process)."""
+    sec = _elevation_secret()
+    if not sec:
+        return None
+    return hmac.new(sec, _elevation_canonical(method, params, ts), hashlib.sha256).hexdigest()
+
+
+def verify_internal(method, params, ts, sig) -> bool:
+    """Server side: grant `internal` only for an allowlisted method with a fresh, valid signature."""
+    if method not in _INTERNAL_ELEVATION_METHODS or not sig:
+        return False
+    sec = _elevation_secret()
+    if not sec:
+        return False
+    try:
+        if abs(time.time() - float(ts)) > _ELEVATION_SKEW_S:
+            return False
+    except (TypeError, ValueError):
+        return False
+    expected = hmac.new(sec, _elevation_canonical(method, params, ts), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, str(sig))
 
 _SOCK_NAME = "cell.sock"
 _ENDPOINT_NAME = "cell.endpoint"
@@ -233,11 +293,24 @@ class CellIPCServer:
             return
         rid = payload.get("id") if isinstance(payload, dict) else None
         # Honor a DOWNGRADE-ONLY trust hint (a forwarding portal marks a network-originated
-        # request `_trust:"network"`). The socket's ceiling (self._trust) can never be raised;
-        # the hint is stripped before the payload reaches the kernel.
+        # request `_trust:"network"`). The socket's ceiling (self._trust) can never be raised —
+        # EXCEPT the F16 signed analytics elevation: an allowlisted method (pulse.emit/compact)
+        # with a valid, fresh HMAC over (method, params, ts) may be RAISED to `internal`. All
+        # trust-hint / signature keys are stripped before the payload reaches the kernel.
         trust = self._trust
         if isinstance(payload, dict) and "_trust" in payload:
-            trust = _effective_trust(self._trust, payload.pop("_trust"))
+            requested = payload.pop("_trust")
+            sig = payload.pop("_sig", None)
+            ts = payload.pop("_ts", None)
+            if (requested == TRUST_INTERNAL
+                    and _TRUST_RANK.get(requested, 0) > _TRUST_RANK.get(self._trust, 2)
+                    and verify_internal(payload.get("method"), payload.get("params"), ts, sig)):
+                trust = TRUST_INTERNAL                # signed analytics-writer elevation (F16)
+            else:
+                trust = _effective_trust(self._trust, requested)   # forged/absent sig → clamp
+        elif isinstance(payload, dict):
+            payload.pop("_sig", None)                 # strip stray signing keys if any
+            payload.pop("_ts", None)
         try:
             resp = self._gw.dispatch(payload, trust)
         except Exception as exc:                   # a dispatch bug must not kill the loop

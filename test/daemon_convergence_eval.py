@@ -434,6 +434,54 @@ def c11_readiness_gate(base):
         except Exception: child.kill()
 
 
+def c12_respawn_settle():
+    """F12b — never spawn the replacement while the old worker is still resident. _await_pid_gone
+    returns promptly for a dead pid and is bounded for a live one; the memory probe is available."""
+    import subprocess as sp
+    from lib.harmonia import supervisor as sv
+    dead = sp.Popen([sys.executable, "-c", "pass"]); dead.wait()
+    t0 = time.time(); sv._await_pid_gone(dead.pid, cap_s=5.0); fast = (time.time() - t0) < 1.0
+    alive = sp.Popen([sys.executable, "-c", "import time; time.sleep(10)"])
+    try:
+        t1 = time.time(); sv._await_pid_gone(alive.pid, cap_s=1.0)
+        bounded = 0.8 <= (time.time() - t1) <= 3.0        # respected the cap, didn't hang
+    finally:
+        alive.terminate()
+        try: alive.wait(timeout=3)
+        except Exception: alive.kill()
+    mem = sv._mem_available_mb()
+    ok = fast and bounded and (mem is None or mem > 0)
+    record("C12 F12b settle", ok, f"dead_fast={fast} alive_bounded={bounded} mem_mb={mem}")
+
+
+def c13_guard():
+    """F12a — the outer guardian: systemd unit + cron line generation, and a --tick that logs a
+    heal ONLY when it actually revived (convergence 'spawned')."""
+    import tempfile
+    import akasha
+    u = akasha._guard_systemd_unit("py", "/x/akasha.py", "/x", ["--server", "uvicorn"])
+    unit_ok = ("Type=simple" in u and "Restart=on-failure" in u
+               and "--daemon --server uvicorn" in u)
+    c = akasha._guard_cron_line("py", "/x/akasha.py", "/x", [])
+    cron_ok = ("guard --tick" in c and akasha._GUARD_CRON_TAG in c and c.startswith("*/5"))
+    root = tempfile.mkdtemp(prefix="akasha_guard_")
+    orig = akasha._converge_daemon
+    try:
+        akasha._converge_daemon = lambda *a, **k: "spawned"
+        rc_spawned = akasha._guard_tick(root, "/x/data", [])
+        _log = os.path.join(root, "logs", "system.log")
+        heal_logged = os.path.isfile(_log) and "revived" in open(_log).read()
+        akasha._converge_daemon = lambda *a, **k: "answering"
+        rc_answering = akasha._guard_tick(root, "/x/data", [])
+        akasha._converge_daemon = lambda *a, **k: "gone"
+        rc_gone = akasha._guard_tick(root, "/x/data", [])
+    finally:
+        akasha._converge_daemon = orig
+    tick_ok = rc_spawned == 0 and heal_logged and rc_answering == 0 and rc_gone == 1
+    record("C13 F12a guard", unit_ok and cron_ok and tick_ok,
+           f"unit={unit_ok} cron={cron_ok} tick(heal={heal_logged},gone_nonzero={rc_gone==1})")
+
+
 def main():
     print("\n  daemon convergence eval — R1 shared convergence · R3 wedge probe · R4 heartbeat\n")
     if not sys.platform.startswith("linux") or not os.path.isdir("/proc"):
@@ -456,6 +504,8 @@ def main():
     c9_recorded_portal(base)
     c10_health_update(base)
     c11_readiness_gate(base)
+    c12_respawn_settle()
+    c13_guard()
 
     print()
     passed = sum(1 for _, ok, _ in _results if ok)

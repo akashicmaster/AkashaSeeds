@@ -77,6 +77,8 @@ class PulseRecorder:
         self._salt_day = self._today()
         self._dropped = 0
         self._recorded = 0
+        self._rejected = 0                  # emits the kernel REJECTED (never silent again — F16)
+        self._last_reject: Optional[str] = None
         self._compact_day = self._today()   # compaction runs once when the UTC day rolls over
 
     # ── configuration ─────────────────────────────────────────────────────────
@@ -154,31 +156,61 @@ class PulseRecorder:
             return
         self._compact_day = today
         try:
-            self._dispatch({"jsonrpc": "2.0", "method": "pulse.compact", "id": "pulse-compact",
-                            "params": {"client_id": _SYSTEM_IDENTITY, "keep": 2}}, _TRUST_INTERNAL)
+            params = {"client_id": _SYSTEM_IDENTITY, "keep": 2}
+            payload = {"jsonrpc": "2.0", "method": "pulse.compact", "id": "pulse-compact",
+                       "params": params}
+            self._sign_internal(payload, "pulse.compact", params)
+            self._dispatch(payload, _TRUST_INTERNAL)
         except Exception as exc:
             logger.debug("pulse compaction skipped: %s", exc)
 
+    def _sign_internal(self, payload: dict, method: str, params: dict) -> None:
+        """Attach an HMAC over (method, params, ts) so the local socket may RAISE this analytics
+        emit to `internal` trust (F16). In the split topology the emit is forwarded over the
+        daemon socket, whose ceiling is `local`; without this signature the socket clamps it and
+        the kernel rejects the system identity (-32001) — the silent, permanent capture loss. In
+        the embedded topology there is no socket and no secret is needed; signing is a harmless
+        no-op the in-process kernel ignores."""
+        try:
+            from api.portals.cell_ipc import sign_internal
+            ts = time.time()
+            sig = sign_internal(method, params, ts)
+            if sig:
+                payload["_sig"] = sig
+                payload["_ts"] = ts
+        except Exception:                   # no api layer / no secret → embedded path, no elevation
+            pass
+
+    def _note_reject(self, err) -> None:
+        """A rejected emit must NEVER vanish silently again (F16). Count it, remember the last
+        cause, and log at WARNING on the first drop and every 100th — one log read reveals a
+        structural failure (e.g. the IPC trust clamp) instead of endless zeros."""
+        self._rejected += 1
+        self._last_reject = (err.get("message") if isinstance(err, dict) else str(err))
+        if self._rejected == 1 or self._rejected % 100 == 0:
+            logger.warning("[PulseRecorder] %d emit(s) rejected (last: %s)",
+                           self._rejected, self._last_reject)
+
     def _record(self, ev: dict) -> None:
-        payload = {
-            "jsonrpc": "2.0", "method": "pulse.emit", "id": "pulse",
-            "params": {
-                "client_id": _SYSTEM_IDENTITY,
-                "concept": ev["concept"], "surface": ev["surface"], "ref": ev["ref"],
-                "visit": ev["visit"], "prev": ev["prev"], "ua": ev["ua"],
-            },
+        params = {
+            "client_id": _SYSTEM_IDENTITY,
+            "concept": ev["concept"], "surface": ev["surface"], "ref": ev["ref"],
+            "visit": ev["visit"], "prev": ev["prev"], "ua": ev["ua"],
         }
+        payload = {"jsonrpc": "2.0", "method": "pulse.emit", "id": "pulse", "params": params}
+        self._sign_internal(payload, "pulse.emit", params)
         try:
             resp = self._dispatch(payload, _TRUST_INTERNAL)
             if isinstance(resp, dict) and resp.get("error"):
-                logger.debug("pulse.emit rejected: %s", resp["error"])
+                self._note_reject(resp["error"])
             else:
                 self._recorded += 1
         except Exception as exc:            # analytics is volatile — never propagate
-            logger.debug("pulse capture dropped: %s", exc)
+            self._note_reject({"message": str(exc)})
 
     def stats(self) -> dict:
         return {"recorded": self._recorded, "dropped": self._dropped,
+                "rejected": self._rejected, "last_reject": self._last_reject,
                 "buffered": len(self._buf), "configured": self.configured}
 
 

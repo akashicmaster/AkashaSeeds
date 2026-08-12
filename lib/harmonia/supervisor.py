@@ -149,6 +149,48 @@ def _pid_alive(pid: Optional[int]) -> bool:
         return False
 
 
+# ── F12b — stagger the respawn memory spike ─────────────────────────────────────
+# The mutual-death trigger is concurrent old-worker + new-worker residency: a SIGTERM'd/SIGKILL'd
+# worker can still be releasing ~1.5 GB while the replacement already allocates its own substrate,
+# and on a ~6 GB host daemon+dying+booting grazes the OOM ceiling — the moment that took BOTH
+# guardians in the F12 incident. So on a health-tick respawn we wait for the old pid to truly leave,
+# then let the kernel reclaim the pages, BEFORE spawning the replacement.
+def _await_pid_gone(pid: Optional[int], cap_s: float = 15.0) -> None:
+    """Block until `pid` is truly gone (stop() may SIGKILL and return before the kernel reaps it),
+    bounded by cap_s so a zombie/unreapable pid never hangs the tick."""
+    if not pid:
+        return
+    end = time.time() + max(0.5, cap_s)
+    while time.time() < end:
+        if not _pid_alive(pid):
+            return
+        time.sleep(0.1)
+
+
+def _mem_available_mb() -> Optional[int]:
+    """MemAvailable from /proc/meminfo in MB, or None (non-Linux / unreadable)."""
+    try:
+        with open("/proc/meminfo") as fh:
+            for line in fh:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) // 1024
+    except (OSError, ValueError, IndexError):
+        return None
+    return None
+
+
+_WORKER_FOOTPRINT_MB = int(os.environ.get("AKASHA_WORKER_FOOTPRINT_MB", "").strip() or 1500)
+
+def _warn_if_low_memory(uid: str) -> None:
+    """Log one line if MemAvailable is below a worker footprint before a respawn — so the operator
+    learns the host is undersized from the log, not from a dead morning portal (F12b optional)."""
+    avail = _mem_available_mb()
+    if avail is not None and avail < _WORKER_FOOTPRINT_MB:
+        logger.warning("[Supervisor] low memory before respawning '%s': MemAvailable=%d MB < "
+                       "expected worker footprint %d MB — host may be undersized (OOM risk).",
+                       uid, avail, _WORKER_FOOTPRINT_MB)
+
+
 # ── respawn recipe: build · sign · authorize · execute (P1 + path hardening) ────
 
 def _supervisor_key(base_dir: str) -> Optional[bytes]:
@@ -511,6 +553,7 @@ class Supervisor:
         self._procs: Dict[str, subprocess.Popen] = {}      # id → live handle (this process)
         self._specs: Dict[str, Dict[str, Any]] = {}        # id → {spawn_fn, deps, grace, restart}
         self._health_fails: Dict[str, int] = {}            # id → consecutive health-probe failures
+        self._health_fail_reason: Dict[str, str] = {}      # id → last probe failure cause (F14a)
         self._last_respawn: Dict[str, float] = {}          # id → monotonic time of last health respawn
         self._logfds: Dict[str, Any] = {}                  # id → open log file handle (this process)
         _ensure_run_dir(base_dir)
@@ -754,7 +797,10 @@ class Supervisor:
     # A hung-but-alive service must fail its probe this many CONSECUTIVE ticks before it is
     # replaced — so a single transient blip (a slow moment, a mis-timed probe) never kills a
     # healthy service. A genuinely DEAD pid is unambiguous and respawns immediately (no debounce).
-    _HEALTH_FAIL_THRESHOLD = 2
+    # F14b#2 — 3 consecutive fails (× 15 s tick ≈ 45 s of unresponsiveness) before replacing a
+    # hung-but-alive worker. A 20-30 s stall (a crawler-triggered heavy read) is NOT worth a
+    # respawn whose memory spike can OOM the daemon; a truly wedged worker still goes at ~45 s.
+    _HEALTH_FAIL_THRESHOLD = 3
     _RESPAWN_MIN_S = 30.0                 # min seconds between health respawns of the SAME unit
                                           # (backoff — stops a can't-start service hammering in a loop)
 
@@ -784,14 +830,23 @@ class Supervisor:
                 if _started and (time.time() - _started) < _grace:
                     self._health_fails.pop(uid, None)  # booting → not a failure; reset any debounce
                     continue                           # skip the probe entirely
-            if probe_health(u):
+            ok, reason = probe_health_detail(u)
+            if ok:
                 self._health_fails.pop(uid, None)     # healthy → reset the counter
+                self._health_fail_reason.pop(uid, None)
                 continue
             alive = _pid_alive(u.get("pid"))
             if alive:
                 # hung (alive but not answering) — debounce before acting
                 n = self._health_fails.get(uid, 0) + 1
                 self._health_fails[uid] = n
+                self._health_fail_reason[uid] = reason
+                # F14a — LOG the failure cause every failing tick so the "unhealthy" verdict is
+                # never a mystery again. Sub-threshold at DEBUG; the threshold-crossing tick logs
+                # at WARNING below with the accumulated reason, so one occurrence names the cause.
+                logger.log(logging.WARNING if n >= self._HEALTH_FAIL_THRESHOLD else logging.DEBUG,
+                           "[Supervisor] probe fail %d/%d '%s' %s → %s",
+                           n, self._HEALTH_FAIL_THRESHOLD, uid, _probe_desc(u), reason)
                 if n < self._HEALTH_FAIL_THRESHOLD:
                     continue
             self._health_fails.pop(uid, None)
@@ -811,28 +866,83 @@ class Supervisor:
                 continue                              # too soon since the last respawn — wait it out
             self._last_respawn[uid] = _now
             if alive:                                 # stop the hung instance before replacing it
+                _old_pid = u.get("pid")
                 self.stop(uid, grace_s=u.get("grace_s", 5.0))
+                # F12b — do NOT spawn the replacement while the old worker is still resident. Wait
+                # for the old pid to truly leave, then a short settle so the kernel reclaims its
+                # pages, so old+new never co-reside and graze the OOM ceiling.
+                _await_pid_gone(_old_pid, cap_s=float(u.get("grace_s", 5.0)) + 10.0)
+                _settle = float(os.environ.get("AKASHA_RESPAWN_SETTLE", "").strip() or 3)
+                if _settle > 0:
+                    time.sleep(min(_settle, 30.0))
+                _warn_if_low_memory(uid)
+            _why = self._health_fail_reason.pop(uid, "")
             r = self._start_from_recipe(u)
             r["reason"] = "unhealthy" if alive else "dead"
+            r["probe_reason"] = _why
             actions.append({"id": uid, **r})
             if r.get("error"):
                 logger.warning("[Supervisor] health respawn of '%s' declined: %s", uid, r["error"])
             else:
-                logger.info("[Supervisor] health tick respawned '%s' (%s, policy=%s).",
-                            uid, r["reason"], policy)
+                # F14a — name the cause on the respawn line itself, not a bare "(unhealthy)".
+                _detail = (f"{self._HEALTH_FAIL_THRESHOLD}×{_why}" if alive and _why
+                           else (_why or "pid gone"))
+                logger.warning("[Supervisor] health tick respawned '%s' (%s: %s, policy=%s).",
+                               uid, r["reason"], _detail, policy)
         return actions
 
 
 # ── health probes (P4) — serializable, evaluated generically (no app import) ────
 
-def _tcp_ok(target: str, timeout: float = 2.0) -> bool:
+def _tcp_probe(target: str, timeout: float = 2.0) -> Tuple[bool, str]:
+    """(alive, reason) — reason is '' on success, else the failure cause (F14a)."""
     import socket
     try:
         host, _, port = str(target).rpartition(":")
         with socket.create_connection((host or "127.0.0.1", int(port)), timeout=timeout):
-            return True
-    except (OSError, ValueError):
-        return False
+            return True, ""
+    except (OSError, ValueError) as exc:
+        return False, f"{type(exc).__name__}({exc})"
+
+
+def _tcp_ok(target: str, timeout: float = 2.0) -> bool:
+    return _tcp_probe(target, timeout)[0]
+
+
+def _http_probe(url: Optional[str], expect: int = 200, timeout: float = 2.0,
+                method: Optional[str] = None) -> Tuple[bool, str]:
+    """(alive, reason) form of _http_ok — the failure cause is RETURNED, not discarded, so the
+    health tick can log WHY a portal was judged unhealthy (F14a). reason is '' on success."""
+    if not url:
+        return False, "no target url"
+    import urllib.request, urllib.error, json as _json, ssl as _ssl
+    ctx = None
+    if str(url).lower().startswith("https:"):
+        ctx = _ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = _ssl.CERT_NONE
+    try:
+        if method:
+            body = _json.dumps({"jsonrpc": "2.0", "method": method,
+                                "params": {"session_token": "_health_"}, "id": "hp"}).encode()
+            req = urllib.request.Request(
+                url, data=body, headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=timeout, context=ctx):   # noqa: S310
+                return True, ""                      # any HTTP response = the worker ran = alive
+        with urllib.request.urlopen(url, timeout=timeout, context=ctx) as resp:   # noqa: S310
+            if resp.status == expect:
+                return True, ""
+            return False, f"unexpected status {resp.status} (want {expect})"
+    except urllib.error.HTTPError:
+        return True, ""                              # 4xx/5xx: the worker RAN and answered → alive
+    except urllib.error.URLError as exc:
+        # A TLS handshake that completed proves the worker ran even if the cert failed to verify;
+        # a refused/timed-out connection means dead or wedged.
+        if isinstance(getattr(exc, "reason", None), _ssl.SSLError):
+            return True, ""
+        return False, f"URLError({getattr(exc, 'reason', exc)})"
+    except Exception as exc:
+        return False, f"{type(exc).__name__}({exc})"  # timeout / refused / reset → dead or wedged
 
 
 def _http_ok(url: Optional[str], expect: int = 200, timeout: float = 2.0,
@@ -849,32 +959,37 @@ def _http_ok(url: Optional[str], expect: int = 200, timeout: float = 2.0,
 
     HTTPS targets are probed with certificate verification OFF — this is a localhost liveness check,
     not an authentication; a completed TLS handshake already proves the worker ran."""
-    if not url:
-        return False
-    import urllib.request, urllib.error, json as _json, ssl as _ssl
-    ctx = None
-    if str(url).lower().startswith("https:"):
-        ctx = _ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = _ssl.CERT_NONE
-    try:
-        if method:
-            body = _json.dumps({"jsonrpc": "2.0", "method": method,
-                                "params": {"session_token": "_health_"}, "id": "hp"}).encode()
-            req = urllib.request.Request(
-                url, data=body, headers={"Content-Type": "application/json"})
-            with urllib.request.urlopen(req, timeout=timeout, context=ctx):   # noqa: S310
-                return True                          # any HTTP response = the worker ran = alive
-        with urllib.request.urlopen(url, timeout=timeout, context=ctx) as resp:   # noqa: S310
-            return resp.status == expect
-    except urllib.error.HTTPError:
-        return True                                  # 4xx/5xx: the worker RAN and answered → alive
-    except urllib.error.URLError as exc:
-        # A TLS handshake that completed proves the worker ran even if the cert failed to verify;
-        # a refused/timed-out connection means dead or wedged.
-        return isinstance(getattr(exc, "reason", None), _ssl.SSLError)
-    except Exception:
-        return False                                 # timeout / refused / reset → dead or wedged
+    return _http_probe(url, expect, timeout, method)[0]
+
+
+def _probe_desc(unit: Dict[str, Any]) -> str:
+    """A short 'http POST https://…/api/rpc' / 'tcp host:port' label for probe-fail logs (F14a)."""
+    probe = unit.get("health") or {"kind": "pid"}
+    kind = probe.get("kind", "pid")
+    if kind == "http":
+        return f"http {(probe.get('method') and 'POST') or 'GET'} {probe.get('target')}"
+    if kind == "tcp":
+        return f"tcp {probe.get('target') or ''}".rstrip()
+    return "pid"
+
+
+def probe_health_detail(unit: Dict[str, Any]) -> Tuple[bool, str]:
+    """(healthy, reason) — the reason-preserving form of probe_health (F14a). reason is '' when
+    healthy, else the concrete failure cause (exception class+str, or an unexpected status), so
+    the health tick can log WHY a unit was judged unhealthy instead of the old bare 'unhealthy'."""
+    if not _pid_alive(unit.get("pid")):
+        return False, "pid gone"                  # dead → unhealthy, always
+    probe = unit.get("health") or {"kind": "pid"}
+    kind = probe.get("kind", "pid")
+    if kind == "pid":
+        return True, ""
+    if kind == "tcp":
+        target = probe.get("target") or f"{unit.get('host') or '127.0.0.1'}:{unit.get('port')}"
+        return _tcp_probe(target)
+    if kind == "http":
+        return _http_probe(probe.get("target"), int(probe.get("expect", 200)),
+                           timeout=float(probe.get("timeout", 2.0)), method=probe.get("method"))
+    return True, ""                               # unknown probe kind → don't false-kill
 
 
 def probe_health(unit: Dict[str, Any]) -> bool:
@@ -886,19 +1001,7 @@ def probe_health(unit: Dict[str, Any]) -> bool:
       {"kind":"http","target":"http://…/api/rpc","method":"sys.ping"}   the worker RUNS code
                                                  (detects a WEDGED process a TCP connect misses)
     """
-    if not _pid_alive(unit.get("pid")):
-        return False                              # dead → unhealthy, always
-    probe = unit.get("health") or {"kind": "pid"}
-    kind = probe.get("kind", "pid")
-    if kind == "pid":
-        return True
-    if kind == "tcp":
-        target = probe.get("target") or f"{unit.get('host') or '127.0.0.1'}:{unit.get('port')}"
-        return _tcp_ok(target)
-    if kind == "http":
-        return _http_ok(probe.get("target"), int(probe.get("expect", 200)),
-                        timeout=float(probe.get("timeout", 2.0)), method=probe.get("method"))
-    return True                                   # unknown probe kind → don't false-kill
+    return probe_health_detail(unit)[0]
 
 
 def _reverse_dep_order(units: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

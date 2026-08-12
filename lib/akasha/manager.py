@@ -267,7 +267,11 @@ class AkashaManager:
         # AKASHA_GUEST_POOL_SIZE for a busier deployment.
         from lib.akasha.jcl.guest_pool import GuestPool
         _pool_size = int(_os.environ.get("AKASHA_GUEST_POOL_SIZE", "128"))
-        _pool_ttl  = int(_os.environ.get("AKASHA_GUEST_TTL",       "600"))
+        # 30 min default (was 10): public readers keep a page open longer than 10 min, and a
+        # short TTL expired the cached guest token mid-visit → RPCs failed until re-auth. The
+        # front end self-heals a stale token, but a longer window also preserves guest state and
+        # cuts silent re-auths. Slots still recycle (128 of them). Override with AKASHA_GUEST_TTL.
+        _pool_ttl  = int(_os.environ.get("AKASHA_GUEST_TTL",       "1800"))
         self.guest_pool = GuestPool(
             size=_pool_size, ttl=_pool_ttl,
             on_reclaim=self._reset_guest_slot,

@@ -489,6 +489,7 @@ def _register_seo_routes(app, fastapi_mod, gw, root_dir):
     """
     from starlette.responses import (FileResponse, PlainTextResponse, Response,
                                       HTMLResponse)
+    from starlette.concurrency import run_in_threadpool   # F14b — keep the event loop free
 
     word_index = os.path.join(root_dir, "word", "index.html")
 
@@ -506,8 +507,11 @@ def _register_seo_routes(app, fastapi_mod, gw, root_dir):
             return HTMLResponse(cached, headers={"Cache-Control": "no-cache"})
         html = None
         try:
-            html = _render_atom_html(gw, _read_template(word_index), slug,
-                                     _origin(request), host)
+            # F14b — the SSR render does blocking guest reads; run it in the threadpool so a slow
+            # (or crawler-triggered) render never stalls the event loop and starves the sys.ping
+            # health probe (a false "unhealthy" → respawn → memory spike → daemon OOM).
+            html = await run_in_threadpool(_render_atom_html, gw, _read_template(word_index),
+                                           slug, _origin(request), host)
         except Exception as exc:
             logger.warning("[ASGI] SSR render error for %r: %s", slug, exc)
             html = None
@@ -534,14 +538,16 @@ def _register_seo_routes(app, fastapi_mod, gw, root_dir):
         # public namespace, so a domain site exposes ALL its atoms, paged per the
         # sitemaps.org 50k-per-file limit.
         origin = _origin(request)
-        return Response(_xml_sitemapindex(origin, _sitemap_index_namespaces(gw)),
-                        media_type="application/xml")
+        # F14b — the corpus build is a heavy a–z thesaurus.reference sweep; NEVER inline on the
+        # loop. A crawler hitting the sitemap ~2-4 min after boot was the prime starvation suspect.
+        namespaces = await run_in_threadpool(_sitemap_index_namespaces, gw)
+        return Response(_xml_sitemapindex(origin, namespaces), media_type="application/xml")
 
     @app.get("/sitemap/{ns}.xml", include_in_schema=False)
     async def _sitemap_child(request: fastapi_mod.Request, ns: str):
         origin = _origin(request)
-        return Response(_xml_urlset(_sitemap_child_locs(gw, origin, ns)),
-                        media_type="application/xml")
+        locs = await run_in_threadpool(_sitemap_child_locs, gw, origin, ns)
+        return Response(_xml_urlset(locs), media_type="application/xml")
 
 
 def run_server(gw, host: str = "0.0.0.0", port: int = 8000, static_dirs=None,
@@ -568,6 +574,8 @@ def run_server(gw, host: str = "0.0.0.0", port: int = 8000, static_dirs=None,
             print("[!] ASGI dependencies offline. Web portal unavailable.")
         return
 
+    from starlette.concurrency import run_in_threadpool   # F14b — keep the event loop free
+
     app = fastapi_mod.FastAPI(
         title="Akasha Substrate Gateway",
         description="JSON-RPC 2.0 Interface for the Akasha Semantic Mesh",
@@ -590,6 +598,72 @@ def run_server(gw, host: str = "0.0.0.0", port: int = 8000, static_dirs=None,
             allow_headers=["*"],
         )
 
+    # ── Concept Laboratory access gate (radu-only) ───────────────────────────────
+    # The clab projection surface under /labo/concept carries Radu Tulai's unpublished
+    # research as DISPLAY data. Restrict the whole prefix (pages + JSON assets) to the
+    # single `radu` account until publication. The gate resolves an akt: token from the
+    # `akasha_labo` cookie (or Bearer) to a client id; only `radu` passes. A JSON asset →
+    # 403; an HTML page → the login gate below (passphrase → auth.verify → cookie → reload).
+    # Read-only token resolution — no write; works in the split portal (secret is shared).
+    _LABO_GATE_HTML = """<!doctype html><html lang=en><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><title>Concept Laboratory · restricted</title>
+<style>:root{color-scheme:light dark}body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+background:#0a1622;color:#d8e9f0;font-family:'Courier New',monospace}
+.card{max-width:360px;padding:30px 26px;border:1px solid rgba(120,190,200,.25);border-radius:10px;background:#0f1f2d}
+h1{font-family:Georgia,serif;font-size:1.15rem;margin:0 0 6px;color:#e6f2f6}
+p{font-size:.74rem;line-height:1.6;color:#8fb0bb;margin:0 0 16px}
+input{width:100%;font-family:inherit;font-size:.9rem;padding:9px 10px;margin-bottom:10px;border-radius:6px;
+border:1px solid rgba(120,190,200,.3);background:#0c1a26;color:#d8e9f0}
+button{width:100%;font-family:inherit;font-size:.7rem;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;
+padding:10px;border-radius:6px;border:1px solid #5fc8c0;background:rgba(95,200,192,.14);color:#5fc8c0}
+.err{color:#e77390;font-size:.7rem;min-height:1em;margin-top:8px}
+a{color:#8fb0bb;font-size:.62rem;text-decoration:none;display:inline-block;margin-top:16px}</style></head>
+<body><form class=card onsubmit="return go(event)">
+<h1>Concept Laboratory</h1>
+<p>This laboratory holds an unpublished research field. Access is restricted to the research client (or an administrator).</p>
+<input id=uid type=text value=radu placeholder="client id" autocomplete=username spellcheck=false>
+<input id=pw type=password placeholder=passphrase autocomplete=current-password autofocus>
+<button type=submit>Enter</button><div class=err id=err></div>
+<a href="/labo/">◄ back to the laboratories</a></form>
+<script>
+function go(e){e.preventDefault();var pw=document.getElementById('pw').value;
+var uid=(document.getElementById('uid').value||'radu').trim();if(!pw)return false;
+document.getElementById('err').textContent='Verifying…';
+fetch('/rpc',{method:'POST',headers:{'Content-Type':'application/json'},
+body:JSON.stringify({jsonrpc:'2.0',method:'auth.verify',params:{user_id:uid,passphrase:pw},id:'v'})})
+.then(function(r){return r.json();}).then(function(j){
+if(j.error||!j.result||!j.result.session_token){document.getElementById('err').textContent='Access denied.';return;}
+document.cookie='akasha_labo='+j.result.session_token+';path=/labo/concept;max-age=86400;samesite=Lax';
+location.reload();}).catch(function(){document.getElementById('err').textContent='Sign-in failed.';});
+return false;}
+</script></body></html>"""
+
+    @app.middleware("http")
+    async def _labo_concept_gate(request: fastapi_mod.Request, call_next):
+        path = request.url.path
+        if path.startswith("/labo/concept"):
+            tok = request.cookies.get("akasha_labo", "")
+            if not tok:
+                _a = request.headers.get("Authorization", "")
+                if _a.startswith("Bearer "):
+                    tok = _a[7:].strip()
+            ok = False
+            if tok:
+                try:
+                    cid, _role = await run_in_threadpool(gw.kernel_client.iam.resolve_session_token, tok)
+                    _rv = getattr(_role, "value", _role)
+                    ok = (cid == "radu") or (str(_rv).lower() == "admin")   # admin sees everything
+                except Exception:
+                    ok = False
+            if not ok:
+                if path.endswith(".json"):
+                    return fastapi_mod.responses.JSONResponse(
+                        {"error": {"code": -32001, "message": "Concept Laboratory is restricted."}},
+                        status_code=403)
+                from starlette.responses import HTMLResponse as _HTML
+                return _HTML(_LABO_GATE_HTML, status_code=401)
+        return await call_next(request)
+
     @app.get("/health", summary="Consciousness liveness check (sys.ping)")
     async def health():
         resp = gw.dispatch({
@@ -599,6 +673,44 @@ def run_server(gw, host: str = "0.0.0.0", port: int = 8000, static_dirs=None,
         result = resp.get("result", {})
         result.setdefault("status", "ok" if "error" not in resp else "degraded")
         return result
+
+    # Single-concept READ methods worth counting as a concept view, → surface label. Only
+    # methods that resolve to ONE concept (never a list like *.ls / thesaurus.reference).
+    # The concept ref is in params `name` (archives.space) or `id` (<model>.get).
+    _PULSE_READ_METHODS = {
+        "archives.space": "atom",   "thesaurus.concept": "concept",
+        "ingredient.get": "ingredient", "cheese.get": "cheese", "bread.get": "bread",
+        "sweet.get": "sweet", "smallplate.get": "smallplate", "meal.get": "meal",
+        "drink.get": "drink", "cocktail.get": "cocktail", "wine.get": "wine",
+        "spirit.get": "spirit", "brewery.get": "brewery", "producer.get": "producer",
+        "dishfamily.get": "dishfamily", "rec.get": "rec",
+    }
+
+    def _pulse_tap_read(request: fastapi_mod.Request, method: Any, params: Any) -> None:
+        """Record one concept view from a successful single-concept /rpc read. Header-complete
+        (ip/ua/referer here → a real visit id); off the critical path; DNT/GPC honoured in
+        capture(); bots labelled not dropped."""
+        surface = _PULSE_READ_METHODS.get(method or "")
+        if not surface:
+            return
+        p = params if isinstance(params, dict) else {}
+        d = p.get("data") if isinstance(p.get("data"), dict) else p       # flat OR nested params
+        ref = d.get("name") or d.get("id") or d.get("slug") or d.get("key") or ""
+        if not isinstance(ref, str) or not ref.strip():
+            return
+        try:
+            from lib.harmonia.pulse_recorder import recorder as _rec
+            if not _rec.configured:
+                return
+            hdr = request.headers
+            client = request.client.host if request.client else ""
+            ip = (hdr.get("x-forwarded-for", "").split(",")[0].strip() or client)
+            _rec.capture(concept=ref.strip(), surface=surface, referer=hdr.get("referer", ""),
+                         ip=ip, ua=hdr.get("user-agent", ""),
+                         dnt=(hdr.get("dnt") == "1" or hdr.get("sec-gpc") == "1"),
+                         own_host=(hdr.get("host", "").split(":", 1)[0]))
+        except Exception as _cex:
+            logger.debug("[ASGI] pulse tap capture failed: %s", _cex)
 
     async def _rpc_dispatch(request: fastapi_mod.Request) -> Any:
         try:
@@ -611,7 +723,25 @@ def run_server(gw, host: str = "0.0.0.0", port: int = 8000, static_dirs=None,
                     auth = request.headers.get("Authorization", "")
                     if auth.startswith("Bearer "):
                         p["session_token"] = auth[7:].strip()
-            return gw.dispatch(payload)
+            # F14b — the kernel dispatch is SYNC and can be slow (a heavy read); run it in the
+            # threadpool so it never blocks the event loop and starve the sys.ping health probe
+            # (which is itself a POST /api/rpc — a blocked loop can't even answer it → false
+            # "unhealthy" → respawn → OOM). Reads parallelise (WAL); writes still serialise in the
+            # WriteQueue, so threadpool execution is safe.
+            resp = await run_in_threadpool(gw.dispatch, payload)
+            # ── Pulse tap (universal concept-view capture) ────────────────────────
+            # Every concept view on every page/domain is a single-concept READ through /rpc
+            # (the kitchen `ingredient.get`/`cheese.get`, the atom viewer + recipe pages'
+            # `archives.space`, etc.). Recording HERE — the one choke point that also holds the
+            # request headers — captures them all with no per-page beacon and no client-side
+            # resolution loss (the beacon only ever covered 3 pages, so pulse read near-zero).
+            # Off the critical path: the recorder buffers and never blocks; a failure is swallowed.
+            try:
+                if isinstance(payload, dict) and isinstance(resp, dict) and not resp.get("error"):
+                    _pulse_tap_read(request, payload.get("method"), payload.get("params"))
+            except Exception as _ptx:
+                logger.debug("[ASGI] pulse tap skipped: %s", _ptx)
+            return resp
         except json.JSONDecodeError:
             return {"jsonrpc": "2.0",
                     "error": {"code": -32700, "message": "Parse error: invalid JSON"},
@@ -637,9 +767,13 @@ def run_server(gw, host: str = "0.0.0.0", port: int = 8000, static_dirs=None,
         _pulse_recorder = None
         logger.debug("[ASGI] pulse recorder unavailable: %s", _pex)
 
+    # Response is imported locally inside _register_seo_routes (a different function), so it is
+    # NOT in this scope — reference it via the fastapi module to avoid a NameError 500.
+    _NoContent = fastapi_mod.Response
+
     async def _pulse_beacon(request: fastapi_mod.Request) -> Any:
         if _pulse_recorder is None:
-            return Response(status_code=204)
+            return _NoContent(status_code=204)
         try:
             body = await request.json()
         except Exception:
@@ -649,14 +783,17 @@ def run_server(gw, host: str = "0.0.0.0", port: int = 8000, static_dirs=None,
             hdr = request.headers
             client = request.client.host if request.client else ""
             ip = (hdr.get("x-forwarded-for", "").split(",")[0].strip() or client)
-            _pulse_recorder.capture(
-                concept=concept, surface=(body.get("surface") or ""),
-                referer=hdr.get("referer", ""), prev=(body.get("prev") or ""),
-                ip=ip, ua=hdr.get("user-agent", ""),
-                dnt=(hdr.get("dnt") == "1" or hdr.get("sec-gpc") == "1"),
-                own_host=(hdr.get("host", "").split(":", 1)[0]),
-            )
-        return Response(status_code=204)
+            try:
+                _pulse_recorder.capture(
+                    concept=concept, surface=(body.get("surface") or ""),
+                    referer=hdr.get("referer", ""), prev=(body.get("prev") or ""),
+                    ip=ip, ua=hdr.get("user-agent", ""),
+                    dnt=(hdr.get("dnt") == "1" or hdr.get("sec-gpc") == "1"),
+                    own_host=(hdr.get("host", "").split(":", 1)[0]),
+                )
+            except Exception as _cex:               # analytics must never 500 a page's beacon
+                logger.debug("[ASGI] pulse capture error: %s", _cex)
+        return _NoContent(status_code=204)
 
     app.add_api_route("/pulse", _pulse_beacon, methods=["POST"], include_in_schema=False,
                       summary="Access-analytics beacon (server-side capture)")
@@ -667,10 +804,11 @@ def run_server(gw, host: str = "0.0.0.0", port: int = 8000, static_dirs=None,
     async def _mcp_dispatch(request: fastapi_mod.Request) -> Any:
         from api.portals.mcp import mcp_http_process
         raw = await request.body()
-        resp, status, headers = mcp_http_process(
-            gw, raw,
-            session_header=request.headers.get("Mcp-Session-Id", ""),
-            auth_header=request.headers.get("Authorization", ""))
+        # F14b — MCP processing does a blocking kernel dispatch; keep it off the event loop.
+        resp, status, headers = await run_in_threadpool(
+            mcp_http_process, gw, raw,
+            request.headers.get("Mcp-Session-Id", ""),
+            request.headers.get("Authorization", ""))
         return fastapi_mod.responses.JSONResponse(content=resp, status_code=status, headers=headers)
 
     app.add_api_route("/mcp",     _mcp_dispatch, methods=["POST"], summary="MCP endpoint (remote LLM route)")

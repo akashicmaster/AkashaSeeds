@@ -648,6 +648,15 @@ class KernelDispatcher:
             f"jcl={'on' if self.jcl_worker else 'off'}"
         )
 
+        # seeds13 R3 — derive responsible:chairman from any legacy society:decider links, ONCE,
+        # behind a fsync'd completion sentinel (the F6 isomorph: a re-running migration is the same
+        # replay trap). Best-effort, fast no-op on a fresh install (no groups), never blocks boot.
+        try:
+            from lib.akasha.seeds13_migrate import migrate_deciders_to_chairman
+            migrate_deciders_to_chairman(base_dir)
+        except Exception as _mexc:                                  # pragma: no cover
+            logger.warning("[Kernel] seeds13 decider→chairman migration skipped: %s", _mexc)
+
         # Boot-time ontology load — queue CSL files as JCL jobs if sentinel absent.
         # Runs in a daemon thread so boot is never blocked.
         if self.jcl_worker:

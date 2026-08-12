@@ -507,8 +507,15 @@ def _units_as_rows(base_dir):
                 row["name"] = f"{u['id']} ({det.get('packs_loaded')}/{det.get('packs_present')} packs)"
             rows.append(row)
         else:
-            rows.append({"name": u["id"], "status": "Active" if u.get("live") else "Dead",
-                         "engine": u.get("engine", "?"), "uptime_sec": uptime,
+            # F15 — a service unit whose pid is gone is a CORPSE record (a reaped daemon that left
+            # its unit file behind). Never render it as Active, and NEVER show an uptime for it:
+            # uptime derives from started_at, which for a dead record is meaningless (it once made
+            # svc.ls show "Active PID=… uptime 17s" for a pid that no longer existed, costing a
+            # false two-writer diagnosis). Live pid → Active + real uptime; dead pid → Stale + "—".
+            _live = u.get("live")
+            rows.append({"name": u["id"], "status": "Active" if _live else "Stale (pid gone)",
+                         "engine": u.get("engine", "?"),
+                         "uptime_sec": uptime if _live else None,
                          "pid": u.get("pid"), "host": u.get("host", ""),
                          "port": u.get("port", 0)})
     return rows
