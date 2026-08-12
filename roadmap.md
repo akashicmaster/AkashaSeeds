@@ -114,7 +114,9 @@ The substrate is shipped; the immediate work is to *use* it and polish for relea
   autonomous bot avatars; and a "secretary" avatar that grounds command recall via a command-
   catalogue read tool instead of hallucinating syntax.
 - **seeds13 — Space · Process · Time: society ≡ workflow on the chronon network** (the next
-  release's integrating refactor; spec finalized, implementation phased P0–P7). Three new
+  release's integrating refactor; spec finalized, implementation phased P0–P7 — the first wave
+  is on `main`: the agent/responsible/chronon/scenario models, the society governance ladder,
+  the clab GUI projection, and a both-topology eval suite). Three new
   primitives complete the collaboration ladder: an **agent** is a cast admitted to a society
   (the cast×society binding atom — one cast may be an agent of many societies, each with its
   own per-workflow state); a **responsible** (chairman / scribe / broadcaster / workflow-defined)
