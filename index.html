@@ -51,4 +51,23 @@ header{position:sticky;top:0;z-index:50;color:#eee5d7;background:rgba(15,19,32,.
 </main>
 <footer><div class="wrap foot"><div><div style="font-family:var(--serif);letter-spacing:.15em">AKASHA SEEDS</div><div class="fine">Local-first semantic infrastructure · MIT licensed</div></div><nav class="footlinks"><a href="https://akashicarchives.net/">Archives</a><a href="https://akashickitchen.net/">Kitchen</a><a href="https://github.com/akashicmaster/AkashaSeeds#readme">README</a><a href="https://github.com/akashicmaster/AkashaSeeds/blob/main/quick-start.md">Quick Start</a><a href="https://github.com/akashicmaster/AkashaSeeds/tree/main/docs/cookbook">Cookbook</a><a href="https://github.com/akashicmaster/AkashaSeeds/releases">Releases</a><a href="https://github.com/akashicmaster/AkashaSeeds">GitHub</a></nav></div></footer>
 <script>(function(){var r=document.documentElement,b=document.getElementById('theme'),k='akasha-theme',s;try{s=localStorage.getItem(k)}catch(e){}if(s==='light'||s==='dark')r.dataset.theme=s;b.addEventListener('click',function(){var c=r.dataset.theme;if(c!=='light'&&c!=='dark')c=matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';var n=c==='dark'?'light':'dark';r.dataset.theme=n;try{localStorage.setItem(k,n)}catch(e){}})})();</script>
+<script>
+/* Access beacon → the Akasha pulse endpoint (self-hosted, concept-level analytics).
+   No cookies, no PII, no fingerprinting: the server derives a daily-rotating pseudonymous
+   visit id and discards it; DNT / Sec-GPC are honoured server-side. The Blob is text/plain
+   on purpose — a CORS-safelisted type, so the cross-origin beacon needs no preflight and
+   no server change (the endpoint parses the JSON body regardless of content type). */
+(function () {
+  try {
+    if (navigator.doNotTrack === '1' || window.doNotTrack === '1') return;
+    var body = JSON.stringify({ concept: 'site:github_landing', surface: 'github_landing' });
+    var url = 'https://akashickitchen.net/pulse';
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon(url, new Blob([body], { type: 'text/plain' }));
+    } else if (window.fetch) {
+      fetch(url, { method: 'POST', mode: 'no-cors', body: body, keepalive: true });
+    }
+  } catch (e) { /* analytics is never allowed to break the page */ }
+})();
+</script>
 </body></html>
