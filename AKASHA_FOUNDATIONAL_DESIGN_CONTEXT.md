@@ -21,7 +21,7 @@ A useful summary is:
 
 > **The concepts were old. The implementation had to catch up.**
 
-This distinction is essential when interpreting Sillica, Seeds, Society, Telemetry, Workflow, World, Workbench, DTN, semantic caching, or LLM integration.
+This distinction is essential when interpreting Silica, Seeds, Society, Telemetry, Workflow, World, Workbench, DTN, semantic caching, or LLM integration.
 
 ---
 
@@ -837,13 +837,13 @@ This opens a path toward:
 
 ---
 
-# 23. Sillica: The Native Semantic Instruction Boundary
+# 23. Silica: The Native Semantic Instruction Boundary
 
-Sillica should not be understood merely as a reaction against SQLite.
+Silica should not be understood merely as a reaction against SQLite.
 
 SQLite is a strong and valuable implementation.
 
-Sillica exists because Akasha has long carried another design idea: knowledge operations should eventually be expressible at a boundary analogous to a native CPU instruction set.
+Silica exists because Akasha has long carried another design idea: knowledge operations should eventually be expressible at a boundary analogous to a native CPU instruction set.
 
 This idea dates back to experience with Lisp and Prolog, when machines such as Symbolics demonstrated specialized computing but at prohibitive cost.
 
@@ -857,7 +857,7 @@ The architectural goal is to establish a software boundary that could plausibly 
 Akasha semantic operation
         ↓
 --------------------------------
-Sillica / backend instruction boundary
+Silica / backend instruction boundary
 --------------------------------
         ↓
 current software implementation
@@ -874,7 +874,7 @@ It is:
 
 > **What is one meaningful memory instruction for Akasha?**
 
-The SQLite and Sillica implementations intentionally share the same upper interface boundary so that the memory engine can be replaced without rewriting the semantic layers above it.
+The SQLite and Silica implementations intentionally share the same upper interface boundary so that the memory engine can be replaced without rewriting the semantic layers above it.
 
 ---
 
@@ -1258,7 +1258,7 @@ A compact conceptual map is:
                          │
                   Harmonia / engine
                          │
-              SQLite  ↔  Sillica
+              SQLite  ↔  Silica
                          │
           semantic instruction boundary
                          │
@@ -1299,7 +1299,7 @@ Important completed or strongly established areas include:
 - persistence,
 - Harmonia execution,
 - SQLite-backed operation,
-- Sillica native-engine experimentation,
+- Silica native-engine experimentation,
 - robustness and load testing on VPS,
 - LLM participation experiments through Society/Station,
 - telemetry-to-Atom mapping,
@@ -1418,10 +1418,10 @@ Prefer:
 "LLMs provided a new first-class client with which the pre-existing human/machine participation model could finally be exercised in a powerful form."
 
 ### Do not say:
-"Sillica was invented because SQLite was bad."
+"Silica was invented because SQLite was bad."
 
 Prefer:
-"SQLite remains a strong implementation; Sillica realizes the older goal of an Akasha-native semantic instruction boundary and allows direct control of memory operations."
+"SQLite remains a strong implementation; Silica realizes the older goal of an Akasha-native semantic instruction boundary and allows direct control of memory operations."
 
 ### Do not say:
 "World/Workbench is Akasha's new direction."
@@ -1501,7 +1501,7 @@ This is the correct context for stories about:
 - reality becoming the beta tester,
 - cache becoming semantic,
 - reading SQLite,
-- Sillica,
+- Silica,
 - World,
 - Society,
 - Telemetry,
@@ -1587,7 +1587,7 @@ Concepts can be approached through both deliberate definition and observed/funct
 
 The system is dynamic by design. Telemetry can map observations into Atoms; Workflows themselves live on the Atom network and can execute, resume, revise, roll back, travel, and potentially be rewritten by Agents. This makes knowledge portable not only as facts but as executable semantic process.
 
-Harmonia coordinates work above storage. Sillica explores an Akasha-native semantic instruction boundary that may one day map naturally toward specialized hardware. The same semantic boundaries that matter at the micro level also inform macro-level cache residency, placement, parallelization, and distribution.
+Harmonia coordinates work above storage. Silica explores an Akasha-native semantic instruction boundary that may one day map naturally toward specialized hardware. The same semantic boundaries that matter at the micro level also inform macro-level cache residency, placement, parallelization, and distribution.
 
 Seeds expresses the deployment philosophy: knowledge can remain dormant, encounter an environment, adapt to available capabilities, and germinate. Degradation is therefore not merely an offline feature; it supports semantic continuity across local, constrained, IoT, and DTN environments.
 
