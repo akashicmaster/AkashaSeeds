@@ -4,19 +4,23 @@
 
 *Why Akasha was designed this way — the conceptual foundation behind everything in this repository.*
 
+Second edition, September 2026. This paper is the readable account of the design. The canonical architectural reference is [Akasha — Foundational Design Context](AKASHA_FOUNDATIONAL_DESIGN_CONTEXT.md); where the two differ, that document governs.
+
 ---
 
 ## Abstract
 
 This paper introduces Concept-Oriented Computing, a computational paradigm in which concepts, rather than files, documents, or database records, become the primary unit of computation.
 
-It presents the architectural principles underlying Akasha, a local-first semantic execution substrate designed for humans, Large Language Models (LLMs), and future physical systems.
+It presents the architectural principles underlying Akasha, a local-first Concept Operating System and semantic substrate designed for humans, Large Language Models (LLMs), programs, sensors, and actuators as participants in one semantic world.
 
-Unlike conventional software, where implementation determines meaning, Concept-Oriented Computing begins by defining conceptual structures and allows implementations to emerge from them through Concept Models, semantic pipelines, and reusable operators.
+The substrate is deliberately small: Atom, Link, and overlapping Set. Everything above it — Concept Models, Scope, Projection, Agents and roles, World, Society, Workbench, Workflow, Chronon — is a semantic construction over those three primitives. The same primitives recur at every scale: they decide what a single memory operation touches, what stays resident in memory, what travels to another machine, and what can keep working while a network is down.
 
-The paper argues that recent advances in AI have fundamentally shifted the bottleneck of software development. As implementation becomes increasingly automated, conceptual design becomes the primary source of long-term value. Akasha therefore places human expertise at the center of semantic architecture while treating LLMs as collaborators in implementation rather than generators of meaning.
+Unlike conventional software, where implementation determines meaning, Concept-Oriented Computing begins by defining conceptual structures and lets implementations follow. Workflow and execution state live on the same substrate as knowledge, so the system remembers not only what is known but how to act and where an action currently stands.
 
-The resulting architecture proposes a durable semantic substrate in which concepts, workflows, browser applications, knowledge systems, and future autonomous participants coexist within a shared conceptual world.
+The foundational ideas are not a reaction to today's AI. They originate in knowledge-engineering questions held for roughly thirty years; contemporary hardware, networks, and LLMs made them implementable. LLMs matter here as a new kind of first-class client, not as the center of the architecture.
+
+The resulting architecture proposes a durable semantic substrate in which concepts, workflows, browser portals, research environments, machine learning benches, and future physical participants coexist within a shared conceptual world — and in which that world can germinate, degrade gracefully, and continue under constrained conditions.
 
 ---
 
@@ -25,13 +29,18 @@ The resulting architecture proposes a durable semantic substrate in which concep
 0. [Foreword](#foreword)
 1. [Chapter 1 — Why Concepts?](#chapter-1--why-concepts)
 2. [Chapter 2 — Concept-Oriented Computing](#chapter-2--concept-oriented-computing)
-3. [Chapter 3 — Semantic Pipelines](#chapter-3--semantic-pipelines)
-4. [Chapter 4 — Concept Models](#chapter-4--concept-models)
-5. [Chapter 5 — Operand · Operator · Agent](#chapter-5--operand--operator--agent)
-6. [Chapter 6 — The Semantic Substrate](#chapter-6--the-semantic-substrate)
-7. [Chapter 7 — Society](#chapter-7--society)
-8. [Chapter 8 — Seeds and Continuity](#chapter-8--seeds-and-continuity)
-9. [Epilogue — Toward a Concept-Oriented Future](#epilogue--toward-a-concept-oriented-future)
+3. [Chapter 3 — Atom, Link, Set](#chapter-3--atom-link-set)
+4. [Chapter 4 — Scope and Projection](#chapter-4--scope-and-projection)
+5. [Chapter 5 — Semantic Pipelines](#chapter-5--semantic-pipelines)
+6. [Chapter 6 — Concept Models](#chapter-6--concept-models)
+7. [Chapter 7 — Operand · Operator · Agent](#chapter-7--operand--operator--agent)
+8. [Chapter 8 — The Semantic Substrate](#chapter-8--the-semantic-substrate)
+9. [Chapter 9 — A World That Changes](#chapter-9--a-world-that-changes)
+10. [Chapter 10 — World, Workbench, Workflow, Chronon](#chapter-10--world-workbench-workflow-chronon)
+11. [Chapter 11 — Society](#chapter-11--society)
+12. [Chapter 12 — Seeds, Retreat, and Continuity](#chapter-12--seeds-retreat-and-continuity)
+13. [Epilogue — Toward a Concept-Oriented Future](#epilogue--toward-a-concept-oriented-future)
+14. [Reading the History](#reading-the-history)
 
 ---
 
@@ -55,7 +64,23 @@ Software rarely survives for decades.
 
 The architecture presented in this paper is an attempt to reconcile those different timescales.
 
-Everything that follows emerges from that single question.
+---
+
+The question itself is older than the code.
+
+Most of what follows was first thought through roughly thirty years ago, in the practice of a knowledge engineer working with Lisp, Prolog, semantic networks, and concept modeling.
+
+The ideas stayed dormant because the machines, the networks, and the deployment environments of that time could not carry them.
+
+They can now.
+
+The 2026 implementation is therefore not a story of repeatedly changing a design.
+
+It is a story of an old design finally finding its practical boundaries.
+
+> **The concepts were old. The implementation had to catch up.**
+
+Everything that follows emerges from that single question, and from that single distinction.
 
 ---
 
@@ -178,6 +203,7 @@ The same semantic space can simultaneously appear as:
 - an ontology
 - an MCP tool
 - a workflow
+- a research bench
 
 No duplication is required.
 
@@ -329,7 +355,204 @@ Akasha proposes that concepts may become the next stable abstraction.
 
 ---
 
-# Chapter 3 — Semantic Pipelines
+# Chapter 3 — Atom, Link, Set
+
+*The Primitive Substrate*
+
+Every large idea in Akasha rests on three small ones.
+
+```
+Atom
+Link
+Set
+```
+
+Everything above this level is a semantic construction over these primitives.
+
+There is no fourth primitive waiting in reserve for a hard case.
+
+When a new requirement appears, the first question is always whether these three can express it.
+
+---
+
+## Atom
+
+An Atom is the fundamental addressable, persistent unit.
+
+An Atom may take part in representing:
+
+- a concept
+- a note
+- a quotation
+- a fragment of a source
+- an observation
+- a person
+- an event
+- a sensor endpoint
+- an actuator endpoint
+- a step of a workflow
+- a role
+- an element of the state of a world
+
+The kernel does not require a different storage species for each of these.
+
+The same primitive serves what looks like static knowledge and what looks like a running process.
+
+This is deliberate.
+
+It is the reason a workflow can be remembered the way a fact is remembered, and the reason a sensor reading can sit beside a definition.
+
+---
+
+## Link
+
+Links connect Atoms and make topology meaningful.
+
+Meaning is not assumed to live only in the payload of an Atom.
+
+It also emerges from relationships, from context, from participation, from the path by which something was reached.
+
+The same Atom can mean differently when reached through different structures.
+
+An apple reached through a recipe is an ingredient.
+
+The same apple reached through a botany reference is a species.
+
+Nothing was copied.
+
+Only the path changed.
+
+---
+
+## Set
+
+Set is the most consequential of the three.
+
+A Set is not necessarily:
+
+- a class
+- a strict taxonomy
+- a database table
+- a folder
+- a mutually exclusive category
+
+Sets may overlap.
+
+A Set may represent a domain, an interpretation, a hypothesis, a semantic neighborhood, a professional rule-space, a permission boundary, an execution boundary, a unit of distribution, a unit of memory residency, or a temporary working context.
+
+Because Sets overlap, multiple interpretations coexist without being forced into one canonical ontology.
+
+---
+
+**Figure 3.1 — One Atom, Many Sets**
+
+```
+                          ● apple
+                          │
+        ┌─────────┬───────┼───────┬──────────┐
+        │         │       │       │          │
+     biology    food   scripture literature technology
+       Set       Set      Set      Set        Set
+```
+
+The apple belongs to all five.
+
+Akasha does not decide which one is the true hierarchy.
+
+It does not need to.
+
+Every later mechanism in this paper — Concept Models, Scope, Projection, the semantic macro-cache, distribution across machines — is a way of asking "which Sets matter right now?"
+
+The answer changes.
+
+The Atom does not.
+
+
+---
+
+# Chapter 4 — Scope and Projection
+
+*The Absent Object*
+
+At the level of the API and of explanation, Akasha distinguishes Scope from Set because they communicate different intentions.
+
+A Set groups meaning.
+
+A Scope grants a client a world.
+
+Internally the important insight is simpler:
+
+> **Scope and Set share the same Atom–Set geometry.**
+
+A Scope is not an access-control list wrapped around objects that are otherwise globally visible.
+
+It is a projection of a semantic Set into a client's accessible world.
+
+---
+
+This produces a security intuition unlike the conventional one.
+
+**Figure 4.1 — Denied versus Absent**
+
+```
+      CONVENTIONAL                          AKASHA
+
+      object exists                       client scope
+           │                                   │
+           ▼                                   ▼
+       ACL check                      semantic projection
+           │                                   │
+      allow / deny                object is present in this world
+                                             or
+                                  object is not projected at all
+```
+
+A private semantic region behaves, from the point of view of an unrelated client, like a black hole.
+
+It is not visible-but-denied.
+
+It is absent from that client's projected world.
+
+---
+
+References can be directional.
+
+A private Set may refer to public knowledge without public knowledge referring back into the private Set.
+
+This is what makes the following ordinary rather than exceptional:
+
+- private annotation of a public source
+- personal extension of shared knowledge
+- research that stays isolated until it is ready
+- organizational boundaries inside one substrate
+- secure composition of semantic regions
+
+---
+
+Projection is the general form of the same idea.
+
+Projection decides what part — or which interpretation — of the semantic world is exposed, and to whom.
+
+It is used for far more than visualization:
+
+- access
+- research isolation
+- visibility that changes by phase
+- public and private boundaries
+- role-specific interfaces
+- presentation
+- publication
+
+Public projection and broadcasting are not the same operation.
+
+Research can remain closed while selected results are projected publicly.
+
+The rest of this paper will keep returning to Projection, because it is the mechanism by which one substrate can hold many worlds without any of them leaking into the others.
+
+
+---
+
+# Chapter 5 — Semantic Pipelines
 
 *From Unix Pipes to Shared Meaning*
 
@@ -414,6 +637,7 @@ An observation can become:
 - a timeline event
 - a browser visualization
 - an MCP tool response
+- a training example
 
 No conversion is required.
 
@@ -423,7 +647,7 @@ Different operators simply interpret it differently.
 
 ---
 
-**Figure 3.1 — The Evolution of the Pipeline**
+**Figure 5.1 — The Evolution of the Pipeline**
 
 ```
      1970s · Unix          2000s · Smartphone           Akasha
@@ -491,7 +715,7 @@ The knowledge does not.
 
 ---
 
-**Figure 3.2 — One Concept, Many Interpretations**
+**Figure 5.2 — One Concept, Many Interpretations**
 
 ```
                         Semantic Graph
@@ -590,7 +814,7 @@ Semantic Pipelines connect concepts.
 
 ---
 
-# Chapter 4 — Concept Models
+# Chapter 6 — Concept Models
 
 *The Grammar of Meaning*
 
@@ -653,6 +877,127 @@ Within different models it may appear as:
 Each interpretation reveals something different.
 
 None requires copying the underlying data.
+
+---
+
+## Two Directions to a Concept
+
+A Concept Model is the deductive, definitional way to reach a concept.
+
+A human states what a concept is meant to mean and how it should be structured, and the model projects Atoms, Links, and Sets accordingly.
+
+There is a second direction, and Akasha was designed for both.
+
+**Figure 6.1 — Definition and Observation**
+
+```
+      DEDUCTIVE · DEFINITIONAL             FUNCTIONAL · OBSERVATIONAL
+
+         Concept Model                     Atoms · observations · relations
+              │                                        │
+              ▼                                        ▼
+     defined semantic structure               co-occurrence and use
+              │                                        │
+              ▼                                        ▼
+       Atoms / Links / Sets                     candidate structures
+                                                       │
+                                                       ▼
+                                             possible Sets / concepts
+```
+
+In the second direction, concepts are discovered through how they participate in the world, not only through prior definition.
+
+Neither direction replaces the other.
+
+Akasha is meant to move freely between them:
+
+```
+definition  ↔  observation
+deduction   ↔  induction
+model       ↔  use
+```
+
+A Set discovered inductively does not automatically become canonical truth.
+
+It coexists with other hypotheses until humans or agents refine, name, compare, or reject it.
+
+This is one reason Akasha should never converge automatically toward a single universal ontology.
+
+---
+
+## `dive`
+
+Overlapping Sets have a direct consequence for exploration.
+
+Graph traversal usually assumes that useful exploration means following explicit edges, picking a hierarchy, finding shortest paths, or choosing a canonical neighborhood.
+
+Akasha's exploration must not destroy the looseness of meaning merely to make navigation convenient.
+
+```
+dive apple
+```
+
+For a concept such as `apple`, `dive` encounters overlapping neighborhoods without first forcing the user to choose one ontology.
+
+```
+Apple
+ ├─ Biology
+ ├─ Food
+ ├─ Religion
+ ├─ Literature
+ ├─ Technology
+ └─ other interpretations
+```
+
+`dive` is better understood as movement through a sea of meanings than as ordinary tree navigation.
+
+---
+
+## From Loose Meaning to Strict Domains
+
+Akasha does not keep ambiguity and rigor in separate architectures.
+
+A strict professional domain is a special case of Set interpretation in which the constraints have become strong.
+
+```
+loose semantic world
+        ↓
+overlapping concepts
+        ↓
+Sets
+        ↓
+constrained Sets
+        ↓
+professional domain
+```
+
+Accounting, audit, compliance, engineering rules, or clinical protocols can be expressed without replacing the underlying semantic model.
+
+Strictness is added through constraints, rules, authority, roles, validation, evidence requirements, and permitted operations.
+
+> **A human begins in an ambiguous world and learns rules. Akasha should be able to do the same without changing substrates.**
+
+---
+
+## Norms, Authority, Roles
+
+Because Sets can carry constraints and interpretation, normative systems are also semantic.
+
+A normative Set may express what is permitted, what is forbidden, what is required, exceptions, professional standards, audit criteria, or domain-specific authority.
+
+An auditor is not a special executable type.
+
+An auditor is an Agent connected to an audit role, an authority Set, the relevant knowledge Sets, evidence, and a set of permitted operations.
+
+The same architecture applies whether that Agent is human, an LLM, a program, or a machine.
+
+One distinction must be kept intact throughout:
+
+> **Authority and interpretive truth are not the same thing.**
+
+A moderator may govern a process without becoming its epistemic ground truth.
+
+That sentence will matter again when we reach Society.
 
 ---
 
@@ -742,7 +1087,7 @@ They define how meaning becomes action.
 
 ---
 
-**Figure 4.1 — The Concept Stack**
+**Figure 6.2 — The Concept Stack**
 
 ```
                 Reality                    ─┐
@@ -773,7 +1118,7 @@ The further a layer sits from the foundation, the more freely it may be replaced
 
 ---
 
-**Figure 4.2 — One Graph, Many Worlds**
+**Figure 6.3 — One Graph, Many Worlds**
 
 ```
                       Semantic Graph
@@ -822,7 +1167,7 @@ The worlds continue to grow.
 
 ---
 
-# Chapter 5 — Operand · Operator · Agent
+# Chapter 7 — Operand · Operator · Agent
 
 *Separating Meaning from Action*
 
@@ -918,6 +1263,8 @@ Generate a browser view.
 
 Summarize with an LLM.
 
+Extract a feature vector from an image.
+
 Each operator performs one semantic transformation.
 
 Operators remain independent of the concepts they process.
@@ -974,7 +1321,7 @@ Presentation no longer depends on the identity of the participant.
 
 ---
 
-**Figure 5.1 — Responsibility Flow**
+**Figure 7.1 — Responsibility Flow**
 
 ```
          Agent               decides WHEN — holds intention
@@ -1003,6 +1350,40 @@ Operators never decide intentions.
 Agents never alter meaning directly.
 
 Responsibilities flow in one direction.
+
+---
+
+## Multi-Client Is Foundational
+
+Akasha was designed from the beginning as a multi-client semantic environment.
+
+CLI users, browsers, mobile applications, LLMs, sensors, actuators, robotic controllers, and automated programs are all clients.
+
+A client participates through session and scope mechanisms.
+
+It does not receive a different ontology because of its species.
+
+This becomes especially important for one kind of client.
+
+---
+
+## The LLM Is One Client, Not an Exception
+
+LLM participation was never intended to create a separate "AI world."
+
+> **An LLM is one client and may become one Agent in the same world as other participants.**
+
+It is not privileged because it is an LLM.
+
+It is also not reduced to a chat window, a tool-calling controller, an omniscient narrator, or a free-running autonomous process.
+
+The Station experiment explored the space between those extremes: LLMs took roles — a news caster, a commentator — inside a Society, with role, context, turn structure, and social relation shaping what they said.
+
+The point was not unrestricted conversation and not scripted playback.
+
+The point was to test how an LLM behaves as a member.
+
+That experiment is the practical foundation for LLM participation in the World, Society, and Workbench architecture described later, and Station itself is expected to be absorbed into Workbench rather than remain a separate island.
 
 ---
 
@@ -1066,7 +1447,7 @@ This inversion allows conceptual structures to remain stable even as implementat
 
 ---
 
-**Figure 5.2 — Two Ways of Thinking**
+**Figure 7.2 — Two Ways of Thinking**
 
 ```
         TRADITIONAL                           AKASHA
@@ -1100,7 +1481,7 @@ That single change reshapes the entire architecture.
 
 ---
 
-# Chapter 6 — The Semantic Substrate
+# Chapter 8 — The Semantic Substrate
 
 *A Memory That Outlives Programs*
 
@@ -1142,7 +1523,7 @@ It is a living semantic environment.
 
 Atoms,
 
-relationships,
+links,
 
 sets,
 
@@ -1246,6 +1627,8 @@ projection,
 
 curation,
 
+feature extraction over a corpus of images,
+
 and browser generation.
 
 Meaning becomes resumable.
@@ -1288,6 +1671,22 @@ The next participant simply continues.
 
 ---
 
+## Harmonia: Execution Above Storage
+
+Akasha deliberately refuses to let a database's concurrency behavior become the conceptual center of execution.
+
+Harmonia coordinates work above the storage engine.
+
+It reasons in Akasha-native units — jobs, steps, workspaces — rather than inheriting SQL locking or another backend's execution model.
+
+Jobs can be reasoned about through their semantic read and write Sets.
+
+If two operations are semantically disjoint, their Set relationships can tell the scheduler that they may run in parallel.
+
+This is the path toward deterministic orchestration, backend independence, semantic parallelization, resumable jobs, and eventually placement of work across machines.
+
+---
+
 ## One Substrate, Many Engines
 
 The Semantic Substrate deliberately remains independent of its storage engine.
@@ -1302,30 +1701,134 @@ The substrate does not change.
 
 Only the persistence mechanism does.
 
-This separation allows storage technology to evolve without altering the conceptual architecture.
-
-Implementation becomes replaceable.
-
-Meaning remains stable.
+The two implementations share the same upper interface on purpose, so the memory engine can be replaced without rewriting the semantic layers above it.
 
 ---
 
-**Figure 6.1 — The Semantic Substrate**
+## Silica: A Native Semantic Instruction Boundary
+
+Silica is not a reaction against SQLite.
+
+SQLite is a strong implementation and remains the recommended default.
+
+Silica exists because Akasha has long carried another design idea:
+
+> **Knowledge operations should eventually be expressible at a boundary analogous to a native CPU instruction set.**
+
+The idea dates back to Lisp and Prolog, and to machines such as Symbolics that demonstrated specialized computing at prohibitive cost.
+
+Fabless hardware development, open instruction sets, and FPGA prototyping make the idea less fantastical than it was.
+
+The immediate goal is not to fabricate a chip.
+
+The goal is a software boundary that could plausibly correspond to native semantic instructions later.
+
+**Figure 8.1 — The Instruction Boundary**
 
 ```
-      Human       Browser        LLM        Workflow      MCP client
-        │            │            │             │             │
-        └────────────┴─────┬──────┴─────────────┴─────────────┘
+        Akasha semantic operation
+                  │
+   ────────────────────────────────────────
+     Silica / backend instruction boundary
+   ────────────────────────────────────────
+                  │
+        current software implementation
+
+        possible future:
+        native semantic hardware
+```
+
+An Akasha memory operation that would take several database transactions can become one Akasha-native command.
+
+The important question is not only performance.
+
+It is:
+
+> **What is one meaningful memory instruction for Akasha?**
+
+---
+
+## Micro Semantics, Macro Distribution
+
+The instruction boundary has a consequence that reaches far beyond one machine.
+
+The same semantic judgment scales upward.
+
+```
+   MICRO                                   MACRO
+
+   semantic operation                      semantic Set / working context
+         │                                          │
+         ▼                                          ▼
+   native command                          residency / placement
+         │                                          │
+         ▼                                          ▼
+   memory / WAL / execution                cache / node / distribution
+```
+
+> **The semantic boundary that decides what belongs together in one small operation can also decide what belongs together in memory, or across machines.**
+
+Micro-level operations and macro-level distribution are not unrelated optimizations.
+
+They are two scales of one design idea.
+
+---
+
+## The Semantic Macro-Cache
+
+The semantic macro-cache asks one question:
+
+> **Can memory residency follow semantic attention?**
+
+A conventional cache remembers addresses or recently accessed blocks.
+
+A semantic macro-cache reasons about what the system is working on — what a human reader is viewing, what a workflow is currently touching — and keeps semantically relevant regions resident.
+
+Sets become natural units for warming, paging, placement, distribution, synchronization, and eviction.
+
+Entering a European research context makes geography, countries, capitals, and the relevant history hot, while unrelated biology Sets go cold.
+
+The goal is not merely faster lookup.
+
+It is alignment:
+
+```
+meaning
+  ↓
+attention
+  ↓
+memory residency
+  ↓
+execution placement
+```
+
+This is not a performance trick bolted on afterwards.
+
+It is what happens when the Set — the primitive from Chapter 3 — is taken seriously as a unit of computation.
+
+---
+
+**Figure 8.2 — The Semantic Substrate**
+
+```
+      Human       Browser        LLM        Workflow      Sensor · Actuator
+        │            │            │             │                │
+        └────────────┴─────┬──────┴─────────────┴────────────────┘
                            ▼
    ═══════════════════════════════════════════════════════════════
                     S E M A N T I C   S U B S T R A T E
 
-           atoms · links · sets · concept models
-           sessions · jobs · queues · ontology
+           atoms · links · sets · concept models · scopes
+           sessions · jobs · workflows · chronons · ontology
    ═══════════════════════════════════════════════════════════════
                            │
                            ▼
+                       Harmonia
+                           │
+                           ▼
               SQLite   ·   Silica   ·   future engines
+                           │
+              semantic instruction boundary
 ```
 
 Every participant touches the same semantic world.
@@ -1364,37 +1867,7 @@ but what is still becoming.
 
 ---
 
-## Toward Living Systems
-
-Once meaning becomes durable,
-
-another possibility appears.
-
-A task no longer belongs to the process that created it.
-
-It belongs to the semantic world itself.
-
-Any authorized participant may continue it.
-
-A person.
-
-Another Akasha instance.
-
-An LLM.
-
-A scheduled workflow.
-
-Or, eventually,
-
-a physical system.
-
-The substrate becomes more than memory.
-
-It becomes continuity itself.
-
----
-
-**Figure 6.2 — Knowledge Outlives Processes**
+**Figure 8.3 — Knowledge Outlives Processes**
 
 ```
     time ────────────────────────────────────────────────────▶
@@ -1424,7 +1897,299 @@ The semantic world persists.
 
 ---
 
-# Chapter 7 — Society
+# Chapter 9 — A World That Changes
+
+*Telemetry, Observation, Action*
+
+An ontology can define temperature, sensor, position, pressure, device.
+
+A static ontology stops there.
+
+Akasha was designed from the beginning so that the semantic substrate could map onto a dynamic physical world.
+
+Sensor and actuator integration was not an afterthought.
+
+It was one of the reasons the Atom was made general enough to hold an observation beside a definition.
+
+---
+
+The telemetry experiment tested this directly.
+
+**Figure 9.1 — Observation Enters the World**
+
+```
+    physical world
+          ↓
+      telemetry
+          ↓
+     observation
+          ↓
+     Atom mapping
+          ↓
+    semantic world
+```
+
+Actual readings enter the same semantic world as the concepts that describe them, over time.
+
+The World is not merely described.
+
+It changes.
+
+---
+
+The reverse direction matters equally.
+
+**Figure 9.2 — Decision Leaves the World**
+
+```
+   Akasha semantic state
+           ↓
+   Workflow / decision
+           ↓
+    Actuator mapping
+           ↓
+     physical world
+```
+
+Sensor and actuator mapping make the semantic world bidirectional.
+
+A workflow that lives on the substrate can act on the world outside it, and the result of that action returns as a new observation.
+
+---
+
+A guardrail for reading the history:
+
+Telemetry did not make Akasha dynamic.
+
+Telemetry experimentally demonstrated the dynamic sensor–world mapping that the Atom was designed for.
+
+The same is true of PLANTS, the first machine-learning bench on the new World architecture, in which a machine observes a corpus of images, extracts features, trains, evaluates, and proposes — all as observations and records in one semantic world.
+
+The world in Akasha is a place where meaning, state, agents, and time meet.
+
+The next chapter gives that place its structure.
+
+
+---
+
+# Chapter 10 — World, Workbench, Workflow, Chronon
+
+*Where Work Actually Happens*
+
+A World is a place where meaning, state, agents, and time meet.
+
+It can contain or coordinate concepts, sources, agents, roles, societies, workbenches, workflows, observations, state changes, chronons, and projections.
+
+The World existed in the design long before its recent implementation.
+
+What changed in 2026 is that the substrate became strong enough to carry it.
+
+```
+Earlier focus:
+"How can a semantic substrate be made real and robust?"
+
+Current focus:
+"Now that the substrate exists, what semantic worlds can live on it?"
+```
+
+---
+
+## Source Before Interpretation
+
+A semantic system must keep source material apart from interpretation.
+
+A Source may be a paper, a document, an observation, external data, a frozen acquisition frame, a set of photo references, or any other evidence.
+
+The Source Viewer exposes source material and its provenance without silently turning interpretation into source fact.
+
+```
+Source
+  ↓
+Source Viewer
+  ↓
+observation / selection / reference
+  ↓
+Workbench
+  ↓
+interpretation
+```
+
+A shared Source does not imply a shared Reading.
+
+Several Agents can encounter the same Source and form independent interpretations.
+
+This is the whole point of a research environment.
+
+---
+
+## Labo
+
+Concept Labo is the research-oriented environment built on the substrate.
+
+It provides a bounded research namespace in which Sources, Concepts, interpretations, comparisons, and histories coexist.
+
+Its principles are few:
+
+- interpretation is plural
+- provenance matters
+- history is not silently overwritten
+- views reference rather than copy
+- research state and public presentation stay distinguishable
+
+Labo is the bridge between the substrate and real intellectual work.
+
+---
+
+## Workbench
+
+> **A Workbench is the place where an Agent works within a particular world, time, role, and set of tools.**
+
+A Workbench is not a domain application.
+
+The same machinery supports machine learning over a plant corpus, an academic seminar, field research, LLM collaboration, audit, accounting, or engineering.
+
+The domain emerges from the composition of semantic primitives and projections, not from a new backend for every use case.
+
+A Workbench coordinates:
+
+- source access
+- the operations available
+- role-specific controls
+- the current Workflow
+- the current Chronon
+- Society membership
+- private and shared semantic spaces
+- public Projection
+
+Everything an Agent does at a bench passes through one door, is recorded as one observation on the bench's stream, and is checked against the roles the Agent holds in the Society connected to that bench.
+
+---
+
+## Workflow Is Part of Memory
+
+Conventional architectures separate knowledge from process:
+
+```
+knowledge database
+      ↓ reference
+workflow engine
+      ↓
+execution
+```
+
+Akasha does not.
+
+The Workflow itself lives on the Atom network.
+
+```
+Atom network
+ ├─ concepts
+ ├─ world state
+ ├─ workflow structure
+ └─ execution state
+```
+
+Therefore a Workflow can be remembered; its execution state can be remembered; execution can be resumed; state can be rolled back; revisions can be preserved; execution can be transported; and an Agent can, in principle, construct or modify a Workflow.
+
+Memory does not only remember what is known.
+
+It remembers how to act, and where an action currently is.
+
+> **Programming can become a form of remembering how to act.**
+
+---
+
+## Rollback and Revision
+
+Because Workflow and state share the substrate with knowledge, rollback is not a database recovery trick.
+
+It is part of semantic temporal continuity.
+
+The system preserves previous interpretations, previous workflow states, earlier readings, intermediate execution states, revisions, failures, and recoveries.
+
+In a seminar, a revised interpretation must not erase a student's earlier reading.
+
+In an automated process, a corrected workflow must not pretend the earlier execution never happened.
+
+History itself is knowledge.
+
+---
+
+## Chronon
+
+Chronon gives the World its temporal and process dimension.
+
+It distinguishes phases, moments, revisions, visibility changes, workflow transitions, and historical states.
+
+It becomes powerful in combination:
+
+```
+Chronon × Projection × Role
+          ↓
+what this Agent can see and do now
+```
+
+This is how one Workbench can be a closed reading room today and a public exhibition next month without becoming two applications.
+
+---
+
+## Two Activities, One Substrate
+
+Two very different activities are being built on this architecture.
+
+**Figure 10.1 — Machine Work and Human Work**
+
+```
+    PLANTS                                    Radu seminar
+
+    a machine works                           humans work
+    in a semantic world                       in a semantic world
+
+    sources:  photo references, checklist     sources:  two papers
+    agents:   observers, learners, a driver   agents:   moderator, students, an observer
+    workflow: bind → extract → train →        workflow: read → annotate → submit →
+              evaluate → promote                        compare → discuss → revise
+    output:   a learned observer, proposed    output:   preserved readings, old and revised
+```
+
+The difference is in Sources, Agents, Roles, Workflows, Projections, and tools.
+
+The substrate is the same.
+
+If both succeed, Akasha will have shown two unrelated kinds of work without two unrelated backends.
+
+---
+
+## Self-Programming, Carefully
+
+Because Workflow is represented on the Atom network, an Agent can reason about executable process semantically.
+
+```
+observe
+   ↓
+reason
+   ↓
+construct / modify Workflow
+   ↓
+execute
+   ↓
+observe result
+   ↓
+revise or roll back
+```
+
+This is not "an LLM writes source code and runs it."
+
+An Agent acquires a new way of acting by constructing a new remembered Workflow — with history and rollback intact.
+
+The substrate provides a basis for controlled self-modification.
+
+It is a foundation, not a claim that unrestricted self-programming is solved.
+
+
+---
+
+# Chapter 11 — Society
 
 *A Society of Agents*
 
@@ -1512,6 +2277,24 @@ They only need to understand the concepts they share.
 
 ---
 
+## Structure Without Command
+
+Society represents structured coexistence among Agents.
+
+It is deliberately broader than multi-agent chat.
+
+A Society supplies roles — moderator, participant, observer, audience, broadcaster — and relationships, without requiring either unrestricted autonomous behavior or rigid scripted behavior.
+
+Roles, relationships, the current Workflow, the Workbench, and the state of the World together shape what participation means.
+
+A moderator can run a Society by hand, or the Society can be placed in an automatic mode in which the moderator's role is driven by the system under a declared policy — which workflows, on what trigger, within what budget, and what happens on failure.
+
+Every automatic act still needs a keeper of the record: an observer that writes down what was done.
+
+A future Organization can impose stricter rules where Society represents looser coordination.
+
+---
+
 ## Identity Without Centrality
 
 Society deliberately avoids placing any participant at the architectural center.
@@ -1537,6 +2320,26 @@ or to approve.
 These capabilities belong to the semantic world itself,
 
 rather than to a particular technology.
+
+---
+
+## Authority Is Not Truth
+
+The moderator of a seminar governs its process.
+
+Who reads next.
+
+When comparison opens.
+
+When a revision is recorded.
+
+The moderator's reading is nevertheless one reading among others.
+
+It is not ground truth.
+
+Akasha keeps these apart on purpose: procedural authority is a role in a Society; interpretive truth is never assigned by role.
+
+This is the same distinction Chapter 6 drew for auditors and norms, now applied to people.
 
 ---
 
@@ -1628,7 +2431,7 @@ Architecture does not.
 
 ---
 
-**Figure 7.1 — A Society of Agents**
+**Figure 11.1 — A Society of Agents**
 
 ```
        Human            LLM            Workflow
@@ -1701,7 +2504,7 @@ It is the natural consequence of making meaning persistent.
 
 ---
 
-**Figure 7.2 — Knowledge Accumulates**
+**Figure 11.2 — Knowledge Accumulates**
 
 ```
     time ──────────────────────────────────────────────────▶
@@ -1723,7 +2526,7 @@ No one begins from an empty world.
 
 ---
 
-# Chapter 8 — Seeds and Continuity
+# Chapter 12 — Seeds, Retreat, and Continuity
 
 *Carrying Worlds*
 
@@ -1773,6 +2576,8 @@ The Concept Models.
 
 The semantic pipeline.
 
+The workbenches and their workflows.
+
 The surrounding environment.
 
 The Seed contains the potential for an entire conceptual ecosystem.
@@ -1791,17 +2596,127 @@ The world is reconstructed rather than merely copied.
 
 ---
 
-This approach changes deployment.
+## Germination
 
-Instead of shipping complex installation procedures,
+The name is architectural, not decorative.
 
-Akasha distributes a single executable seed.
+**Figure 12.1 — A Seed Meets an Environment**
 
-Running the seed recreates the environment.
+```
+        Seed
+          ↓
+   arrives in an environment
+          ↓
+   observes available conditions
+          ↓
+        adapts
+          ↓
+      germinates
+          ↓
+   Akasha instance
+```
 
-From that point onward,
+The question a Seed asks is not "what does this environment lack?"
 
-the semantic world continues to evolve independently.
+It is:
+
+> **"What can Akasha do in this environment?"**
+
+A rich environment permits a large deployment.
+
+A constrained environment permits a smaller form.
+
+Semantic identity and continuity survive the reduction.
+
+A Seed decides, at the time it is generated, what it will do when it is planted: which data it carries, which benches it provisions, which workflows run on their own once the data they need is in place. A planted Seed needs no one standing beside it.
+
+---
+
+## Retreat
+
+Running in local or constrained environments is not explained by local-first alone.
+
+The deeper requirement is that knowledge and work must be able to travel to places where compute is limited, services are missing, connectivity is intermittent, or only a subset of capabilities exists.
+
+So the system needs a retreat strategy.
+
+```
+full environment
+      ↓ unavailable
+reduced runtime
+      ↓
+fewer capabilities
+      ↓
+local execution
+      ↓
+delayed communication
+      ↓
+semantic continuity remains
+```
+
+> **Capabilities may retreat; semantic continuity should not.**
+
+This is why lightweight deployment, delay-tolerant networking, portable Workflow, Set placement, and Seeds belong to one design family.
+
+---
+
+## Portability
+
+Because concepts, Sets, Workflow, and execution state all belong to the substrate, portability in Akasha is stronger than "copy the database."
+
+A portable unit may carry the relevant knowledge, its interpretation, rules, the Workflow, its execution state, permissions and scopes, and the semantic context it needs.
+
+**Figure 12.2 — Work Travels**
+
+```
+   Node A                                Node B
+    ├─ knowledge Sets                     ├─ knowledge Sets
+    ├─ Workflow          ── transport ──▶ ├─ Workflow
+    └─ state                              └─ state
+                                               ↓
+                                            continue
+```
+
+The work does not restart on the other side.
+
+It continues.
+
+---
+
+## Delay Is Not Failure
+
+Akasha's distributed model is compatible with delay- and disruption-tolerant networking.
+
+The system does not assume permanent connectivity, low latency, a continuously reachable center, or unlimited local resources.
+
+If a node holds the relevant Sets and the Workflow, it keeps doing useful work while disconnected, and synchronizes later.
+
+> **Network delay should not imply loss of semantic work.**
+
+Field systems, mobile devices, remote sites, intermittent links, autonomous machines.
+
+---
+
+## Every Device Does Not Need the Whole World
+
+In an IoT environment, a device receives the semantic region and the Workflow relevant to its role.
+
+**Figure 12.3 — Semantic Placement**
+
+```
+                     Akasha World
+                          │
+                 semantic placement
+              ┌───────────┼───────────┐
+              ↓           ↓           ↓
+           Sensor A    Edge Node B   Actuator C
+            Set α        Set β         Set γ
+           Workflow     Workflow      Workflow
+```
+
+Sets, Scope, the macro-cache, Workflow, delay tolerance, telemetry, and degraded execution are one mechanism seen from different distances.
+
+Knowledge distribution is semantic, not block- or table-oriented.
 
 ---
 
@@ -1921,7 +2836,7 @@ The semantic world continues uninterrupted.
 
 ---
 
-**Figure 8.1 — Growing a Semantic World**
+**Figure 12.4 — Growing a Semantic World**
 
 ```
         Ontology          Concept          Browser
@@ -1947,33 +2862,21 @@ This is the one figure in this paper whose arrows point upward — because a see
 
 ---
 
-## Living Deployments
+## Akasha Itself Was a Seed
 
-A deployment is therefore no longer the installation of software.
+There is a historical analogy.
 
-It is the cultivation of a semantic environment.
+The foundational design spent roughly thirty years dormant.
 
-Updates become acts of gardening rather than replacement.
+The environment changed: hardware became cheap, general compute abundant, LLMs appeared as unusually capable semantic clients, chip design became accessible, local and mobile devices became powerful, distributed systems became ordinary.
 
-New concepts are planted.
+The old design encountered a new environment and became implementable.
 
-Relationships mature.
+> **Akasha itself was a seed.**
 
-Interpretations diversify.
+This is not literary branding.
 
-The world becomes richer over time.
-
----
-
-This philosophy also changes software maintenance.
-
-A customer-specific ontology does not become an obstacle to future updates.
-
-A custom browser portal does not prevent adopting newer execution engines.
-
-A specialized Concept Model remains part of the same ecosystem.
-
-Each organization grows its own semantic world while remaining connected to the evolution of the platform.
+It mirrors the project's actual relationship between a dormant architecture and an environmental opportunity.
 
 ---
 
@@ -2003,7 +2906,7 @@ The implementation follows.
 
 ---
 
-**Figure 8.2 — From Software to Worlds**
+**Figure 12.5 — From Software to Worlds**
 
 ```
         TRADITIONAL                          AKASHA
@@ -2078,7 +2981,69 @@ With concepts.
 
 ---
 
-This is particularly true in the age of artificial intelligence.
+## Four Axes
+
+The whole design can be held in four interdependent axes.
+
+**Concept.** Meaning exists independently of any implementation-specific representation. Concepts can be defined, observed, compared, reinterpreted, connected, projected, and revised.
+
+**World.** Humans, machines, sensors, actuators, observations, roles, and state inhabit one semantic world without separate ontological universes.
+
+**Semantic Machine.** Knowledge operations have Akasha-native computational boundaries, meaningful from a memory operation to a cache, to parallelization, to distributed placement, and potentially to a hardware instruction.
+
+**Workflow.** Knowledge and executable process share one memory substrate, so work is remembered, resumed, rolled back, transported, delayed, distributed, and potentially rewritten by Agents.
+
+They are not four features.
+
+They describe one computational environment.
+
+---
+
+**Figure E.1 — The Unified View**
+
+```
+                       WORLD
+                         │
+          ┌──────────────┼──────────────┐
+          │              │              │
+       Sources         Agents       Telemetry
+          │              │              │
+          ▼              ▼              ▼
+       Concept        Society       Observation
+          │              │              │
+          └────────── Workbench ─────────┘
+                         │
+                      Workflow
+                         │
+                      Chronon
+                         │
+                    Atom / Link / Set
+                         │
+                 semantic operations
+                         │
+                  Harmonia / engine
+                         │
+              SQLite  ↔  Silica
+                         │
+          semantic instruction boundary
+                         │
+                 possible hardware
+
+   and, across the same structure:
+
+   Set / Scope → Projection → memory residency → placement
+            → distribution → delay-tolerant, constrained execution
+```
+
+Akasha is not a stack of unrelated features.
+
+The same semantic primitives recur at every scale.
+
+---
+
+## The Age of Implementation
+
+This is particularly relevant in the age of artificial intelligence.
 
 Large language models have dramatically reduced the cost of implementation.
 
@@ -2119,6 +3084,42 @@ The relationship becomes collaborative rather than competitive.
 Implementation accelerates.
 
 Concepts remain human.
+
+---
+
+## A Post-AI Perspective
+
+Akasha should not be framed primarily as a response to the AI-agent market.
+
+Its central questions predate LLMs:
+
+What is a concept?
+
+How does meaning persist?
+
+How do concepts relate?
+
+How does a world change?
+
+How do Agents participate in it?
+
+How do observation and action connect?
+
+How can knowledge and action travel?
+
+What should a machine remember?
+
+What is one meaningful computational operation on knowledge?
+
+LLMs matter because a new kind of semantic client suddenly exists.
+
+But the architecture does not begin from `LLM → tools → memory → agent`.
+
+It approaches AI after looking at life, environment, cognition, autonomy, embodiment, self and non-self, memory, society, culture, and action — which is why enactivism, autopoiesis, and the older contemplative traditions are relevant to a research program on Akasha.
+
+> **Temporarily move AI out of the center, travel through older and broader theories of life and cognition, then return and ask what AI looks like from there.**
+
+A possible direction, not a conclusion.
 
 ---
 
@@ -2216,19 +3217,60 @@ But to become a place where thought itself may continue to grow.
 
 ---
 
-The architecture has settled.
+The substrate has been built.
 
-Now it is time to connect it—
+It has survived reality — load, crashes, restarts, disconnected iPads, a public server.
 
-to people,
+The phase that follows is not building the foundation.
 
-to LLMs,
+It is using it:
 
-and eventually,
+```
+BUILD THE SUBSTRATE
+        ↓
+THE SUBSTRATE SURVIVES REALITY
+        ↓
+USE THE CONCEPTS
+        ↓
+BUILD AND INHABIT SEMANTIC WORLDS
+```
 
-to the physical world.
+A machine is learning plants inside one such world.
+
+A seminar of people will read inside another.
 
 The expedition is only beginning.
+
+---
+
+# Reading the History
+
+Akasha has accumulated many implementations, experiments, names, and subsystems.
+
+Some appeared recently.
+
+The ideas beneath them usually did not.
+
+> **Do not mistake implementation chronology for conceptual chronology.**
+
+A few guardrails for anyone — human or LLM — who reads the repository, the development diary, or this paper:
+
+- Telemetry did not make Akasha dynamic; it demonstrated a dynamic mapping the Atom was designed for.
+- LLMs did not cause Akasha to invent an Agent model; they were a new first-class client for a participation model that already existed.
+- Silica was not invented because SQLite was bad; SQLite remains a strong implementation, and Silica realizes the older goal of a native semantic instruction boundary.
+- World and Workbench are not a new direction; they are implementation catching up with a long-standing one.
+- Workflow is not an application feature; it is part of the memory model.
+- Seeds do not exist mainly because Akasha is local-first; they express the requirement that knowledge and work germinate in heterogeneous, constrained environments.
+- The semantic macro-cache is not merely a performance optimization; it tests whether attention can govern memory residency and, by extension, placement.
+- Akasha is not an LLM agent framework; an LLM is one client in a broader semantic world.
+
+When a new requirement appears, do not immediately create a new subsystem.
+
+First ask whether Atom, Link, and Set — through Concept, Scope, Projection, Agent, Role, World, Society, Workbench, Chronon, and Workflow — can already express it.
+
+Introduce a new primitive only when the existing model genuinely cannot say it without distortion.
+
+The full statement of these principles, with the reasoning behind each, is [Akasha — Foundational Design Context](AKASHA_FOUNDATIONAL_DESIGN_CONTEXT.md).
 
 ---
 
@@ -2277,4 +3319,3 @@ each contributed a different perspective.
 The responsibility for the concepts remains entirely the author's.
 
 The gratitude is shared.
-
