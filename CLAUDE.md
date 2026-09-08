@@ -21,6 +21,7 @@ separate environment and hands it to you. Your job:
 
 ## Language rules (strict)
 
+- **Conversation with the maintainer: Japanese.**
 - **Every repository-facing write is English only** — commit messages, PR
   titles/bodies, Issues/comments, code comments, docs, in-repo files (incl. this
   one). No exceptions while the project is in its English-first phase.
@@ -138,6 +139,10 @@ hardware (built much of it on an iPad mini). MIT-licensed.
 - **Docs to publish now** (English): root `index.html` (links fixed),
   `README.md`, `TURNING_CONCEPTS_INTO_CODE.md`, `quick-start.md`,
   `quick-reference.md`, `LICENSE.md`, `docs/index.html`, plus `.nojekyll`.
+- **Design documents (2026-09):** `AKASHA_FOUNDATIONAL_DESIGN_CONTEXT.md` is the
+  canonical architectural reference (maintainer-authored, keep verbatim);
+  `THE_AKASHA_WHITE_PAPER.md` (second edition) is the readable account and
+  must stay consistent with it. README and `index.html` link both.
 - **Landing page (`index.html`) link fixes already made** — sidebar links now
   point at real docs:
   - Quick Start → `https://github.com/akashicmaster/AkashaSeeds/blob/main/quick-start.md`
