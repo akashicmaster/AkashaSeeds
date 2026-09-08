@@ -111,13 +111,15 @@ Unlike traditional software, Akasha treats **concepts** as the primary unit rath
 
 Its architecture is built around a few simple principles:
 
-- 🌱 Local-first from the beginning
 - 🧠 Concepts before implementation
+- ⚛️ Three primitives — Atom, Link, and overlapping Set — beneath everything else
 - 🔗 Semantic graphs instead of isolated documents
 - 🧩 Plug-in Concept Models
-- 🤝 Human + LLM collaboration
+- 🏗 World, Workbench, and Workflow on the same substrate as the knowledge they act on
+- 🤝 Humans, LLMs, programs, and sensors as peers in one semantic world
 - 🔌 Native MCP integration
 - 🌍 Browser portals generated from the same semantic space
+- 🌱 Local-first, and able to keep working when capabilities retreat
 - 📦 Single-file Seeds deployment
 - 🪶 MIT licensed
 
@@ -126,6 +128,8 @@ One graph.
 One memory substrate.
 
 Many worlds.
+
+The ideas are older than the code. Most of them were formed roughly thirty years ago in knowledge engineering; the 2026 implementation is the point at which hardware, networks, and LLMs let them run.
 
 ---
 
@@ -145,31 +149,36 @@ Many worlds.
 ## Documentation
 
 - [Quick Start](quick-start.md)
+- [Quick Reference](quick-reference.md)
 - [Cookbook](docs/cookbook/)
 - [User Manual](docs/users/user-manual.md)
 - [API Reference](docs/developer/api-spec.md)
+- [Turning Concepts Into Code](TURNING_CONCEPTS_INTO_CODE.md)
 - [Roadmap](roadmap.md)
 
-## Philosophy
+## Design
 
-If you'd like to understand **why** Akasha was designed this way—not just how to use it—
-
-please read:
+Two documents explain **why** Akasha was designed this way—not just how to use it.
 
 # 📄 [The Akasha White Paper](THE_AKASHA_WHITE_PAPER.md)
 
-The White Paper covers:
+The readable account of the design. It covers:
 
 - Concept-Oriented Computing
+- Atom, Link, Set — and why Sets overlap
+- Scope and Projection
 - Semantic Pipelines
-- Concept Models
-- Human–LLM collaboration
-- Semantic memory
+- Concept Models, definition and observation, `dive`
+- Operand · Operator · Agent
+- The Semantic Substrate, Harmonia, Silica, and the semantic macro-cache
+- A world that changes: telemetry, observation, action
+- World, Workbench, Workflow, Chronon
 - Society
-- Deployment philosophy
-- Long-term vision
+- Seeds, retreat, and continuity
 
-It is the conceptual foundation behind everything in this repository.
+# 📐 [Akasha — Foundational Design Context](AKASHA_FOUNDATIONAL_DESIGN_CONTEXT.md)
+
+The canonical architectural reference: the original design intent, kept separate from implementation history, with guardrails for reading the project's past. Where the White Paper and this document differ, this document governs.
 
 ---
 
@@ -183,17 +192,19 @@ Nor another AI framework.
 
 It is an experiment in treating **concepts as computational objects**.
 
-The architecture has settled.
+The substrate has been built, and it has survived reality.
 
-Now it's time to connect it—
+Now it is being used—
 
-to people,
+by people,
 
-to LLMs,
+by LLMs,
+
+by a machine learning plants inside a semantic world,
 
 and eventually,
 
-to the physical world.
+by the physical world itself.
 
 The expedition is only beginning.
 
