@@ -4,7 +4,9 @@
 
 *Why Akasha was designed this way — the conceptual foundation behind everything in this repository.*
 
-Second edition, September 2026. This paper is the readable account of the design. The canonical architectural reference is [Akasha — Foundational Design Context](AKASHA_FOUNDATIONAL_DESIGN_CONTEXT.md); where the two differ, that document governs.
+Third edition, September 2026. This paper is the readable account of the design. The canonical architectural reference is [Akasha — Foundational Design Context](AKASHA_FOUNDATIONAL_DESIGN_CONTEXT.md); where the two differ, that document governs.
+
+What changed since the second edition: the Workbench, Workflow, and Chronon chapters now describe what was implemented and verified on a public server in September 2026 — chronons as Sets, observation coordinates, macros over Set operations — rather than only the intent; a chapter on the learning workbench reports the first complete observe → learn → observe-again cycle with its numbers; the substrate chapter separates the durable semantic universe from the active semantic horizon and states the storage abstraction that follows from it; and a short chapter records the operating rules a public world taught us. Designs that are decided but not yet implemented are marked as such.
 
 ---
 
@@ -22,6 +24,8 @@ The foundational ideas are not a reaction to today's AI. They originate in knowl
 
 The resulting architecture proposes a durable semantic substrate in which concepts, workflows, browser portals, research environments, machine learning benches, and future physical participants coexist within a shared conceptual world — and in which that world can germinate, degrade gracefully, and continue under constrained conditions.
 
+Two further commitments run through this edition. Time is not a clock service: a chronon is a Set, and reading history is intersection. And memory has two layers: a durable semantic universe that is the only source of truth, and an active semantic horizon — indexes, caches, projections, materialized Sets — that is an accelerator, disposable, and regenerable from the universe. Everything the system has learned about surviving in public follows from keeping those two layers apart.
+
 ---
 
 ## Contents
@@ -37,10 +41,12 @@ The resulting architecture proposes a durable semantic substrate in which concep
 8. [Chapter 8 — The Semantic Substrate](#chapter-8--the-semantic-substrate)
 9. [Chapter 9 — A World That Changes](#chapter-9--a-world-that-changes)
 10. [Chapter 10 — World, Workbench, Workflow, Chronon](#chapter-10--world-workbench-workflow-chronon)
-11. [Chapter 11 — Society](#chapter-11--society)
-12. [Chapter 12 — Seeds, Retreat, and Continuity](#chapter-12--seeds-retreat-and-continuity)
-13. [Epilogue — Toward a Concept-Oriented Future](#epilogue--toward-a-concept-oriented-future)
-14. [Reading the History](#reading-the-history)
+11. [Chapter 11 — The Learning Workbench](#chapter-11--the-learning-workbench)
+12. [Chapter 12 — Society](#chapter-12--society)
+13. [Chapter 13 — Seeds, Retreat, and Continuity](#chapter-13--seeds-retreat-and-continuity)
+14. [Chapter 14 — Keeping a Public World Honest](#chapter-14--keeping-a-public-world-honest)
+15. [Epilogue — Toward a Concept-Oriented Future](#epilogue--toward-a-concept-oriented-future)
+16. [Reading the History](#reading-the-history)
 
 ---
 
@@ -1808,6 +1814,119 @@ It is what happens when the Set — the primitive from Chapter 3 — is taken se
 
 ---
 
+## Two Layers of Memory
+
+Running a semantic world on a public server for several weeks made one distinction unavoidable.
+
+Not everything the system keeps is knowledge.
+
+Some of it is knowledge: atoms, links, Set membership, chronons, observations, the commit history that ordered them, the namespaces and scopes that bound them.
+
+Some of it is machinery for reaching knowledge quickly: the in-memory index rebuilt at boot, the semantic macro-cache, a materialized intersection, a projection, a compiled traversal structure, a browser snapshot, a leaderboard.
+
+The first kind is the **durable semantic universe**.
+
+The second kind is the **active semantic horizon**.
+
+```
+   Durable Semantic Universe
+   ─────────────────────────
+   atoms · links · definitions
+   chronons · observations
+   canonical Set membership
+   WAL · commit history
+   namespaces · scopes
+   durable semantic artifacts
+             │
+             │  materialize · hydrate
+             ▼
+   Active Semantic Horizon
+   ───────────────────────
+   active Sets · intersection results
+   projections · transform results
+   semantic macro-cache · beacons
+   session working space · LLM-visible context
+             │
+             │  discardable
+             ▼
+   RAM · local SSD · process state
+```
+
+The rule that separates them is one sentence:
+
+> **A materialized semantic horizon is an accelerator, never the source of semantic truth.**
+
+An accelerator may be lost, corrupt, or stale. The system must then fall back to the universe — to the last good generation plus the visible tail of the commit history, or to a full regeneration — and continue. Nothing in the horizon may be the only place a fact lives.
+
+This is not a storage policy. It is what makes the horizon *disposable*: the condition under which memory residency can follow attention (the macro-cache), under which a device can carry a region of the world and drop it (Chapter 13), and under which a second machine can hydrate the same world from the same universe.
+
+---
+
+The consequence for engineering is a discipline rather than a component.
+
+Every structure the system keeps is classified as canonical or accelerator. Every accelerator names the canonical inputs it derives from, the operation that regenerates it, its cost bound, and the test that proves regeneration gives back the same thing. Regeneration is idempotent and keyed on the accelerator's own version, never on a coincidental field. The four "backfills" that appeared during 2026 — for retention collections, for observation coordinates, for chronon Sets, for the compaction calendar — are instances of one operation that finally has a name: *hydrate*.
+
+The discipline also fixes cache identity. A derived artifact is not identified by its inputs alone. Its identity includes the epoch of the universe it was computed against — the commit sequence, or the chronon coordinate of the bench that produced it — together with scope, transform, projection, and the access context of the reader:
+
+```
+artifact identity =
+   universe epoch
+ + scope
+ + chronon / coordinate
+ + input Sets
+ + transform · projection
+ + access context
+```
+
+A reader compares the artifact's epoch with the epoch of its inputs. A stale artifact is served as "last generation plus visible tail" and rebuilt, or rebuilt inline under a budget. It is never silently trusted.
+
+Chronon therefore enters memory consistency. A bench artifact keyed by its bench coordinate answers "as of which execution" for free; a world artifact keyed by the world chronon does the same for synchronization. No new mechanism is needed — the coordinate Sets of Chapter 10 are the epoch.
+
+---
+
+## Generations, Pointers, Leases
+
+Large artifacts of the horizon — model weights, a compiled index, a semcache plan — are not updated in place.
+
+They are published as **immutable generations**, named by content hash, and made current by updating one small **pointer** with compare-and-swap:
+
+```
+write immutable generation
+        ↓
+verify hash
+        ↓
+publish pointer (compare-and-swap)
+```
+
+Two processes may compute the same generation; the older one cannot overwrite the newer. A superseded generation stays readable until a retention rule, not a scan, retires it. A registered production model (Chapter 11) is exactly this: an immutable version and a `current` pointer.
+
+Ownership of the single writer follows the same pattern. Today it is a run-dir unit, a boot lock, and a watchdog that reaps orphans. Beneath the abstraction it becomes a **lease** — acquired, renewed, released — whose epoch is fenced into the write-ahead log, so that a writer whose lease has lapsed cannot commit.
+
+---
+
+## Storage Is Negotiated
+
+"S3-compatible" is a description of an API, not of behavior.
+
+A backend that answers `put` and `get` may still lack conditional writes, versioning, consistent listing, or a trustworthy clock — and a system that assumes them will corrupt itself quietly. Akasha therefore does not ask a backend what it is. It asks what it can do.
+
+```
+   Akasha semantic layer
+           │
+   SemanticArtifactStore     macro-cache · materialized Set · projection
+           │                 · index generation · model weights · beacon
+   DurableSemanticStore      put_immutable · read · read_range
+           │                 · publish_generation · resolve_generation
+           │                 · cas_pointer · acquire / renew / release lease
+   backend                   local filesystem · S3 / MinIO · distributed
+```
+
+Each backend declares a capability set — compare-and-swap, versioning, range read, consistent list, server time, leases. Each deployment tier declares what it requires. At boot the two are compared, once, in one log line; a backend that cannot do what the tier needs is admitted as a read replica or refused, never accepted on faith. The semantic layers above never learn the backend's name.
+
+This is the second lesson the public server taught. The first was "keep the universe and the horizon apart"; the second is "let the horizon's storage be replaced without the universe noticing."
+
+---
+
 **Figure 8.2 — The Semantic Substrate**
 
 ```
@@ -1822,11 +1941,21 @@ It is what happens when the Set — the primitive from Chapter 3 — is taken se
            sessions · jobs · workflows · chronons · ontology
    ═══════════════════════════════════════════════════════════════
                            │
-                           ▼
+             ┌─────────────┴─────────────┐
+             ▼                           ▼
+   DURABLE SEMANTIC UNIVERSE     ACTIVE SEMANTIC HORIZON
+   the only source of truth      accelerators — disposable,
+   WAL · canonical Sets          regenerable, epoch-keyed
+             │                           │
+             ▼                           ▼
                        Harmonia
                            │
                            ▼
               SQLite   ·   Silica   ·   future engines
+                           │
+           DurableSemanticStore  (capabilities negotiated)
+                           │
+        local files · object storage · distributed backends
                            │
               semantic instruction boundary
 ```
@@ -1835,7 +1964,7 @@ Every participant touches the same semantic world.
 
 Only the interface changes.
 
-Below the substrate, the storage engine is interchangeable; above it, every participant is a peer.
+Below the substrate, the storage engine and the storage backend are interchangeable; above it, every participant is a peer.
 
 ---
 
@@ -2063,6 +2192,8 @@ A Workbench coordinates:
 
 Everything an Agent does at a bench passes through one door, is recorded as one observation on the bench's stream, and is checked against the roles the Agent holds in the Society connected to that bench.
 
+That door is now real. In the 2026 implementation every bench operation — binding a dataset, extracting features, training, evaluating, promoting, observing — is one call through one method, which writes the observation *before* the long work starts (status `running`) and finalizes it after. A process that dies mid-operation leaves a visible `running` observation on the bench's clock instead of nothing. What a bench did is never reconstructed from logs; it is read from its own stream.
+
 ---
 
 ## Workflow Is Part of Memory
@@ -2133,6 +2264,76 @@ This is how one Workbench can be a closed reading room today and a public exhibi
 
 ---
 
+## Chronons Are Sets
+
+The second edition described what a chronon distinguishes. The third can say what a chronon *is*.
+
+A chronon is a Set. A coordinate on a clock is a Set whose members are the records that happened at that coordinate. Reading history is intersection. There is no clock service, no timeline table, and no special "axis" type — because a special type would have to be taught to every operator, whereas a Set is already understood by all of them.
+
+Three clocks exist, and they are deliberately different:
+
+```
+   world clock        cronon:world:<w>:c<n>
+                      one coordinate per change of the world's state
+
+   workbench clock    cronon:wb:<bench>:c<n>
+                      one coordinate per observation at the bench —
+                      every execution and every thought experiment
+
+   workflow clock     cronon:wf:<bench>:<branch>:p<n>
+                      one coordinate per plan position, per branch —
+                      rewindable, branchable, never synchronized
+```
+
+A workflow's clock is a plan. It can be rewound, advanced, and branched freely, because it records what an Agent *intends*, not what happened. When a plan step is executed on real material, the execution is delegated to the workbench: the bench mints a coordinate, and a link `executes` points from that bench coordinate to the plan position. Executing the same step three times yields three bench coordinates pointing at one plan position, with nothing in the plan changed.
+
+When a plan step is only rehearsed — a thought experiment — the bench still records it, marked `thought`, and the link is `rehearses`. Thought and execution are distinguishable by membership, and a reader who wants "only what really happened" takes the complement of the thought Set. A mechanical reset by the system's own driver, made in order to re-run a script, is part of the execution it precedes; it is not a thought, and it is not recorded as one.
+
+Synchronization exists only between the world clock and a workbench clock — when a bench dispatches something to the world, when an automatic run completes, when the world is asked to synchronize with a bench. A workflow clock is never synchronized with anything; that is what makes it safe to rewind.
+
+The daily PLANTS run on the public server mints twenty-six bench coordinates for one seven-block execution and zero thought coordinates. The line that says so is in the log, once per run.
+
+---
+
+## Observation Coordinates
+
+An observation made by a machine — a classifier's reading of a photograph, an embedding, a learned head's prediction — is an atom like any other. What makes it *findable* is that it is a member of every Set a reader might slice by, written at the moment it is minted:
+
+```
+   set:vlab:src:<item>:obs            everything ever observed about this item
+   set:vlab:run:<run>:observations     one observation run
+   set:vlab:family:<sense|learned|mock>
+   set:vlab:observer:<name>:observations
+   set:vlab:model:<sha8>:observations  one model version
+   set:wb:<bench>:observations         what one bench read
+   set:wb:<bench>:branch:<w>:observations
+   set:vlab:mode:thought
+   set:vlab:purpose:<bench|precompute|manual>
+```
+
+"The learned readings of this item" is `src:<item>:obs ∩ family:learned`. "What the plant bench read about it" is `∩ wb:plants_vision:observations`. "Before and after" is the item intersected with two runs. None of these is a query; each is one Set read.
+
+The rule generalizes: **a coordinate is a Set the record joins at mint**. Bench, branch, model version, purpose, mode, dataset role, condition binding — every attribute that a reader may want to slice by is written as membership, not searched for later. The Source Viewer reads these memberships and computes nothing; a missing coordinate is shown as unclassified, never guessed.
+
+---
+
+## Macros, Not Handlers
+
+If chronons and coordinates are Sets, then most "operators" a reader wants are compositions of Set operations.
+
+Comparing the readings of one run against another; listing the executions of a plan; the timeline of a clock; the synchronizations between a world and a bench — none of these needs a handler in the kernel. Each is a small script over `lens`, `s.ls`, and `within=`, saved with parameters and run by name:
+
+```
+macro.run name=observe.diff bench=plants-vision before=o0 after=o1 truth=species_symbol
+macro.run name=executions   bench=plants-vision branch=plants_t6
+macro.run name=timeline     clock=world:default from=1
+macro.run name=sync.between world=default bench=plants-vision
+```
+
+The rule — **coarser operators are macros, never direct handlers** — keeps the kernel's vocabulary small and keeps every coarse operator honest: it can only say what the Sets say. A macro that stores its result stores it as an aggregate atom linked to the Sets it compared, keyed by epoch, so the Source Viewer can show a comparison without re-running it, and so the comparison can be shown *as it stood* at any later coordinate.
+
+---
+
 ## Two Activities, One Substrate
 
 Two very different activities are being built on this architecture.
@@ -2149,14 +2350,15 @@ Two very different activities are being built on this architecture.
     agents:   observers, learners, a driver   agents:   moderator, students, an observer
     workflow: bind → extract → train →        workflow: read → annotate → submit →
               evaluate → promote                        compare → discuss → revise
-    output:   a learned observer, proposed    output:   preserved readings, old and revised
+    output:   a learned observer, and two     output:   preserved readings, old and revised
+              readings of every target item
 ```
 
 The difference is in Sources, Agents, Roles, Workflows, Projections, and tools.
 
 The substrate is the same.
 
-If both succeed, Akasha will have shown two unrelated kinds of work without two unrelated backends.
+The machine's half has run to completion, daily, on a public server, since September 2026; the next chapter reports it. The seminar is the next human use case. If both succeed, Akasha will have shown two unrelated kinds of work without two unrelated backends.
 
 ---
 
@@ -2189,7 +2391,112 @@ It is a foundation, not a claim that unrestricted self-programming is solved.
 
 ---
 
-# Chapter 11 — Society
+# Chapter 11 — The Learning Workbench
+
+*Observe, Learn, Observe Again*
+
+PLANTS is the first workbench on which the whole World architecture has been exercised end to end by a machine, without an operator, on a public server.
+
+It is deliberately small. Twenty plant species. One thousand photo references, frozen as one pool. A generic image embedding that runs on a small CPU. A linear classifier. The point was never the botany. The point was to find out whether a bench, a workflow, a society's driver, the source layer, the chronons, and the Source Viewer could carry a complete learning cycle — and to find every place where they could not.
+
+---
+
+## The Shape of the Cycle
+
+A learning cycle on a workbench has a fixed shape, and the shape is the template every later learning bench follows:
+
+```
+   T1  bind      the datasets, by role
+   T2  observe   the TARGET with a learning-free observer        →  o0
+   T3  feature   extract embeddings from the TRAINING set        →  f1
+   T4  train     a head on f1, with a held-out frame inside it
+   T5  evaluate  the head on the held-out frame; promote it as an observer
+   T6  observe   the same TARGET with the learned observer        →  o1
+   T7  diff      o0 against o1, per item and in sum   (a macro, not code)
+```
+
+Two ideas carry the design.
+
+The target and the training set are **different datasets** — frozen, stratified samples of the pool, disjoint by construction, each a Set with a role. The target's labels exist, but no observer ever reads them; they are an answer key, consulted only by the diff at the end.
+
+And the two observations of the target are **two coordinates of the same items**. Before: what a general-purpose classifier trained on ImageNet says a plant photograph is. After: what the head trained on this bench says. The difference per item is an intersection; the difference in sum is one aggregate atom, stored and linked to both runs.
+
+---
+
+## What Stage One Proved
+
+On 10 September 2026 the seven blocks ran to `status=ok` on the public server, and have run every day since, unattended:
+
+```
+   target       400 items, 20 species        (a stratified sample)
+   training     600 items                    (the complement)
+   o0           litert · ImageNet labels     e.g. "stupa 0.082", "buckeye 0.199"
+   f1           mobilenet · 1,024-d embeddings
+   train        sklearn logistic regression  · 20 classes
+                held-out frame (120 items)    accuracy 0.2167 · macro-F1 0.1595
+   o1           plants_head_f1 · species labels
+   diff         items=400  changed=399  agree_before=0  agree_after=93
+```
+
+Read the last line honestly. Agreement before learning is zero: ImageNet has no plant species, so it cannot agree with a species key. Agreement after learning is 93 of 400, or 0.2325, on a target the training never saw — consistent with the 0.2167 measured on the held-out frame. The two numbers agreeing is the result. It says there was no leak between training and target, and that what the bench measured is what a reader can see.
+
+The accuracy itself is low, and should be: thirty images per species, a linear head on a generic embedding, no tuning. It is a plumbing figure. It will be the first thing the platform described below changes.
+
+The second run, the next day, re-observed nothing. Every block is idempotent on its inputs — the same pool, the same observer, the same model version yield the same observation atom, and the run records that it reused it. A daily rerun of an unchanged bench costs thirty seconds and adds no observations. When the model changes, the old readings stay and the new ones join a new model coordinate.
+
+And the Source Viewer shows it. A target item's page lists a learning-free reading and a learned reading, each with its run, bench, branch, model version, and chronon position; a training item says it has no learned reading, by design. The reader can follow the change without trusting a summary.
+
+---
+
+## From a Bench to a Platform
+
+Stage one makes the next step definable, and it has been defined, though not yet built. The direction is a platform on which learning runs under **varied conditions, without an operator**, and on which a finished model becomes something other benches can use.
+
+**Three sources, three roles.** A learning bench binds a *target* (what we want to recognize better), a *training* set (large, related, labeled), and an *evaluation* set (labeled, never seen by the model), each from any source, each a Set with a role. The held-out frame inside training becomes the *selection* frame; the evaluation set becomes the *report* frame — a sweep chooses by the first and reports on the second, so the unseen set is never the thing being optimized. Overlaps are measured by identity and by content digest at bind time; an evaluation item that leaks into training refuses the training; a target item that appears in training is, by default, removed from training — the target is for judging learning, not for learning.
+
+**A condition is a branch.** A parameterized template — which head, which embedding space, which split, which seed, which datasets — is bound to one set of values and becomes a workflow branch whose name carries its lineage: the parent branch, the plan position it forked from, the template, and a digest of its bindings. Every binding is a Set the branch joins, so "all branches trained with this head on that split" is an intersection.
+
+**A sweep is a named condition space with a budget.** Conditions are materialized lazily; the society's driver picks the next branch each day within a budget, records the cost of each execution on its chronon, and stops when the budget, the daily cap, or the machine's resource gate says so. Finished branches are re-run on a small daily budget to detect drift when the data or the engine changes — a re-run that changes nothing is still an execution, and says so.
+
+**A leaderboard is a lens.** Evaluations are a Set; ranking is a read over it, grouped by the frame they were measured on so that numbers from different test sets are never compared; the board shows the selection figure and the report figure side by side and flags a gap that suggests leakage. Its history is kept per execution, on the bench clock.
+
+**Failure is isolated per branch.** A branch that fails twice in a row is quarantined — removed from the driver's picks, its records kept, its presence on the board optional — while the society's breaker counts only failures of the machinery itself. Releasing a quarantined branch is an Agent's decision, and is recorded as a thought act.
+
+**A registered model is a generation.** A finished model version can be registered, by an Agent or by an explicit bench policy, as a production model: an immutable copy of its identity, its figures at registration, its full provenance, and its weights published as an immutable generation behind a `current` pointer. Any other workbench then observes with `prod:<name>` or pins `prod:<name>@<version>`. The source bench may retrain or retire; the registered version does not move.
+
+Every one of these is Set membership, a macro, or a template. The handlers the platform adds to the kernel are few and are listed in the design: writing a Set at mint, admitting a sweep in the driver's policy, ranking, publishing a generation. The rest is composition.
+
+---
+
+**Figure 11.1 — One Cycle, Two Coordinates**
+
+```
+        target items                       training items
+        (labels sealed)                    (labels used)
+             │                                  │
+             │  T2 observe                      │  T3 feature
+             ▼                                  ▼
+       ┌─────────────┐                     embeddings f1
+       │   run o0    │  learning-free            │
+       └─────────────┘                          │  T4 train
+             │                                  ▼
+             │                            learned head ── T5 evaluate on
+             │                                  │           the held-out frame
+             │  T6 observe with the head        │
+             ▼                                  │
+       ┌─────────────┐  ◀───────────────────────┘
+       │   run o1    │  learned
+       └─────────────┘
+             │
+             │  T7  o0 ∩ item  vs  o1 ∩ item      (a macro over Sets)
+             ▼
+        per-item change · one aggregate atom · visible in the Source Viewer
+```
+
+
+---
+
+# Chapter 12 — Society
 
 *A Society of Agents*
 
@@ -2431,7 +2738,7 @@ Architecture does not.
 
 ---
 
-**Figure 11.1 — A Society of Agents**
+**Figure 12.1 — A Society of Agents**
 
 ```
        Human            LLM            Workflow
@@ -2504,7 +2811,7 @@ It is the natural consequence of making meaning persistent.
 
 ---
 
-**Figure 11.2 — Knowledge Accumulates**
+**Figure 12.2 — Knowledge Accumulates**
 
 ```
     time ──────────────────────────────────────────────────▶
@@ -2526,7 +2833,7 @@ No one begins from an empty world.
 
 ---
 
-# Chapter 12 — Seeds, Retreat, and Continuity
+# Chapter 13 — Seeds, Retreat, and Continuity
 
 *Carrying Worlds*
 
@@ -2600,7 +2907,7 @@ The world is reconstructed rather than merely copied.
 
 The name is architectural, not decorative.
 
-**Figure 12.1 — A Seed Meets an Environment**
+**Figure 13.1 — A Seed Meets an Environment**
 
 ```
         Seed
@@ -2629,6 +2936,8 @@ A constrained environment permits a smaller form.
 Semantic identity and continuity survive the reduction.
 
 A Seed decides, at the time it is generated, what it will do when it is planted: which data it carries, which benches it provisions, which workflows run on their own once the data they need is in place. A planted Seed needs no one standing beside it.
+
+A Seed is also the oldest instance of the pattern Chapter 8 named: an immutable generation. Running a new Seed over an existing installation replaces the code, the ontology packages, the portals, and the configuration, and touches nothing in the durable universe — the store, the user's ontology, the bench artifacts, the registered models survive every update. On the public server this has happened dozens of times in one month; the world was never rebuilt, and each run of the daily workflow after an update reused every observation it had already made. Static archives and published generations may move to object storage; the Seed still carries what a world needs to wake.
 
 ---
 
@@ -2666,7 +2975,7 @@ Because concepts, Sets, Workflow, and execution state all belong to the substrat
 
 A portable unit may carry the relevant knowledge, its interpretation, rules, the Workflow, its execution state, permissions and scopes, and the semantic context it needs.
 
-**Figure 12.2 — Work Travels**
+**Figure 13.2 — Work Travels**
 
 ```
    Node A                                Node B
@@ -2701,7 +3010,7 @@ Field systems, mobile devices, remote sites, intermittent links, autonomous mach
 
 In an IoT environment, a device receives the semantic region and the Workflow relevant to its role.
 
-**Figure 12.3 — Semantic Placement**
+**Figure 13.3 — Semantic Placement**
 
 ```
                      Akasha World
@@ -2836,7 +3145,7 @@ The semantic world continues uninterrupted.
 
 ---
 
-**Figure 12.4 — Growing a Semantic World**
+**Figure 13.4 — Growing a Semantic World**
 
 ```
         Ontology          Concept          Browser
@@ -2906,7 +3215,7 @@ The implementation follows.
 
 ---
 
-**Figure 12.5 — From Software to Worlds**
+**Figure 13.5 — From Software to Worlds**
 
 ```
         TRADITIONAL                          AKASHA
@@ -2929,6 +3238,37 @@ The implementation follows.
 The objective is no longer to copy software.
 
 The objective is to preserve continuity.
+
+
+---
+
+# Chapter 14 — Keeping a Public World Honest
+
+*What the Server Taught*
+
+A semantic world that runs in public, unattended, on modest hardware, teaches rules that no design document anticipates. This chapter records the ones that held, in the order the server taught them. They are operating principles, and they are short.
+
+---
+
+**The killer writes the record.** A process cannot log its own sudden death. So every path that ends another process — a supervisor replacing a portal, a launcher stopping a writer, a watchdog reviving a wedged daemon — writes one line naming what it did, to whom, and why, before it acts. A process that leaves on its own writes one line saying why. When a writer disappeared without a trace in September 2026, the trace was reconstructed from three logs and a kernel journal; the rule exists so that it never has to be reconstructed again.
+
+**A daemon's life is its own.** The single writer's main thread once waited on the child process it had spawned for its portal; when the supervisor replaced that portal, the writer quietly exited. A long-lived process blocks on its own shutdown signal and nothing else.
+
+**Accelerators sweep victims, not the store.** A nightly task that decides what to retire must iterate the collection of candidates written at write time — never the store, never bodies to decide a derived fact. The two nights this rule was broken, memory rose by six hundred megabytes and requests queued for two minutes. The night it was kept, the same task took nothing.
+
+**A warning must mean something.** A warning that fires every minute in a healthy system hides the one that matters. Saturation is warned once, when it is sustained and material, and closed with a line when it drains. Every long operation has a time budget and says when it was cut.
+
+**Busy is not wedged.** A process that misses a health probe while burning CPU is working. Replacing it is the failure, not the cure.
+
+**Coordinates are written, not computed.** The Source Viewer, the CLI, and any future Agent read the same Set memberships. The browser never groups, ranks, or infers; when a value is missing it says so.
+
+**Public is the default; labels are not.** Everything published under the archives is readable by a guest, read-only, and the exclusions are enforced on the server, not in the page. Counts derived from an answer key are public; the answer key is not.
+
+**Stage exits are criteria, not feelings.** A stage of a workbench is finished when a written list of observable facts holds on the public server, with no operator command — not when it seems to work.
+
+**The observation cycle is the method.** A build is delivered as a Seed; it is expanded and its evaluations run in a sandbox; it is planted on the server; the server's logs are read against the build; every defect is reported with a root cause and a location; the order for the next build is written before the next build. The librarian who keeps that cycle changes no code. Two weeks of it turned a bench that ran once into one that runs every day.
+
+None of these rules is about machine learning, or about plants. They are what it costs to let a semantic world live in public — and they are the reason the universe and the horizon must be kept apart.
 
 
 ---
@@ -3025,6 +3365,10 @@ They describe one computational environment.
                          │
               SQLite  ↔  Silica
                          │
+     durable universe  ·  active horizon (accelerators)
+                         │
+        DurableSemanticStore · negotiated backends
+                         │
           semantic instruction boundary
                          │
                  possible hardware
@@ -3033,6 +3377,7 @@ They describe one computational environment.
 
    Set / Scope → Projection → memory residency → placement
             → distribution → delay-tolerant, constrained execution
+   Set as coordinate → chronon → epoch → cache identity
 ```
 
 Akasha is not a stack of unrelated features.
@@ -3235,7 +3580,7 @@ USE THE CONCEPTS
 BUILD AND INHABIT SEMANTIC WORLDS
 ```
 
-A machine is learning plants inside one such world.
+A machine has read four hundred plant photographs twice inside one such world — once before it learned and once after — and a reader can follow the change item by item.
 
 A seminar of people will read inside another.
 
@@ -3263,6 +3608,10 @@ A few guardrails for anyone — human or LLM — who reads the repository, the d
 - Seeds do not exist mainly because Akasha is local-first; they express the requirement that knowledge and work germinate in heterogeneous, constrained environments.
 - The semantic macro-cache is not merely a performance optimization; it tests whether attention can govern memory residency and, by extension, placement.
 - Akasha is not an LLM agent framework; an LLM is one client in a broader semantic world.
+- Chronons are Sets, not a clock service; there is no "axis" type, and reading time is intersection.
+- The layers in the Source Viewer are read from coordinates written at mint; the browser computes none of them.
+- The durable universe / active horizon split was not adopted from another system's API; the pattern was recognized in Akasha's own incidents and then named, with HydraDB's design as a useful comparison.
+- The condition-sweep platform, the three-source bench, and the model registry (Chapter 11) are designs decided in September 2026 whose implementation follows; the completed cycle they build on is real.
 
 When a new requirement appears, do not immediately create a new subsystem.
 
