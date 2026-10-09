@@ -19,6 +19,21 @@ separate environment and hands it to you. Your job:
    GitHub Pages landing links pointing at real documents.
 4. Optionally manage **Issues** and progress updates once the project is public.
 
+**Scope of this session (maintainer's ruling, October 2026).** This session owns:
+- the **external specification**: the design documents, the release procedure, and
+  the orders to the implementers;
+- **adversarial testing from the user's point of view**.
+
+It does not implement. The platform and application implementers work in a separate
+development repository.
+
+**Exchange with the implementers goes only through document files and seeds,
+relayed by the maintainer.**
+- This session has no direct route to the development repository, and must not take
+  one: no attaching it, no reading it, no writing to it.
+- It is deliberately given no permission there.
+- Work only from the files and seeds the maintainer hands over.
+
 ## Language rules (strict)
 
 - **Conversation with the maintainer: Japanese.**
@@ -160,6 +175,11 @@ hardware (built much of it on an iPad mini). MIT-licensed.
   Issues/commits restrained and factual.)
 
 ## Environment / access notes
+
+- **The development repository is out of bounds for this session.** Implementer notes,
+  releases and seeds reach it as files from the maintainer. Do not attach, clone, read
+  or push to the development repository, even when a tool would allow it. A
+  development-repository commit is cited only as the maintainer's files state it.
 
 - GitHub writes are via the **Claude GitHub App** (has All-repos + read/write to
   code). A session only has write if its issued token is write-scoped; a
