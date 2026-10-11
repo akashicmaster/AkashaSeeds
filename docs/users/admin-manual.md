@@ -117,10 +117,7 @@ Start AKASHA without a pre-initialized nucleus. The system detects an uninitiali
 python akasha.py
 
 [+] Akasha online.
-[ Genesis Rite ]
-
-  No consciousness has been established.
-  You are the first. Speak your true name.
+[ The Pact of Genesis ]
 
   Name this system: MyAkasha
   Your identity (Admin ID): admin
@@ -144,18 +141,21 @@ akasha/admin $
 After genesis:
 - The admin account (`admin` in this example) is registered in the IAM database with role `ADMIN`.
 - A canonical alias `admin` is also registered with the same passphrase, for use by automation and `run_single_shot`.
-- The passphrase hash is stored in `data/central/nucleus.db` under both the IAM layer and the legacy `system` vault for backward compatibility.
-- Subsequent logins require the passphrase.
+- The passphrase is stored only as a per-user salted hash in the cell's nucleus (`data/central/`).
+- **Later launches on the local console log you straight in** (`[ MyAkasha online. Welcome, admin. ]`,
+  no `User ID:` / passphrase prompt): on the machine itself the operating-system account is the gate.
+  The passphrase guards everything that arrives over the network — the web portal and remote clients.
+- The first **ontology load** starts in the background right after Genesis. It can take a long
+  while on a modest host (about an hour on a small one); the prompt is usable meanwhile, and
+  `onto.status` shows the progress.
 
-### Migrating an Existing Installation
+### An installation from an older seed
 
-If you upgrade from a pre-persistence version, AKASHA automatically migrates on first boot:
-
-1. Reads `("system", "admin_name")` and `("system", "passphrase_hash")` from nucleus.
-2. Creates IAM records for both `<admin_name>` and `admin` with the existing passphrase hash.
-3. All subsequent operations use the IAM layer exclusively.
-
-No manual migration step is required.
+Seeds 13 does not read a data directory written by seeds 12 or earlier. At start it stops before
+opening the store, writing nothing, with one line naming the format it found and the one it
+expects. Move the old directory aside and unpack into a new one. To keep atoms, dump them with the
+old build and describe them again as a pack in `ontology/user/<name>/` (a `PACK.json` and its `.ak`
+files — it loads on the next start, no registry edit). There is no migration.
 
 ---
 
@@ -648,7 +648,7 @@ The target client ID must be registered via `user.add` before impersonation. Use
 
 ### Genesis admin not appearing in `user.ls`
 
-The admin account is registered in IAM during genesis. If you upgraded from a pre-persistence version, the migration runs automatically on first boot. If the admin still does not appear, verify that `data/central/nucleus.db` exists and contains a `("system", "admin_name")` entry.
+The admin account is registered in IAM during genesis. If it does not appear, check that the cell's data directory (`data/`, or `AKASHA_DATA_DIR`) is the one Genesis ran in, and that `data/central/` exists.
 
 ### Group member cannot see group-scoped atoms
 
@@ -710,16 +710,19 @@ directory (default `<install>/data`). The daemon inherits it when the CLI spawns
 
 The Concept Model Plugin Registry failed to discover the class. Check:
 
-1. The file is in `lib/akasha/concepts/` and does not start with `_`.
+1. The file is in the application's `app/concepts/` and does not start with `_`. (The platform's
+   own models live in `lib/akasha/concepts/`; an application never adds files there.)
 2. The class defines both `CONCEPT_PREFIX` (str) and `CONCEPT_METHODS` (dict) at the class level.
 3. There are no import-time errors in the file — check kernel startup logs for `ConceptRegistry init failed` or per-file tracebacks.
 4. The method name in the request matches `"{CONCEPT_PREFIX}.{suffix}"` exactly (case-sensitive).
 
 ### Concept model commands return `-32001 Permission denied`
 
-IAM routing is missing for that method. Add the method name to `_METHOD_TO_ACTION` in
-`lib/akasha/kernel.py` with the appropriate action string (`"read"`, `"write"`, or `"drop"`).
-Restart the kernel after editing.
+The caller's id-sets do not allow the action the method is declared with. A method's action is
+declared beside the op in its package manifest (the application's: `app/config/MANIFEST.json`) and
+generated into the access table (`app/config/MANIFEST.access.json`) by
+`python scripts/gen_kernel_methods.py` — never edited by hand. Check the declared action, regenerate,
+and restart. Who holds which id-set is the permission file (`identity.assign` / `user.ls`).
 
 ### Concept model discovery log
 
@@ -756,7 +759,7 @@ Use `su librarian` (§3.2) to activate librarian mode within an admin session be
 
 ### `onto.reload confirm=RELOAD` — Soft Reload
 
-Clears all ontology load sentinels and re-triggers the boot load sequence. Ontology files in `ontology/common/` and `ontology/acquired/` are reprocessed. Existing atoms that hash-match loaded content are silently unified (idempotent). New atoms are inserted; nothing is deleted.
+Clears all ontology load sentinels and re-triggers the boot load sequence. Every pack root is reprocessed — the platform's `ontology/`, the application's `app/ontology/` and your own `ontology/user/`. Existing atoms that hash-match loaded content are silently unified (idempotent). New atoms are inserted; nothing is deleted.
 
 ```
 akasha/admin(su:librarian) $ onto.reload confirm=RELOAD
@@ -765,18 +768,17 @@ akasha/admin(su:librarian) $ onto.reload confirm=RELOAD
   [ont] ✓ Reload triggered.
 ```
 
-**When to use:** after placing new `.ak` files in `ontology/acquired/`, or after fixing a malformed ontology file that caused a sentinel to be skipped.
+**When to use:** after fixing a malformed ontology file that caused a sentinel to be skipped, or to force a full re-run. (A new or changed pack is picked up by an ordinary restart — see below.)
 
 #### Updating an existing deployment (overwrite-install)
 
-A running Cell keeps its ontology **load sentinels** in the persistent nucleus. Each pack's
-sentinel is keyed by a **manifest hash of `basename:size:mtime`** over its files, so:
+A running Cell keeps its ontology **load sentinels** on disk. Each pack's sentinel is keyed by
+the **content** of its files (comments and blank lines ignored), never by their dates, so:
 
-- an **ordinary restart** with untouched files → same hash → the load is skipped instantly;
-- **overwrite-extracting a newer seed → then restarting** → a zip extract stamps every file
-  with a fresh mtime, so every pack's hash changes → the boot **re-imports the whole ontology
-  automatically**, reflecting the new seed's diff. **You do _not_ have to run a migration
-  command** — a restart is the trigger.
+- an **ordinary restart** with unchanged files → the load is skipped;
+- **overwrite-extracting a newer seed of the same series → then restarting** → only the packs
+  whose content changed are re-loaded (a fresh extraction with identical content re-parses
+  nothing). **You do _not_ have to run a migration command** — a restart is the trigger.
 
 The one gotcha is that the trigger is a **boot**: if you overwrite the files but the old
 server process is still running (you only re-logged in), the graph still reflects the *older*
@@ -788,9 +790,10 @@ bundled pack missing from `onto.pack.list`.
 load.** `onto.reload confirm=RELOAD` (admin, librarian mode) is the **fallback** for when you
 want to reload *without* a restart, edited files in place without changing their mtime, or
 want to force a full re-run — it clears the sentinels and re-triggers the same background load.
-Either way the re-import is content-addressed and **additive**: existing atoms are re-written
-idempotently (no data loss, no user atoms touched); it does not purge atoms deleted upstream
-(wipe `data/central`, or `onto.reset`, for a clean slate).
+Either way the re-import is content-addressed: existing atoms are re-written idempotently (no
+data loss, no user atoms touched), and an atom a changed pack no longer defines is retired by the
+reconcile phase (recoverably — only atoms the pack itself contributed). `onto.reset` is the clean
+slate.
 
 **Watching progress (the load is background, so it is observable, not a blind wait):**
 

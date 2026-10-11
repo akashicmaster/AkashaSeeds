@@ -126,6 +126,13 @@ The LLM can then help generate:
 - links,
 - and implementation code.
 
+And increasingly, you will not need the LLM for the plumbing either. A **no-code
+workbench** lets you compose an application from templates — pick the concept models,
+declare the relationships and actions, wire them into pages — without writing code at
+all. The code path stays open underneath for anyone who wants it: you can still author a
+Concept Model by hand and wire it in JavaScript. But the default way in is description,
+not programming.
+
 Akasha bridges expert thinking and executable systems.
 
 ---
@@ -274,6 +281,14 @@ This distinction is intentional.
 Akasha separates recording an event from interpreting its effects.  
 **Meaning remains under human control.**
 
+A world, too, is not one model. It is many **projections** of the same durable memory —
+a financial view, a logistics view, a timeline — each built for a purpose, each honest
+about what it shows and what it cannot. You can reason *under* a world as it stands,
+*without* a constraint you deliberately suspend, or *about* the world itself — proposing
+a better way of seeing. None of that reasoning changes anything real on its own: a change
+to the world goes only through a proposal, a review, and an explicit decision. Thought is
+free; acting on the world is governed.
+
 ---
 
 ## The LLM Is a Structural Partner
@@ -358,6 +373,14 @@ Akasha was designed specifically to avoid this problem.
 ## The Core Rule
 
 > **The LLM should generate implementation. The human should define meaning.**
+
+There is a second rule underneath it, and it is the one that keeps the first from
+eroding: **build on the substrate, never inside it.** Akasha holds its platform — the
+kernel, the gate, the record, the engines — fixed, the way an operating system holds its
+kernel fixed beneath the programs that run on it. Your concept models, packs and pages
+are built on top, through a stable interface, and never reach into the platform. That is
+what makes a model you define today still mean the same thing tomorrow: it does not rest
+on shifting ground.
 
 This distinction is critical.
 

@@ -1,0 +1,6 @@
+# sweep.materialise (P0-a §2.3 macro) — turn up to n un-materialised sweep conditions into workflow
+# branches (wf.branch from=<template>). Forward to the `sweep.materialise` operator. The sweep name is
+# `sweep=` (macro.run reserves `name`); the direct op `sweep.materialise … name=<sweep>` is equivalent.
+#
+#!params bench,sweep,n=1
+sweep.materialise bench="$bench" name="$sweep" n="$n"

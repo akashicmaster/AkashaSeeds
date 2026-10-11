@@ -1,0 +1,44 @@
+{
+ "title": "Seminar (RAD)",
+ "admits": {
+  "researcher": "bench",
+  "member": "join",
+  "guest": "read"
+ },
+ "space": {
+  "public": true,
+  "open_guest": false
+ },
+ "duty": "wb:duty:best_effort",
+ "trigger": {
+  "boot": false,
+  "then": "every:86400s"
+ },
+ "budget": {
+  "per_day": 2
+ },
+ "moderator": {
+  "chairman": "Chairman",
+  "scribe": "Scribe",
+  "on_failure": {
+   "retries": 0,
+   "breaker": 3
+  }
+ },
+ "effect": "publish",
+ "gate_facts": [
+  "headroom"
+ ],
+ "roles_min": 1,
+ "output": {
+  "feed": true,
+  "room": true
+ },
+ "retention": {
+  "feed": "120 messages",
+  "observations": "keep"
+ },
+ "lock": [
+  "admits"
+ ]
+}

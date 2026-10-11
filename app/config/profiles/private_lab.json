@@ -1,0 +1,41 @@
+{
+ "title": "Private laboratory",
+ "admits": {
+  "researcher": "bench",
+  "member": "join"
+ },
+ "space": {
+  "public": false,
+  "open_guest": false
+ },
+ "duty": "wb:duty:best_effort",
+ "trigger": {
+  "boot": false,
+  "then": "manual"
+ },
+ "budget": {
+  "per_day": 20
+ },
+ "moderator": {
+  "chairman": "Chairman",
+  "scribe": "Scribe",
+  "on_failure": {
+   "retries": 0,
+   "breaker": 3
+  }
+ },
+ "effect": "record",
+ "gate_facts": [],
+ "roles_min": 0,
+ "output": {
+  "feed": false,
+  "room": false
+ },
+ "retention": {
+  "feed": "0 messages",
+  "observations": "keep"
+ },
+ "lock": [
+  "space.public"
+ ]
+}

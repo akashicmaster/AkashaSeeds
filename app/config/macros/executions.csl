@@ -1,0 +1,7 @@
+# executions (G4 §3.3 macro) — how many times, and when, a workflow plan position was carried out
+# (mode=execution → cronon:executes), rehearsed (mode=thought → cronon:rehearses) or either
+# (mode=all), as bench coordinates in order. A step's executions are the bench coordinates that
+# execute/rehearse it — a Set of links, not a stored list; this macro reads them ordered.
+#
+#!params bench,branch=main,pos=,mode=execution
+cronon.executions bench="$bench" branch="$branch" pos="$pos" mode="$mode"

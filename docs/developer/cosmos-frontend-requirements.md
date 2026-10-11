@@ -7,7 +7,7 @@ Backend positioning work is **already shipped** (see *Backend anchors*); no back
 required to consume it — only to add the deeper instruments (all of which call methods that
 already exist).
 
-Cosmos is the **projection of the `cockpit` concept model** (`lib/akasha/concepts/cockpit.py`):
+Cosmos is the **projection of the `cockpit` concept model** (`app/concepts/cockpit.py`):
 focus (`cockpit.lock`), axis/scope lens (`cockpit.tune`), beacons + wake (`cockpit.beacon` /
 `cockpit.wake`). New GUI controls should map to cockpit / kernel methods, not invent state.
 
@@ -77,8 +77,8 @@ distinctive control and maps directly onto the viewport.
   `_principal_3d`, else floor `_project_3d`), `calculate_nd` (now real: `[x,y,z,T,layer,color]`).
 - `lib/akasha/kernel.py` — `_format_associate_cosmos` (attaches `x/y/z` + degree `val`),
   `_handle_dive_look`.
-- `lib/akasha/concepts/cockpit.py` — the projected model.
+- `app/concepts/cockpit.py` — the projected model.
 - Meaning-layer methods already available: `semantic.search`/`sim`, `node.sim`/`node.learn`,
   `dream`/`dream.confirm`/`dream.forget`, `emotion.find`/`emotion.profile`, `gap.scan`,
   `jataka.present`, `contexa.ingest`/`contexa.fetch`.
-- `test/cosmos_eval.py` — proves position clusters by topic, graph carries geometry, scatter spreads.
+- `app/test/cosmos_eval.py` — proves position clusters by topic, graph carries geometry, scatter spreads.

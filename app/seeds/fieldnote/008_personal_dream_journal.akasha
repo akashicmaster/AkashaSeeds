@@ -1,0 +1,80 @@
+{
+  "metadata": {
+    "protocol": "akasha_capsule_v1.2",
+    "author": "system",
+    "timestamp": 1700000000.0,
+    "doc_type": "fieldnote",
+    "concept_id": "251c997c72e0fc8b7f7246feab365b827be42f956c606a9b93707f045d6dfa9c",
+    "extracted_since": 0.0,
+    "seed": {
+      "kind": "sample",
+      "title": "Sample: Dream Journal",
+      "order": 8,
+      "category": "personal",
+      "project": "Personal Dream Archive",
+      "region": "Inner Landscape",
+      "season": "2026-Summer",
+      "locale": "en"
+    }
+  },
+  "atoms": {
+    "251c997c72e0fc8b7f7246feab365b827be42f956c606a9b93707f045d6dfa9c": "Sample: Dream Journal",
+    "f33a711795e781c791b86653f4575e3d2ed9d19673a26e336a34023bb44df167": "A flooded library existed beneath an abandoned railway station.",
+    "a35eede847698c7b9fe9f0fd059e49b290a2d155d4ad390c5539fe5994cf54ba": "Strong nostalgia mixed with low persistent dread.",
+    "ea35172cfe3f18c532d24c62a11d022f34c3907706cbfa7a255f02638d063f5c": "Broken brass compass appeared repeatedly in different rooms.",
+    "89748dbd5cc3f748acd4ff694ee68ebf9d54ad6bcc086551f79484a007e09bcc": "Dream may reflect anxiety about unfinished archival work and memory loss."
+  },
+  "links": [
+    {
+      "src": "251c997c72e0fc8b7f7246feab365b827be42f956c606a9b93707f045d6dfa9c",
+      "dst": "f33a711795e781c791b86653f4575e3d2ed9d19673a26e336a34023bb44df167",
+      "rel": "sys:top",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "f33a711795e781c791b86653f4575e3d2ed9d19673a26e336a34023bb44df167",
+      "dst": "a35eede847698c7b9fe9f0fd059e49b290a2d155d4ad390c5539fe5994cf54ba",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "a35eede847698c7b9fe9f0fd059e49b290a2d155d4ad390c5539fe5994cf54ba",
+      "dst": "ea35172cfe3f18c532d24c62a11d022f34c3907706cbfa7a255f02638d063f5c",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "ea35172cfe3f18c532d24c62a11d022f34c3907706cbfa7a255f02638d063f5c",
+      "dst": "89748dbd5cc3f748acd4ff694ee68ebf9d54ad6bcc086551f79484a007e09bcc",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    }
+  ],
+  "atom_meta": {
+    "f33a711795e781c791b86653f4575e3d2ed9d19673a26e336a34023bb44df167": {
+      "role": "dream",
+      "confidence": 0.9,
+      "period": "Primary Sequence"
+    },
+    "a35eede847698c7b9fe9f0fd059e49b290a2d155d4ad390c5539fe5994cf54ba": {
+      "role": "emotion",
+      "confidence": 0.8,
+      "period": "Emotional Tone"
+    },
+    "ea35172cfe3f18c532d24c62a11d022f34c3907706cbfa7a255f02638d063f5c": {
+      "role": "symbol",
+      "confidence": 0.7,
+      "period": "Recurring Object"
+    },
+    "89748dbd5cc3f748acd4ff694ee68ebf9d54ad6bcc086551f79484a007e09bcc": {
+      "role": "interpretation",
+      "confidence": 0.5,
+      "period": "Reflection"
+    }
+  },
+  "telemetry": {}
+}

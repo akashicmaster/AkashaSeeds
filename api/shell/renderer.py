@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import contextlib
 import json
+import time
 from api.env_detector import Colors, env
 
 
@@ -87,8 +88,8 @@ def _page(text: str) -> None:
     # Never page on a restricted/embedded console. iOS terminals (a-Shell / Pyto) report a
     # TTY but ship a built-in `less` and lack the subprocess job-control a pager needs — so
     # `dive`/long output would spawn `less` and trap the user at its `:` prompt (typed commands
-    # go to less, not the REPL). isatty() alone doesn't catch this; the env flags do.
-    if (not sys.stdout.isatty() or os.environ.get("AKASHA_NO_PAGER")
+    # go to less, not the REPL). isatty() alone doesn't catch this; the embedded flag does.
+    if (not sys.stdout.isatty()
             or os.environ.get("AKASHA_EMBEDDED") or getattr(env, "is_restricted_console", False)):
         sys.stdout.write(text)
         return
@@ -108,7 +109,7 @@ def _page(text: str) -> None:
     except Exception:
         # No usable pager: `less` absent (Windows minimal env, Docker scratch) or
         # subprocess unsupported/sandboxed (iOS a-Shell / Pyto). Never let the pager
-        # take down output — fall back to a plain write. AKASHA_NO_PAGER forces this.
+        # take down output — fall back to a plain write.
         sys.stdout.write(text)
 
 
@@ -208,6 +209,10 @@ def render(resp: dict):
     # ── JCL structured views ──────────────────────────────────────────────────
     if isinstance(result, dict) and "job_id" in result and "step_count" in result:
         _render_job(result)
+        return
+
+    if isinstance(result, dict) and "verdict" in result and "subjects" in result and "libraries" in result:
+        _render_analysis_diag(result)
         return
 
     if isinstance(result, dict) and "jobs" in result:
@@ -357,6 +362,15 @@ def render(resp: dict):
         render_atom(result)
         return
 
+    # world.axis — {world, axis: [row,…], count}. `axis` is a LIST here (assoc/dream carry a
+    # STRING axis and are matched far above), so a list-valued axis + world + count is unambiguous.
+    # A38 — the generic concept-list fallback truncated id/kind and dropped position/wall/note; this
+    # dedicated renderer shows the full clock-ordered ledger.
+    if isinstance(result, dict) and isinstance(result.get("axis"), list) \
+            and "world" in result and "count" in result:
+        _render_world_axis(result)
+        return
+
     if isinstance(result, dict):
         key     = result.get("key")
         status  = result.get("status", "")
@@ -432,6 +446,18 @@ def render(resp: dict):
             return
         if isinstance(result.get("nodes"), list):
             _render_explore(result)
+            return
+        # ── A result that did NOT do its job says why, on one line ──
+        # (directive 2026-10-02 §2; frontend 09-28 item 4). `{status, reason, detail}` is how an op
+        # stands by — `station.publish` on a cell without consent returns `status=standby
+        # reason=station:reason:no_consent detail=…` — and this fallback printed `✓ standby`,
+        # dropping both, so the operator had to grep the log for why. A non-ok status now renders
+        # `status · reason · detail` and never a tick.
+        if _non_ok(result):
+            print(_status_line(result))
+            _rest = [(k, v) for k, v in result.items() if isinstance(v, list)]
+            if _rest:
+                _render_concept_list(result, _rest)
             return
         # ── Generic key/content/status fallback ──
         if content:
@@ -763,10 +789,14 @@ def _render_set_ls(result: dict):
     name    = result.get("set", "?")
     members = result.get("members", [])
     count   = result.get("count", len(members))
+    total   = (result.get("page") or {}).get("total", count)
     print(f"\n{c(Colors.CYAN, '─── set: ' + name + ' ' + '─'*max(0, 43-len(name)))}")
-    print(c(Colors.DIM, f"  {count} member{'s' if count != 1 else ''}"))
+    shown = f"{count} of {total}" if total != count else f"{count}"
+    print(c(Colors.DIM, f"  {shown} member{'s' if total != 1 else ''}"))
     if not members:
         print(c(Colors.DIM, "  (empty)"))
+        if result.get("note"):
+            print(c(Colors.WARNING, "  " + str(result["note"])))
         print()
         return
     for m in members:
@@ -777,6 +807,143 @@ def _render_set_ls(result: dict):
         col     = Colors.GREEN if alias else Colors.DIM
         print(f"  {c(col, label)}  {c(Colors.DIM, content)}")
     print()
+
+
+def _render_world_axis(result: dict):
+    """Render world.axis — the shared world's clock-ordered ledger of env + sync records.
+
+    A38 — the generic concept-list fallback showed only a truncated id and two arbitrary fields,
+    dropping the very columns that make the axis legible (position, wall-clock, kind, note). This
+    renderer shows the full row: position, type, kind (full), a local wall-clock, the id, and the
+    ref/note tail. `wall` is stored as `<ISO8601-UTC>|<epoch>` (world.tick, D2b); the local time is
+    derived from the epoch part so an operator reads it in their own timezone."""
+    world = result.get("world", "?")
+    rows  = result.get("axis", []) or []
+    count = result.get("count", len(rows))
+    print(f"\n{c(Colors.CYAN, '─── world axis: ' + str(world) + ' ' + '─' * max(0, 40 - len(str(world))))}")
+    print(c(Colors.DIM, f"  {count} record{'s' if count != 1 else ''}"
+                        + (f"  (showing {len(rows)})" if len(rows) != count else "")))
+    if not rows:
+        print(c(Colors.DIM, "  (axis empty)"))
+        print()
+        return
+
+    def _local_wall(w):
+        if not w:
+            return ""
+        s = str(w)
+        epoch = s.split("|", 1)[1] if "|" in s else s
+        try:
+            return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(float(epoch)))
+        except (ValueError, OverflowError, OSError):
+            return s[:19]   # fall back to the ISO head
+
+    print(c(Colors.DIM, f"  {'pos':>4}  {'type':<5} {'kind':<20} {'when (local)':<19}  id"))
+    print(c(Colors.DIM, "  " + "─" * 74))
+    for r in rows:
+        if not isinstance(r, dict):
+            print(f"  {r}")
+            continue
+        pos   = r.get("position") or 0
+        typ   = str(r.get("type") or "")[:5]
+        kind  = str(r.get("kind") or "")
+        when  = _local_wall(r.get("wall"))
+        rid   = str(r.get("id") or "")
+        tcol  = Colors.CYAN if r.get("type") == "sync" else Colors.GREEN
+        print(f"  {c(Colors.DIM, f'{pos:>4}')}  {c(tcol, f'{typ:<5}')} {kind:<20} "
+              f"{c(Colors.DIM, f'{when:<19}')}  {c(Colors.GREEN, rid)}")
+        # detail tail: ref / note, and the sync-only exec/bench/branch — each on its own dim line
+        tail = []
+        if r.get("ref"):
+            tail.append(("ref", r["ref"]))
+        if r.get("note"):
+            tail.append(("note", r["note"]))
+        for fld in ("exec", "bench", "branch", "agents"):
+            if r.get(fld):
+                tail.append((fld, r[fld]))
+        for k_, v_ in tail:
+            print(f"        {c(Colors.DIM, k_ + ': ' + str(v_))}")
+    print()
+
+
+# Statuses that mean the op did what it was asked. Anything carrying a `reason` (or a detail /
+# error) under another status — or one of the explicit stop words below — did not, and says so.
+_OK_STATUSES = frozenset({
+    "ok", "done", "created", "exists", "defined", "set", "updated", "added", "removed", "deleted",
+    "applied", "provisioned", "armed", "enabled", "disabled", "loaded", "queued", "submitted",
+    "running", "started", "stopped", "posted", "aired", "ready", "fed", "bound", "sealed",
+    "recorded", "unchanged", "noop", "opened", "closed", "dry", "preview", "dry_run"})
+_NON_OK_STATUSES = frozenset({
+    "standby", "stand_by", "refused", "failed", "error", "skipped", "denied", "blocked", "held",
+    "waiting", "rejected", "not_found", "timeout", "cancelled", "aborted", "partial", "unbound"})
+
+
+def _non_ok(result: dict) -> bool:
+    """Did this op result NOT do its job? A stop word as its status, or a reason / detail / error
+    under a status that is not one of the ok words."""
+    status = str(result.get("status") or "").strip().lower()
+    if not status:
+        return False
+    if status in _NON_OK_STATUSES:
+        return True
+    if status in _OK_STATUSES:
+        return False
+    return any(str(result.get(k) or "").strip() for k in ("reason", "detail", "error"))
+
+
+def _status_line(result: dict) -> str:
+    """`status · reason · detail` — one line, nothing truncated but newlines folded."""
+    def _one(v):
+        return " ".join(str(v).split()) if v not in (None, "") else "-"
+    detail = result.get("detail") if result.get("detail") not in (None, "") else result.get("error")
+    return "  " + c(Colors.WARNING if hasattr(Colors, "WARNING") else Colors.FAIL,
+                    "%s · %s · %s" % (_one(result.get("status")), _one(result.get("reason")),
+                                      _one(detail)))
+
+
+def _term_width() -> int:
+    try:
+        import shutil as _sh
+        return max(40, int(_sh.get_terminal_size((100, 24)).columns))
+    except Exception:
+        return 100
+
+
+# Row fields a reader needs first, in this order, whatever else the row carries: why it did not
+# happen comes before what it was about.
+_ROW_FIRST = ("status", "reason", "detail", "error")
+_ROW_MAX_LINES = 4
+
+
+def _row_lines(head: str, head_len: int, item: dict, skip: set, width: int):
+    """A row as WRAPPED lines: the head, then `key=value` fields — `status`/`reason`/`detail`/
+    `error` first — continued on indented lines when the terminal is too narrow, never cut
+    mid-field. Past `_ROW_MAX_LINES` the remaining fields are DROPPED with a `+N more` marker,
+    so a long row never scrolls a list away. A field's value is never shortened below its reason."""
+    fields = [(k, item[k]) for k in _ROW_FIRST if k in item and item[k] not in (None, "", [], {})]
+    fields += [(k, v) for k, v in item.items()
+               if k not in skip and k not in _ROW_FIRST and v not in (None, "", [], {})
+               and not isinstance(v, (dict, list))]
+    lines, cur, cur_len = [], head, head_len
+    indent = "      "
+    for i, (k, v) in enumerate(fields):
+        txt = "%s=%s" % (k, " ".join(str(v).split()))
+        if len(txt) > width - len(indent):
+            txt = txt[:width - len(indent) - 1] + "…"
+        if cur_len + 2 + len(txt) > width:
+            lines.append(cur)
+            if len(lines) >= _ROW_MAX_LINES:
+                lines[-1] += c(Colors.DIM, "  +%d more" % (len(fields) - i))
+                return lines
+            cur, cur_len = indent, len(indent)
+            sep = ""
+        else:
+            sep = "  "
+        is_why = k in ("reason", "detail", "error")
+        cur += sep + (c(Colors.FAIL, txt) if is_why and k == "reason" else c(Colors.DIM, txt))
+        cur_len += len(sep) + len(txt)
+    lines.append(cur)
+    return lines
 
 
 def _render_concept_list(result: dict, list_entries: list):
@@ -794,6 +961,7 @@ def _render_concept_list(result: dict, list_entries: list):
         print()
         return
     _SKIP_KEYS = {"meta", "created_at", "updated_at"}
+    width = _term_width()
     for item in items:
         if not isinstance(item, dict):
             print(f"  {item}")
@@ -801,16 +969,15 @@ def _render_concept_list(result: dict, list_entries: list):
         name_val = item.get("name") or item.get("title") or item.get("label") or ""
         id_val   = next((str(v)[:16] + "…" for k, v in item.items()
                          if (k.endswith("_id") or k == "id") and v), "")
-        extras   = [(k, v) for k, v in item.items()
-                    if k not in _SKIP_KEYS and not k.endswith("_id") and k != "id"
-                    and k not in ("name", "title", "label") and v is not None][:2]
-        extra_s  = "  ".join(f"{c(Colors.DIM, str(k) + '=' + str(v)[:20])}" for k, v in extras)
-        line = f"  {c(Colors.GREEN, name_val)}" if name_val else f"  {c(Colors.DIM, id_val)}"
-        if name_val and id_val:
-            line += f"  {c(Colors.DIM, id_val)}"
-        if extra_s:
-            line += f"  {extra_s}"
-        print(line)
+        head_txt = "  " + (name_val or id_val) + (("  " + id_val) if (name_val and id_val) else "")
+        head = (f"  {c(Colors.GREEN, name_val)}" if name_val else f"  {c(Colors.DIM, id_val)}") \
+            + (f"  {c(Colors.DIM, id_val)}" if (name_val and id_val) else "")
+        skip = _SKIP_KEYS | {"name", "title", "label"} | {k for k in item
+                                                          if k.endswith("_id") or k == "id"}
+        # Every field, WRAPPED to the terminal (09-28 item 4): it used to show the first two
+        # extras cut to 20 characters each, so a `station.air.ls` row never showed its `reason`.
+        for ln in _row_lines(head, len(head_txt), item, skip, width):
+            print(ln)
     print()
 
 
@@ -1499,8 +1666,45 @@ def _render_rec_sum(result: dict):
     print()
 
 
+_RICH_OK = None
+
+
+def _rich_available() -> bool:
+    """`rich` is optional (the core is stdlib-only). Probed once; without it every view that would
+    use it renders as plain line-drawing instead."""
+    global _RICH_OK
+    if _RICH_OK is None:
+        try:
+            import rich.console, rich.table, rich.tree, rich.box  # noqa: F401
+            _RICH_OK = True
+        except ImportError:
+            _RICH_OK = False
+    return _RICH_OK
+
+
+def _render_table_ascii(columns: list, rows: list, max_col_w: int = 28) -> None:
+    """Plain aligned table — no dependencies. Numeric columns right-aligned, long cells cut with …"""
+    def _cell(v):
+        t = str(v or "").replace("\n", " ")
+        return t if len(t) <= max_col_w else t[:max_col_w - 1] + "…"
+    cells = [[_cell(r.get(col)) for col in columns] for r in rows]
+    heads = [_cell(col) for col in columns]
+    numeric = [bool([x[i] for x in cells if x[i]]) and
+               all(_looks_numeric(x[i]) for x in cells[:20] if x[i]) for i in range(len(columns))]
+    widths = [max([len(heads[i])] + [len(x[i]) for x in cells]) for i in range(len(columns))]
+    def _line(vals):
+        return "  " + "  ".join(v.rjust(widths[i]) if numeric[i] else v.ljust(widths[i])
+                                for i, v in enumerate(vals)).rstrip()
+    print()
+    print(c(Colors.DIM, _line(heads)))
+    print(c(Colors.DIM, "  " + "  ".join("─" * w for w in widths)))
+    for x in cells:
+        print(_line(x))
+    print()
+
+
 def _render_table(columns: list, rows: list, max_col_w: int = 28) -> None:
-    """Rich-table renderer. Columns is a list of str keys; rows is a list of dicts.
+    """Rich-table renderer (plain aligned table when `rich` is not installed). Columns is a list of str keys; rows is a list of dicts.
 
     Uses rich.table.Table with SIMPLE_HEAD box style so it fits the existing
     terminal output aesthetic without heavy borders.  Creates a fresh Console
@@ -1511,6 +1715,10 @@ def _render_table(columns: list, rows: list, max_col_w: int = 28) -> None:
         return
     if not rows:
         print(c(Colors.DIM, "  (empty)\n"))
+        return
+
+    if not _rich_available():
+        _render_table_ascii(columns, rows, max_col_w)
         return
 
     import sys
@@ -1778,9 +1986,132 @@ def _render_job(j: dict):
     print()
 
 
+def _render_analysis_diag(result: dict):
+    """analysis.diag view — is a blank chart a bug, a library error, or still computing?"""
+    print()
+    print(c(Colors.BOLD, "  ANALYSIS DIAGNOSTIC"))
+    v = result.get("verdict", "")
+    vcol = (Colors.FAIL if v.startswith("ATTENTION")
+            else Colors.WARNING if v.startswith(("COMPUTING", "WAITING"))
+            else Colors.GREEN)
+    print("  " + c(vcol, v))
+
+    env = result.get("environment") or {}
+    if env:
+        ai = "on" if env.get("autoinstall") else c(Colors.WARNING, "OFF (AKASHA_SKIP_AUTOINSTALL)")
+        print(c(Colors.DIM, "\n  environment:"))
+        print(f"    Python {env.get('python','?')} ({env.get('wheel_tag','?')})   auto-install: {ai}")
+        print("    " + c(Colors.DIM, "daemon python: " + str(env.get("executable", "?"))))
+
+    # the smoking gun: a package present under ANOTHER interpreter but not the daemon's
+    elsewhere = result.get("installed_under_other_python") or {}
+    if elsewhere:
+        print(c(Colors.WARNING, "\n  ⚠ installed under a DIFFERENT Python (invisible to the daemon):"))
+        for pkg, where in elsewhere.items():
+            print("    " + c(Colors.WARNING, f"{pkg}: {', '.join(where)}"))
+
+    others = result.get("other_interpreters") or []
+    if others:
+        print(c(Colors.DIM, "\n  python interpreters on this host:"))
+        for o in others:
+            tag = c(Colors.CYAN, "← daemon") if o.get("is_daemon_python") else ""
+            has = ", ".join(o.get("has") or []) or "—"
+            if o.get("error"):
+                print(f"    {o.get('name'):<10} {o.get('python','?'):<9} {c(Colors.DIM, 'probe error')}")
+            else:
+                print(f"    {o.get('name'):<10} {o.get('python','?'):<9} {tag}")
+                print("      " + c(Colors.DIM, "resolves: " + has))
+
+    caps = result.get("capabilities") or {}
+    if caps:
+        print(c(Colors.DIM, "\n  capabilities (any variant in the family satisfies it):"))
+        for name, cap in caps.items():
+            if cap.get("ok"):
+                s = c(Colors.GREEN, "✓ via " + str(cap.get("via")))
+            else:
+                fb = cap.get("fallback")
+                s = (c(Colors.WARNING, "✗ → " + fb + " fallback") if fb
+                     else c(Colors.FAIL, "✗ (feature space stays empty)"))
+            print(f"    {name:<38} {s}")
+
+    libs = result.get("libraries") or {}
+    reasons = result.get("library_reasons") or {}
+    roles = result.get("library_roles") or {}
+    variants = result.get("installed_variants") or {}
+    if libs:
+        print(c(Colors.DIM, "\n  libraries (importable on this cell):"))
+        for name, ok in libs.items():
+            mark = c(Colors.GREEN, "✓") if ok else c(Colors.FAIL, "✗ missing")
+            role = roles.get(name, "")
+            ver = variants.get(name) or (variants.get("tensorflow-cpu") if name == "tensorflow" else None)
+            vtxt = c(Colors.DIM, f" [{name} {ver}]") if ver else ""
+            print(f"    {name:<16} {mark}{vtxt}   {c(Colors.DIM, role)}")
+            if not ok and name in reasons:
+                print("      " + c(Colors.DIM, str(reasons[name])[:150]))
+        if not reasons and any(not ok for ok in libs.values()):
+            print(c(Colors.DIM, "      (run  analysis.diag pip_check=1  to see WHY each missing lib won't install)"))
+
+    tf = result.get("tensorflow_family") or {}
+    if tf:
+        print(c(Colors.DIM, "\n  tensorflow family (embeddings need full TF — keras; tflite/litert don't qualify):"))
+        for spec, v in (tf.get("candidates") or {}).items():
+            st = v.get("status", "")
+            col = Colors.GREEN if v.get("installable") else (
+                Colors.WARNING if "PEP 668" in st else Colors.FAIL)
+            print(f"    {spec:<18} {c(col, st)}")
+            print("      " + c(Colors.DIM, v.get("note", "")))
+        vv = tf.get("verdict", "")
+        print("  " + c(Colors.GREEN if tf.get("installable_here") else Colors.WARNING, "→ " + vv))
+
+    js = result.get("job_summary") or {}
+    if js:
+        by = js.get("by_status") or {}
+        print(c(Colors.DIM, "\n  analysis/vlab jobs: ")
+              + (", ".join(f"{k}={n}" for k, n in by.items()) if by else "none"))
+        for f in (js.get("failed") or []):
+            errs = "; ".join(f.get("step_errors") or []) or (f.get("error") or "")
+            print("    " + c(Colors.FAIL, f"FAILED {f.get('label')}: {errs[:120]}"))
+
+    subs = result.get("subjects") or []
+    if subs:
+        print(c(Colors.DIM, "\n  source pools:"))
+        for s in subs:
+            sv = s.get("verdict", "")
+            scol = (Colors.FAIL if sv.startswith(("STALLED", "LIBRARY")) else
+                    Colors.WARNING if sv.startswith(("COMPUTING", "WAITING", "PARTIAL")) else
+                    Colors.GREEN if sv.startswith("READY") else Colors.DIM)
+            print(f"    {c(Colors.CYAN, (s.get('pool') or '')[-40:])}")
+            print("      " + c(scol, sv))
+
+    vc = result.get("visual_curation") or {}
+    if vc:
+        sv = vc.get("verdict", "")
+        scol = (Colors.FAIL if sv.startswith(("STALLED", "LIBRARY")) else
+                Colors.WARNING if sv.startswith(("COMPUTING", "WAITING")) else
+                Colors.GREEN if sv.startswith("READY") else Colors.DIM)
+        print(c(Colors.DIM, "\n  visual curation (run r1):"))
+        print("    " + c(scol, sv))
+
+    ph = result.get("phases") or []
+    if ph:
+        print(c(Colors.DIM, "\n  boot phases:"))
+        for p in ph:
+            st = p.get("state", "?")
+            pcol = (Colors.FAIL if st == "failed" else
+                    Colors.WARNING if st in ("running", "waiting", "armed") else Colors.GREEN)
+            stale = c(Colors.FAIL, " STALE") if p.get("stale") else ""
+            print(f"    {p.get('id',''):<26} {c(pcol, st)}{stale}  {c(Colors.DIM, (p.get('detail') or '')[:60])}")
+    print()
+
+
 def _render_job_list(result: dict):
     """job.ls view."""
     jobs = result.get("jobs", [])
+    # Defensive: only a LIST of job dicts is a job-list. Any other shape (a nested summary dict, a
+    # scalar) means this result merely happens to carry a `jobs` key — fall back to the generic dump.
+    if not isinstance(jobs, list) or (jobs and not all(isinstance(j, dict) for j in jobs)):
+        print(c(Colors.GREEN, json.dumps(result, indent=2, ensure_ascii=False)))
+        return
     if not jobs:
         print(c(Colors.DIM, "  (no jobs)"))
         return
@@ -2273,12 +2604,26 @@ def _render_onto_dump(result: dict):
     items = result.get("items", [])
     coll  = result.get("collection", "")
 
+    total  = (result.get("page") or {}).get("total", count)
     extra  = f"  [{coll}]" if coll else ""
-    header = f"─── Dump: {mode}{extra} ({count:,} total) "
+    header = f"─── Dump: {mode}{extra} ({total:,} total) "
     print(f"\n{c(Colors.CYAN, header + '─'*max(0, 52-len(header)))}")
 
     if not items:
         print(c(Colors.DIM, "  (empty)"))
+        if result.get("note"):
+            print(c(Colors.WARNING, "  " + str(result["note"])))
+        print()
+        return
+
+    if mode == "sets" and not coll:
+        # `onto.dump sets` with no set named: the set names (v1.1 changelog)
+        print(c(Colors.DIM, f"\n  set"))
+        print(c(Colors.DIM, "  " + "─" * 50))
+        for it in items:
+            print(f"  {c(Colors.GREEN, str(it.get('collection') or ''))}")
+        if total > len(items):
+            print(c(Colors.DIM, f"  … {total-len(items)} more (onto.dump sets cursor=…)"))
         print()
         return
 
@@ -2419,7 +2764,7 @@ def _render_tv_table(result: dict):
 def _render_tv_tree(result: dict):
     """Render a textview:tree — rich (default) or ASCII fallback."""
     fmt = result.get("format", "rich")
-    if fmt == "ascii":
+    if fmt == "ascii" or not _rich_available():
         _render_tv_tree_ascii(result)
         return
 

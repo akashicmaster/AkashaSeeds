@@ -1,0 +1,303 @@
+{
+  "format": "scroll",
+  "presentation_id": "331f191c7235f420875905d98c44d7a1ee046ebbb420b9a88340920512f75512",
+  "title": "The Dream of Print",
+  "thesis": "The dream of multiplying the written word, read as a fork from one root. From East Asian woodblock the craft branches: West, it turns to metal — movable type and the copperplate meeting in Gutenberg's press, through publishing and the steam press to offset, and text becomes everyone's; East, the block stays a block, crosses to Japan as the people's ukiyo-e, and through Japonisme reshapes Art Nouveau — the birth of commercial design. Two dreams of the multiplied image, from one carved page.",
+  "grounds": {
+    "rels": [],
+    "op": "authored"
+  },
+  "scenes": [
+    {
+      "scene": 0,
+      "ref_id": "630fda773c765ca5494ad328f353d5d77aec32870be83fbaf53dbb355e986c30",
+      "headword": "Woodblock",
+      "description": "Woodblock printing (China, Tang dynasty) — whole pages carved into wood and inked; the Diamond Sutra of 868 is the earliest dated printed book. The common root: from here the craft forks — West toward metal and the press, East staying with the block.",
+      "image": null,
+      "refs": [],
+      "links": [
+        {
+          "name": "print:origin:bi_sheng",
+          "href": "/a/print:origin:bi_sheng",
+          "rel": "curation:next"
+        },
+        {
+          "name": "print:east:ukiyoe",
+          "href": "/a/print:east:ukiyoe",
+          "rel": "chrono:before"
+        },
+        {
+          "name": "print:west:copperplate",
+          "href": "/a/print:west:copperplate",
+          "rel": "chrono:before"
+        },
+        {
+          "name": "curation:print-dreamers",
+          "href": "/a/curation:print-dreamers",
+          "rel": "curation:over"
+        }
+      ],
+      "caption": "Woodblock printing (China, Tang dynasty) — whole pages carved into wood and inke",
+      "href": "/a/print:origin:woodblock"
+    },
+    {
+      "scene": 1,
+      "ref_id": "9cdd31aabe58113a1b9a141651160a132bef36f45a59ca38e823d906dbc01aa2",
+      "headword": "Bi sheng",
+      "description": "Bi Sheng's movable type (Song China, c.1040) — individual clay characters, reusable and rearranged. The idea that would remake the world, four centuries before Europe.",
+      "image": null,
+      "refs": [],
+      "links": [
+        {
+          "name": "print:origin:jikji",
+          "href": "/a/print:origin:jikji",
+          "rel": "curation:next"
+        },
+        {
+          "name": "curation:print-dreamers",
+          "href": "/a/curation:print-dreamers",
+          "rel": "curation:over"
+        },
+        {
+          "name": "print:origin:woodblock",
+          "href": "/a/print:origin:woodblock",
+          "rel": "curation:next"
+        }
+      ],
+      "caption": "Bi Sheng's movable type (Song China, c.1040) — individual clay characters, reusa",
+      "href": "/a/print:origin:bi_sheng"
+    },
+    {
+      "scene": 2,
+      "ref_id": "1d58b38f6335b557dc3f1b983a32cf4ed87595dda98e9fe87bb0c96e8cf49ee2",
+      "headword": "Jikji",
+      "description": "Jikji (Korea, 1377) — the oldest surviving book printed with metal movable type, cast in a Buddhist temple; metal type predating Gutenberg by decades.",
+      "image": null,
+      "refs": [],
+      "links": [
+        {
+          "name": "print:west:copperplate",
+          "href": "/a/print:west:copperplate",
+          "rel": "curation:next"
+        },
+        {
+          "name": "print:milestone:gutenberg",
+          "href": "/a/print:milestone:gutenberg",
+          "rel": "chrono:before"
+        },
+        {
+          "name": "curation:print-dreamers",
+          "href": "/a/curation:print-dreamers",
+          "rel": "curation:over"
+        },
+        {
+          "name": "print:origin:bi_sheng",
+          "href": "/a/print:origin:bi_sheng",
+          "rel": "curation:next"
+        }
+      ],
+      "caption": "Jikji (Korea, 1377) — the oldest surviving book printed with metal movable type,",
+      "href": "/a/print:origin:jikji"
+    },
+    {
+      "scene": 3,
+      "ref_id": "d1d055dcb81b9b10240aeb048dc8a977208c0c0cf985e7a05a86e4cc8532967f",
+      "headword": "Copperplate",
+      "description": "Copperplate engraving (銅版, Europe, 15th c.) — the intaglio line incised into metal to reproduce fine images. The Western branch turns woodblock into metal craft, and image-printing joins the coming age of type.",
+      "image": null,
+      "refs": [],
+      "links": [
+        {
+          "name": "print:milestone:gutenberg",
+          "href": "/a/print:milestone:gutenberg",
+          "rel": "curation:next"
+        },
+        {
+          "name": "curation:print-dreamers",
+          "href": "/a/curation:print-dreamers",
+          "rel": "curation:over"
+        },
+        {
+          "name": "print:origin:jikji",
+          "href": "/a/print:origin:jikji",
+          "rel": "curation:next"
+        },
+        {
+          "name": "print:origin:woodblock",
+          "href": "/a/print:origin:woodblock",
+          "rel": "chrono:before"
+        }
+      ],
+      "caption": "Copperplate engraving (銅版, Europe, 15th c.) — the intaglio line incised into met",
+      "href": "/a/print:west:copperplate"
+    },
+    {
+      "scene": 4,
+      "ref_id": "c0d640954978c1939ea0066c3229e1e9c36d16d6214632ca6364ffd621ca5f71",
+      "headword": "Gutenberg",
+      "description": "Johannes Gutenberg (Mainz, c.1440) — a press with cast metal type, oil-based ink and the screw press; the 42-line Bible (c.1455). Movable type and metal-plate craft converge; mechanised printing ignites Europe's knowledge revolution.",
+      "image": null,
+      "refs": [],
+      "links": [
+        {
+          "name": "print:milestone:aldus",
+          "href": "/a/print:milestone:aldus",
+          "rel": "curation:next"
+        },
+        {
+          "name": "curation:print-dreamers",
+          "href": "/a/curation:print-dreamers",
+          "rel": "curation:over"
+        },
+        {
+          "name": "print:west:copperplate",
+          "href": "/a/print:west:copperplate",
+          "rel": "curation:next"
+        },
+        {
+          "name": "print:origin:jikji",
+          "href": "/a/print:origin:jikji",
+          "rel": "chrono:before"
+        }
+      ],
+      "caption": "Johannes Gutenberg (Mainz, c.1440) — a press with cast metal type, oil-based ink",
+      "href": "/a/print:milestone:gutenberg"
+    },
+    {
+      "scene": 5,
+      "ref_id": "28f5aff5dbbda0244e1457b8e0dfb0be0f08f87fc4b336ff68a77f5c007d2025",
+      "headword": "Aldus",
+      "description": "Aldus Manutius (Venice, c.1500) — italic type and the portable octavo book; the printer as publisher. The dream turns from making pages to making readers — the birth of modern publishing.",
+      "image": null,
+      "refs": [],
+      "links": [
+        {
+          "name": "print:milestone:steam_press",
+          "href": "/a/print:milestone:steam_press",
+          "rel": "curation:next"
+        },
+        {
+          "name": "curation:print-dreamers",
+          "href": "/a/curation:print-dreamers",
+          "rel": "curation:over"
+        },
+        {
+          "name": "print:milestone:gutenberg",
+          "href": "/a/print:milestone:gutenberg",
+          "rel": "curation:next"
+        }
+      ],
+      "caption": "Aldus Manutius (Venice, c.1500) — italic type and the portable octavo book; the ",
+      "href": "/a/print:milestone:aldus"
+    },
+    {
+      "scene": 6,
+      "ref_id": "6426caf4e850d306c373f3adb573e4a8a02b95ba95a4b6f7b93dc0c27c810d43",
+      "headword": "Steam press",
+      "description": "Friedrich Koenig's steam press (London, 1814) — the first newspaper (The Times) printed by steam-driven cylinders; printing leaves the workshop for industry, and the page becomes the daily many.",
+      "image": null,
+      "refs": [],
+      "links": [
+        {
+          "name": "print:milestone:offset",
+          "href": "/a/print:milestone:offset",
+          "rel": "curation:next"
+        },
+        {
+          "name": "curation:print-dreamers",
+          "href": "/a/curation:print-dreamers",
+          "rel": "curation:over"
+        },
+        {
+          "name": "print:milestone:aldus",
+          "href": "/a/print:milestone:aldus",
+          "rel": "curation:next"
+        }
+      ],
+      "caption": "Friedrich Koenig's steam press (London, 1814) — the first newspaper (The Times) ",
+      "href": "/a/print:milestone:steam_press"
+    },
+    {
+      "scene": 7,
+      "ref_id": "4c7d72d69031c75fbf17a31d8ef76f0f8886732e52f203012726103227fb275b",
+      "headword": "Offset",
+      "description": "Ira Rubel's offset lithography (1904) — the image is offset from plate to rubber blanket to paper; fast, cheap, universal. The Western branch's modern end: the world printed at scale.",
+      "image": null,
+      "refs": [],
+      "links": [
+        {
+          "name": "print:east:ukiyoe",
+          "href": "/a/print:east:ukiyoe",
+          "rel": "curation:next"
+        },
+        {
+          "name": "curation:print-dreamers",
+          "href": "/a/curation:print-dreamers",
+          "rel": "curation:over"
+        },
+        {
+          "name": "print:milestone:steam_press",
+          "href": "/a/print:milestone:steam_press",
+          "rel": "curation:next"
+        }
+      ],
+      "caption": "Ira Rubel's offset lithography (1904) — the image is offset from plate to rubber",
+      "href": "/a/print:milestone:offset"
+    },
+    {
+      "scene": 8,
+      "ref_id": "c4e8111f4c278216c608b0dc00b7d3f3fbcac23a03610313bc06f8cd6c3d2a21",
+      "headword": "Ukiyoe",
+      "description": "Ukiyo-e (Japan, Edo through 幕末) — woodblock carried east and kept, flowering into a secular, commercial print culture: colour prints of actors, courtesans, and landscapes sold cheaply to the townspeople. The block becomes a people's mass medium.",
+      "image": null,
+      "refs": [],
+      "links": [
+        {
+          "name": "print:east:artnouveau",
+          "href": "/a/print:east:artnouveau",
+          "rel": "curation:next"
+        },
+        {
+          "name": "curation:print-dreamers",
+          "href": "/a/curation:print-dreamers",
+          "rel": "curation:over"
+        },
+        {
+          "name": "print:milestone:offset",
+          "href": "/a/print:milestone:offset",
+          "rel": "curation:next"
+        },
+        {
+          "name": "print:origin:woodblock",
+          "href": "/a/print:origin:woodblock",
+          "rel": "chrono:before"
+        }
+      ],
+      "caption": "Ukiyo-e (Japan, Edo through 幕末) — woodblock carried east and kept, flowering int",
+      "href": "/a/print:east:ukiyoe"
+    },
+    {
+      "scene": 9,
+      "ref_id": "7e20d9b200c6e3b241bf9080594091548c951ccc5306953a6dc6695b4a5b63c7",
+      "headword": "Artnouveau",
+      "description": "Art Nouveau (Europe, c.1890–1910) — through Japonisme, ukiyo-e's flat colour, bold outline and asymmetry remake Western design (Mucha's posters, Toulouse-Lautrec). The East branch's fruit: the birth of modern commercial and graphic design.",
+      "image": null,
+      "refs": [],
+      "links": [
+        {
+          "name": "curation:print-dreamers",
+          "href": "/a/curation:print-dreamers",
+          "rel": "curation:over"
+        },
+        {
+          "name": "print:east:ukiyoe",
+          "href": "/a/print:east:ukiyoe",
+          "rel": "curation:next"
+        }
+      ],
+      "caption": "Art Nouveau (Europe, c.1890–1910) — through Japonisme, ukiyo-e's flat colour, bo",
+      "href": "/a/print:east:artnouveau"
+    }
+  ],
+  "count": 10
+}

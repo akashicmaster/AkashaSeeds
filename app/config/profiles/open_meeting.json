@@ -1,0 +1,41 @@
+{
+ "title": "Open meeting",
+ "admits": {
+  "member": "join",
+  "guest": "read"
+ },
+ "space": {
+  "public": true,
+  "open_guest": true
+ },
+ "duty": "wb:duty:best_effort",
+ "trigger": {
+  "boot": false,
+  "then": "manual"
+ },
+ "budget": {
+  "per_day": 10
+ },
+ "moderator": {
+  "chairman": "Chairman",
+  "scribe": "Scribe",
+  "on_failure": {
+   "retries": 0,
+   "breaker": 3
+  }
+ },
+ "effect": "record",
+ "gate_facts": [],
+ "roles_min": 0,
+ "output": {
+  "feed": true,
+  "room": true
+ },
+ "retention": {
+  "feed": "240 messages",
+  "observations": "keep"
+ },
+ "lock": [
+  "effect"
+ ]
+}

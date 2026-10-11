@@ -1,0 +1,10 @@
+# effective.at (B3 §A8 macro) — what is IN EFFECT at a chronon coordinate (or range) on a bench,
+# narrowed by conditions and, optionally, a role's visible scope. A pure Set intersection of (1) the
+# chronon coordinate's range Set (the records located at cronon:wb:<bench>:c<n>; a range a..b unions
+# the coordinates), (2) each cond: facet Set named in cond= (k=v,k=v → set:wb:<b>:cond:<k>:<v>), and
+# (3) the role's visible Set (set:cap:visible:<society>:<role>, written by B5) when role= is given.
+# Stores nothing; returns {members[{alias}], count} like a lens read. Coarser than the Set primitives,
+# so it is a MACRO — never a kernel handler. Forward to the cronon.effective_at operator.
+#
+#!params bench,chronon,cond=,role=
+cronon.effective_at bench="$bench" chronon="$chronon" cond="$cond" role="$role"

@@ -1,0 +1,37 @@
+{
+  "exhibits": [
+    {
+      "slug": "beer-journey",
+      "title": "Beer — the Beverage that Heals Labor",
+      "thesis": "Beer read as the dream that soothes labour, forking from one ancient stem. Born of the gods in Mesopotamia and made a wage in Egypt, brewing is kept alive by the medieval monasteries — then the modern age splits it in two: ALE, the warm-fermented soul of the Benelux abbeys, England's porter, and Poland's smoked grodziskie; and LAGER, the cold-fermented clarity of Vienna and Bavaria. Two rivers of the worker's cup, from one barley spring.",
+      "count": 8,
+      "updated_at": 1784869533.537781,
+      "formats": [
+        "kamishibai",
+        "scroll"
+      ]
+    },
+    {
+      "slug": "print-dreamers",
+      "title": "The Dream of Print",
+      "thesis": "The dream of multiplying the written word, read as a fork from one root. From East Asian woodblock the craft branches: West, it turns to metal — movable type and the copperplate meeting in Gutenberg's press, through publishing and the steam press to offset, and text becomes everyone's; East, the block stays a block, crosses to Japan as the people's ukiyo-e, and through Japonisme reshapes Art Nouveau — the birth of commercial design. Two dreams of the multiplied image, from one carved page.",
+      "count": 10,
+      "updated_at": 1784869533.2587397,
+      "formats": [
+        "kamishibai",
+        "scroll"
+      ]
+    },
+    {
+      "slug": "sky-dreamers",
+      "title": "The Wish to Fly — Icarus's Wings",
+      "thesis": "The dream of flight read as a genealogy of falls and flights: myth foreshadows history, and each rise carries its fall.",
+      "count": 6,
+      "updated_at": 1784869532.916765,
+      "formats": [
+        "kamishibai",
+        "scroll"
+      ]
+    }
+  ]
+}

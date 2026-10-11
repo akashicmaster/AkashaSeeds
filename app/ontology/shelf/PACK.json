@@ -1,0 +1,7 @@
+{
+  "label": "The Thinker's Shelf — reading programme vocabulary",
+  "description": "The vocabulary the Akasha Station reading programme runs on: the source decomposition (book / edition / page / section / passage / bibliographical entry / person / work / place / language / printer / historical reference), the four source strata (original / structural / analytical / commentary), the four interpretation levels (SOURCE / DERIVED / INTERPRETIVE / SPECULATIVE), the society roles (Reader / Listener / Commentator + backstage checkers), the reading-cycle steps, and the relation vocabulary the semantic bridge runs on. Corpora (the books themselves) are prepared off-line as their own source packs and never live here.",
+  "license": "MIT",
+  "source": "internal",
+  "version": "1.0"
+}

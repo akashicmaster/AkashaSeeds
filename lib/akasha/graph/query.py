@@ -51,12 +51,22 @@ class GraphQueryEngine:
         direction is ``"outgoing"`` or ``"incoming"``.
         """
         result: List[Tuple[str, str, str]] = []
-        for rel in (rels or []):
-            for dst, _rel in self.cortex.get_adjacent_links(atom_id, rel):
-                result.append((dst, rel, "outgoing"))
+        if rels:
+            for rel in rels:
+                for dst, _rel in self.cortex.get_adjacent_links(atom_id, rel):
+                    result.append((dst, rel, "outgoing"))
+                if include_incoming:
+                    for src, _rel in self.cortex.get_incoming_links(atom_id, rel):
+                        result.append((src, rel, "incoming"))
+        else:
+            # No rel filter → traverse ALL relations (the route / path use-case). Bound the
+            # per-node fan-out (top-N by edge weight) so a mega-hub cannot blow up the BFS.
+            for dst, _rel in self.cortex.get_adjacent_links(atom_id, None, limit=240,
+                                                            order_by_weight=True):
+                result.append((dst, _rel, "outgoing"))
             if include_incoming:
-                for src, _rel in self.cortex.get_incoming_links(atom_id, rel):
-                    result.append((src, rel, "incoming"))
+                for src, _rel in self.cortex.get_incoming_links(atom_id, None):
+                    result.append((src, _rel, "incoming"))
         return result
 
     def _is_visible(self, atom_id: str, include_hidden: bool = False) -> bool:
@@ -125,17 +135,22 @@ class GraphQueryEngine:
         include_hidden: bool = False,
         include_incoming: bool = False,
         max_visit: int = DEFAULT_MAX_VISIT,
+        avoid: Optional[Set[str]] = None,
     ) -> Dict[str, Any]:
         """
         BFS shortest path from *src_id* to *dst_id*.
 
-        Returns ``{"found", "path", "relations", "length"}``.
-        ``length`` is ``-1`` when no path exists.
+        `avoid` is a set of intermediate nodes to route AROUND (src/dst are never
+        avoided) — used to enumerate alternate routes. Returns
+        ``{"found", "path", "relations", "length"}``; ``length`` is ``-1`` when none.
         """
         if src_id == dst_id:
             return {"found": True, "path": [src_id], "relations": [], "length": 0}
 
         visited: Set[str] = {src_id}
+        for _a in (avoid or ()):            # route around these (never src/dst)
+            if _a not in (src_id, dst_id):
+                visited.add(_a)
         queue: deque = deque([(src_id, [], [])])
 
         while queue:

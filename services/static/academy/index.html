@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Akasha Academy</title>
+<meta name="description" content="Akasha Academy (seeds) — learn how to use Akasha, hands-on: the Playground and the Akasha Code Course (cookbook, documentation, and worked example apps).">
+<style>
+  :root{
+    --bg:#04070d; --ink:#e3f2df; --muted:#a3c1a3; --faint:#6a8a6d;
+    --line:rgba(120,180,120,0.18); --panel:rgba(14,26,16,0.5);
+    --jade:#9ad79a; --gold:#ffd78c; --stone:#e4e6f6;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{min-height:100vh;color:var(--ink);font-family:'Courier New',Courier,monospace;
+    background:radial-gradient(1100px 720px at 50% -12%,#0d1e12 0%,#08130b 55%,#04070d 100%) fixed,var(--bg);}
+  .wrap{max-width:960px;margin:0 auto;padding:max(20px,env(safe-area-inset-top)) 18px 70px}
+  .top{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+  .crumb{font-size:.58rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);
+    text-decoration:none;border:1px solid var(--line);border-radius:16px;padding:5px 13px}
+  .crumb:hover{color:var(--ink);border-color:var(--jade)}
+  .hero{display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;padding:24px 0 6px}
+  .de{font-size:.62rem;letter-spacing:4px;font-style:italic;color:var(--faint);text-transform:uppercase;margin-top:6px}
+  h1{font-size:clamp(1.7rem,5.2vw,2.6rem);letter-spacing:3px;color:#d7f2d3;text-shadow:0 0 26px rgba(120,200,110,0.28);margin:6px 0 2px}
+  .lede{max-width:58ch;margin:12px auto 0;font-size:.82rem;line-height:1.7;color:var(--muted)}
+  .lede b{color:var(--ink);font-weight:normal}
+  .sect{margin-top:34px}
+  .sect h2{font-size:.6rem;letter-spacing:3px;text-transform:uppercase;color:var(--jade);margin-bottom:16px;display:flex;align-items:center;gap:12px}
+  .sect h2::after{content:"";flex:1;height:1px;background:var(--line)}
+  .courses{display:grid;grid-template-columns:1fr;gap:14px}
+  @media(min-width:660px){.courses{grid-template-columns:1fr 1fr}}
+  a.course{text-decoration:none;color:inherit}
+  .course{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:16px 18px;
+    display:flex;gap:14px;align-items:flex-start;transition:transform .3s ease,border-color .3s ease,background .3s ease}
+  .course.live{cursor:pointer}
+  .course.live:hover{transform:translateY(-3px);border-color:rgba(120,190,120,0.42);background:rgba(18,32,20,0.6)}
+  .course.soon{opacity:.62}
+  .emblem{width:44px;height:44px;flex:0 0 44px;margin-top:2px}
+  .c-body{display:flex;flex-direction:column;gap:4px;min-width:0}
+  .c-num{font-size:.5rem;letter-spacing:2px;color:var(--faint)}
+  .c-name{font-size:.85rem;letter-spacing:1px;color:var(--ink)}
+  .c-desc{font-size:.72rem;line-height:1.6;color:var(--muted)}
+  .course .go{margin-left:auto;align-self:center;color:var(--jade);font-size:1rem;opacity:.7;transition:.3s}
+  a.course.live:hover .go{opacity:1;transform:translateX(3px)}
+  .soon-tag{font-size:.5rem;letter-spacing:2px;text-transform:uppercase;color:var(--faint);border:1px solid var(--line);border-radius:8px;padding:2px 7px;white-space:nowrap}
+  .c-name .soon-tag{margin-left:8px;vertical-align:middle}
+  .lead{max-width:62ch;margin:-4px 0 16px;font-size:.72rem;line-height:1.65;color:var(--muted)}
+  .lead b{color:var(--ink)}
+  .grp{font-size:.54rem;letter-spacing:2px;text-transform:uppercase;color:var(--faint);margin:20px 0 10px}
+  .tiles{display:grid;grid-template-columns:1fr;gap:11px}
+  @media(min-width:560px){.tiles{grid-template-columns:1fr 1fr}}
+  @media(min-width:860px){.tiles{grid-template-columns:1fr 1fr 1fr}}
+  .tile{display:flex;align-items:center;gap:13px;border:1px solid var(--line);border-radius:11px;background:var(--panel);
+    padding:13px 15px;text-decoration:none;color:var(--ink);transition:transform .25s ease,border-color .25s ease,background .25s ease}
+  .tile:hover{transform:translateY(-2px);border-color:rgba(120,190,120,0.5);background:rgba(18,32,20,0.6)}
+  .gly{width:32px;height:32px;flex:0 0 32px}
+  .t-body{display:flex;flex-direction:column;gap:2px;min-width:0}
+  .t-name{font-size:.8rem;letter-spacing:.5px;color:var(--ink)}
+  .t-sub{font-size:.6rem;letter-spacing:.5px;color:var(--faint)}
+  .tile .go{margin-left:auto;color:var(--jade);font-size:.85rem;opacity:.7;transition:.3s}
+  .tile:hover .go{opacity:1;transform:translateX(3px)}
+  .foot{margin-top:40px;padding-top:14px;border-top:1px solid var(--line);font-size:.54rem;letter-spacing:2px;
+    text-transform:uppercase;color:var(--faint);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+  .foot a{color:var(--muted);text-decoration:none}.foot a:hover{color:var(--jade)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/" class="crumb">◄ your archives</a></div>
+
+  <div class="hero">
+    <svg width="90" height="96" viewBox="-70 -60 140 150" xmlns="http://www.w3.org/2000/svg" aria-label="Akasha Academy" style="filter:drop-shadow(0 0 24px rgba(120,200,110,.16))">
+      <defs>
+        <linearGradient id="a-stone" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="rgba(234,236,246,.96)"/><stop offset="100%" stop-color="rgba(158,166,190,.9)"/></linearGradient>
+        <radialGradient id="a-tree" cx="50%" cy="45%" r="62%"><stop offset="0%" stop-color="rgba(255,246,205,.98)"/><stop offset="45%" stop-color="rgba(180,220,120,.72)"/><stop offset="100%" stop-color="rgba(40,110,45,0)"/></radialGradient>
+      </defs>
+      <path d="M-34,-10 L0,-40 L34,-10 Z" fill="url(#a-stone)" stroke="rgba(205,210,235,.65)" stroke-width="1"/>
+      <g fill="url(#a-stone)" stroke="rgba(205,210,235,.55)" stroke-width=".6">
+        <rect x="-27" y="-6" width="6" height="60" rx="1"/><rect x="-10" y="-6" width="6" height="60" rx="1"/>
+        <rect x="4" y="-6" width="6" height="60" rx="1"/><rect x="21" y="-6" width="6" height="60" rx="1"/>
+      </g>
+      <rect x="-31" y="-10" width="62" height="5" rx="1" fill="url(#a-stone)"/><rect x="-33" y="54" width="66" height="6" rx="1" fill="url(#a-stone)"/>
+      <circle cx="0" cy="-23" r="8" fill="url(#a-tree)"/><circle cx="0" cy="-22" r="2" fill="rgba(255,248,215,.98)"/>
+    </svg>
+    <div class="de">Akademie · lerne Akasha</div>
+    <h1>Akasha Academy</h1>
+    <p class="lede">Learn how to use Akasha — <b>hands-on</b>. Try things in the Playground, then work through
+      the Code Course: the cookbook, the documentation, and worked example apps.</p>
+  </div>
+
+  <!-- the two courses -->
+  <section class="sect">
+    <h2>The courses</h2>
+    <div class="courses">
+
+      <a href="#code" class="course live">
+        <svg class="emblem" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M14,12 L7,20 L14,28 M26,12 L33,20 L26,28" fill="none" stroke="rgba(255,215,140,.9)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <line x1="22.5" y1="10" x2="17.5" y2="30" stroke="rgba(150,215,150,.9)" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <div class="c-body">
+          <span class="c-num">01 · learn Akasha</span>
+          <div class="c-name">Akasha Code Course</div>
+          <div class="c-desc">Speak to Akasha in CSL — with the cookbook, the docs, and worked example apps to learn from.</div>
+        </div>
+        <span class="go" aria-hidden="true">↓</span>
+      </a>
+
+      <div class="course soon">
+        <svg class="emblem" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <line x1="12" y1="14" x2="28" y2="12" stroke="rgba(150,215,150,.6)" stroke-width="1.4"/>
+          <line x1="28" y1="12" x2="21" y2="29" stroke="rgba(150,215,150,.6)" stroke-width="1.4"/>
+          <line x1="12" y1="14" x2="21" y2="29" stroke="rgba(150,215,150,.6)" stroke-width="1.4"/>
+          <circle cx="12" cy="14" r="3.4" fill="rgba(150,215,150,.95)"/><circle cx="28" cy="12" r="3.4" fill="rgba(255,215,140,.95)"/><circle cx="21" cy="29" r="3.4" fill="rgba(150,215,150,.95)"/>
+        </svg>
+        <div class="c-body">
+          <span class="c-num">02 · sandbox</span>
+          <div class="c-name">Akasha Playground <span class="soon-tag">soon</span></div>
+          <div class="c-desc">A free sandbox for the graph — try things, break things, watch meaning take shape.</div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Akasha Code Course — cookbook + docs + example apps -->
+  <section class="sect" id="code">
+    <h2>Akasha Code Course</h2>
+    <p class="lead">Everything to learn Akasha, in one place: read the <b>cookbook</b>, browse the
+      <b>documentation</b>, and open the worked <b>example apps</b> to see concept models in action.</p>
+
+    <div class="grp">Read</div>
+    <div class="tiles">
+      <a href="/cookbook/" class="tile">
+        <svg class="gly" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 8 C12 5 6 6 6 6 L6 25 C6 25 12 24 16 27 Z" fill="rgba(150,215,150,.14)" stroke="rgba(150,215,150,.9)" stroke-width="1.3"/><path d="M16 8 C20 5 26 6 26 6 L26 25 C26 25 20 24 16 27 Z" fill="rgba(255,215,140,.12)" stroke="rgba(255,215,140,.9)" stroke-width="1.3"/></svg>
+        <div class="t-body"><div class="t-name">Cookbook</div><div class="t-sub">working examples · first steps → CSL</div></div><span class="go">→</span>
+      </a>
+      <a href="/docs/" class="tile">
+        <svg class="gly" viewBox="0 0 32 32" aria-hidden="true"><rect x="8" y="5" width="16" height="22" rx="1.5" fill="rgba(143,214,255,.1)" stroke="rgba(150,215,150,.9)" stroke-width="1.3"/><path d="M11 11h10M11 15h10M11 19h7" stroke="rgba(255,215,140,.8)" stroke-width="1.2"/></svg>
+        <div class="t-body"><div class="t-name">Documentation</div><div class="t-sub">quick start · manuals · specs</div></div><span class="go">→</span>
+      </a>
+    </div>
+
+    <div class="grp">Example apps</div>
+    <div class="tiles">
+      <a href="/note/" class="tile">
+        <svg class="gly" viewBox="0 0 32 32" aria-hidden="true"><rect x="8" y="6" width="16" height="20" rx="2" fill="none" stroke="rgba(150,215,150,.85)" stroke-width="1.3"/><path d="M11 12h10M11 16h10M11 20h6" stroke="rgba(200,230,200,.6)" stroke-width="1.1"/></svg>
+        <div class="t-body"><div class="t-name">Notes</div><div class="t-sub">atoms &amp; links, note-taking</div></div><span class="go">→</span>
+      </a>
+      <a href="/loom/" class="tile">
+        <svg class="gly" viewBox="0 0 32 32" aria-hidden="true"><path d="M7 9h18M7 16h18M7 23h18" stroke="rgba(255,215,140,.85)" stroke-width="1.3"/><path d="M11 6v20M21 6v20" stroke="rgba(150,215,150,.7)" stroke-width="1.1"/></svg>
+        <div class="t-body"><div class="t-name">Loom</div><div class="t-sub">a writing atelier</div></div><span class="go">→</span>
+      </a>
+      <a href="/fieldnote/" class="tile">
+        <svg class="gly" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 6 C10 10 10 18 16 26 C22 18 22 10 16 6 Z" fill="rgba(150,215,150,.12)" stroke="rgba(150,215,150,.85)" stroke-width="1.3"/><line x1="16" y1="8" x2="16" y2="24" stroke="rgba(200,230,200,.6)" stroke-width="1"/></svg>
+        <div class="t-body"><div class="t-name">FieldNote</div><div class="t-sub">observations into the graph</div></div><span class="go">→</span>
+      </a>
+      <a href="/recipe/" class="tile">
+        <svg class="gly" viewBox="0 0 32 32" aria-hidden="true"><path d="M13 6 v7 l-4 10 q-1 3 3 3 h8 q4 0 3-3 l-4-10 v-7 Z" fill="rgba(255,215,140,.12)" stroke="rgba(150,215,150,.85)" stroke-width="1.3" stroke-linejoin="round"/><line x1="12" y1="6" x2="20" y2="6" stroke="rgba(255,215,140,.9)" stroke-width="1.4"/></svg>
+        <div class="t-body"><div class="t-name">Recipe</div><div class="t-sub">the food concept model</div></div><span class="go">→</span>
+      </a>
+      <a href="/sidestory/" class="tile">
+        <svg class="gly" viewBox="0 0 32 32" aria-hidden="true"><rect x="7" y="8" width="12" height="16" rx="1.5" fill="none" stroke="rgba(150,215,150,.85)" stroke-width="1.3"/><rect x="15" y="11" width="10" height="14" rx="1.5" fill="rgba(255,215,140,.1)" stroke="rgba(255,215,140,.8)" stroke-width="1.2"/></svg>
+        <div class="t-body"><div class="t-name">Side Story</div><div class="t-sub">branching narrative</div></div><span class="go">→</span>
+      </a>
+      <a href="/readme/" class="tile">
+        <svg class="gly" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="11" fill="none" stroke="rgba(150,215,150,.85)" stroke-width="1.3"/><path d="M16 11v.5M16 15v6" stroke="rgba(255,215,140,.9)" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <div class="t-body"><div class="t-name">Readme</div><div class="t-sub">start here · what Akasha is</div></div><span class="go">→</span>
+      </a>
+    </div>
+  </section>
+
+  <div class="foot">
+    <span>Akasha Academy · learn by doing</span>
+    <span>concepts → understanding · <a href="https://github.com/henrigrohmann/AkashicTree" target="_blank" rel="noopener">AKASHA</a></span>
+  </div>
+</div>
+</body>
+</html>

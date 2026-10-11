@@ -41,10 +41,59 @@ S_SRC     = "pulse:src:"     # pulse:src:<referrer>        — acquisition bucke
 S_VISIT   = "visit:"         # visit:<visit_id>            — events in one visit
 S_SUMDAY  = "pulse:sumday:"  # pulse:sumday:<YYYY-MM-DD>   — a compacted day's summary atom
 S_SUMSET  = "pulse:summaries" # all daily summary atoms (post-compaction index)
+S_DAYS    = "pulse:days"     # A54 — the days that HAVE raw events (member = a daymark atom), maintained
+S_DAYMARK = "pulse:daymark:" #        at emit so pulse.compact iterates O(days-with-events), not 400 days
+_MIGRATED = "pulse:days:migrated"  # one-time backfill sentinel atom (pre-A54 raw days → S_DAYS)
+
+# Per-process cache of the days already marked in S_DAYS, so emit adds a daymark at most ONCE per day
+# per writer (the mint is content-addressed + the set-add idempotent, but this skips even the lookup).
+_MARKED_DAYS: set = set()
 
 ANALYTICS_SCOPE = "scope:analytics"
 PROVENANCE      = "analytics"
 _SECS_PER_DAY   = 86400
+
+# F44-A1.1 / F47-S1 — process-lifetime counters, read by the writer's health heartbeat so the
+# per-minute log names pulse capture's TRUE state. `emits`/`bulk` count SUCCESSFUL op runs; `seen`/
+# `rejected` are stamped at the kernel dispatch choke point for EVERY pulse.emit(_bulk) that reaches
+# the writer — so the Health line finally distinguishes the two failure worlds the S1 log left open:
+#   seen=0                       → the portal is not forwarding emits at all (beacon/tap/config).
+#   seen>0, emits=0, rejected≈seen → emits ARRIVE but are rejected (the F16 socket-elevation clamp).
+#   emits>0                      → capture works; the READ/stats path was the undercount.
+# Plain int ++ is effectively atomic under the GIL; no lock needed for a diagnostic counter.
+_EMIT_COUNTERS = {"emits": 0, "bulk": 0, "seen": 0, "rejected": 0, "miss": 0}
+
+# F51 (Cause B) — a view of a NONEXISTENT concept is not a pipeline failure: it is internet noise
+# plus a real curation signal (what visitors looked for and did NOT find). It is a counted MISS, not
+# a rejected emit — so `rejected` means STRUCTURAL failure only and `rej>0` is always actionable.
+# The last few distinct missed names live in a tiny module-level ring (names only, truncated, NO
+# store writes / NO atoms — memory-discipline R5: machine noise never becomes a permanent record).
+_MISS_RING_MAX = 20
+_MISS_RING: List[str] = []
+
+
+def _note_miss(concept: Any) -> None:
+    name = str(concept or "")[:160]
+    if not name:
+        return
+    if name in _MISS_RING:
+        _MISS_RING.remove(name)
+    _MISS_RING.append(name)
+    if len(_MISS_RING) > _MISS_RING_MAX:
+        del _MISS_RING[0:len(_MISS_RING) - _MISS_RING_MAX]
+
+
+def emit_counters():
+    """Snapshot of the process-lifetime pulse counters (for the health heartbeat)."""
+    return dict(_EMIT_COUNTERS)
+
+
+def note_dispatch(ok: bool) -> None:
+    """Stamped by the kernel for every pulse.emit(_bulk) dispatch that reaches the writer, BEFORE the
+    concept op (so a -32001 auth/elevation clamp is counted even though op_emit never runs)."""
+    _EMIT_COUNTERS["seen"] += 1
+    if not ok:
+        _EMIT_COUNTERS["rejected"] += 1
 # Roll-up walks these incoming relations to find a concept's descendants (sub-notions, members
 # of a field / world). Both are traversed both ways by the graph, so this IS the mutual reference.
 _ROLLUP_RELS    = ("sys:part_of", "sys:is_a")
@@ -58,10 +107,10 @@ class PulseConcept(BaseConcept):
     CONCEPT_LABEL  = "access analytics — concept-level traffic over the archives (admin/telemetry)"
 
     # sys.telemetry → Capability.TELEMETRY (admin only): the reads are private operational data.
-    _TEL = "sys.telemetry"
+    _TEL = "read"
 
     CONCEPT_METHODS = {
-        "emit":        {"op": "op_emit", "action": "write",
+        "emit":        {"op": "op_emit", "action": "record",
                         "desc": ("Record one access as a concept-linked event atom (the beacon "
                                  "writer; never a guest): pulse.emit concept=<alias|key> "
                                  "[surface=] [ref=] [visit=] [prev=] [geo=] [ua=]")},
@@ -85,10 +134,21 @@ class PulseConcept(BaseConcept):
                                  "pulse.gap [window=30d] [limit=20]")},
         "narrate":     {"op": "op_narrate", "action": _TEL, "cli": "pulse.narrate", "args": [],
                         "desc": "Plain-language summary of the window's attention: pulse.narrate [window=7d]"},
-        "compact":     {"op": "op_compact", "action": "write", "cli": "pulse.compact", "args": [],
+        "compact":     {"op": "op_compact", "action": "record", "cli": "pulse.compact", "args": [],
                         "desc": ("Roll day-old raw events into per-day summary atoms and soft-evict "
                                  "the raw events (bounds growth; keeps daily counts forever): "
                                  "pulse.compact [keep=2]")},
+        "repair":      {"op": "op_repair", "action": "record", "cli": "pulse.repair", "args": [],
+                        "desc": ("One-off: remove dangling memberships left in the pulse index sets by "
+                                 "pre-C2 compaction (idempotent; bounded): pulse.repair [limit=50000]")},
+        "emit_bulk":   {"op": "op_emit_bulk", "action": "record",
+                        "desc": ("Record a BATCH of pre-aggregated bot hits as ONE summary atom (the "
+                                 "recorder flushes bots hourly here; never a guest): "
+                                 "pulse.emit_bulk records=[{day,concept,surface,ref,count}]")},
+        "stats":       {"op": "op_stats", "action": _TEL, "cli": "pulse.stats", "args": [],
+                        "desc": ("Process-lifetime pulse counters (seen/emit/bulk/miss/rejected) + the "
+                                 "recent MISS ring — 'what are people looking for that we don't have': "
+                                 "pulse.stats")},
     }
 
     # ── time / window helpers ────────────────────────────────────────────────────
@@ -242,6 +302,20 @@ class PulseConcept(BaseConcept):
         nuc = getattr(self.cortex, "_nucleus", None)
         return (nuc.core if nuc is not None else self.cortex.core)
 
+    def _ensure_daymark(self, core, day: str, author: str) -> None:
+        """A54 — record that `day` has raw events, so pulse.compact iterates only the days that exist.
+        One content-addressed marker atom per day, added to the S_DAYS collection; per-process cached so
+        an emit pays the mint at most once per day per writer (idempotent thereafter)."""
+        if day in _MARKED_DAYS:
+            return
+        try:
+            mk = self._put_event(core, "[pulse:daymark] %s" % day,
+                                  {"role": "pulse:daymark", "provenance": PROVENANCE, "day": day}, author)
+            core.add_to_collection(S_DAYS, mk)
+            _MARKED_DAYS.add(day)
+        except Exception:
+            pass
+
     def _put_event(self, core, content: str, meta: dict, author: str) -> str:
         key = __import__("hashlib").sha256(content.encode("utf-8")).hexdigest()
         core.put_chunk_raw(key, content, json.dumps(meta, ensure_ascii=False), author,
@@ -264,7 +338,14 @@ class PulseConcept(BaseConcept):
         No PII is accepted or stored."""
         ckey = self._resolve(concept)
         if not ckey:
-            raise ValueError("pulse.emit: `concept` must resolve to an atom (alias or key).")
+            # F51 (Cause B): a miss is a FACT, not an error — a visitor looked for a concept that
+            # doesn't exist (a junk crawler slug, or a real "we don't have this" curation signal).
+            # Count it, remember the name in the bounded ring, and return a NON-error result so
+            # note_dispatch(ok=True) fires — `rejected` then counts only genuine structural refusals.
+            _EMIT_COUNTERS["miss"] += 1
+            _note_miss(concept)
+            return {"type": "pulse:emit", "recorded": False, "miss": True,
+                    "concept": str(concept)[:160]}
         calias = self._alias(ckey)
         ts = self._now()
         day = self._day_str(ts)
@@ -299,8 +380,68 @@ class PulseConcept(BaseConcept):
                 core.add_to_collection(s, ekey)
             except Exception:
                 pass
+        self._ensure_daymark(core, day, author)          # A54 — the day now has raw events
+        _EMIT_COUNTERS["emits"] += 1
         return {"type": "pulse:emit", "recorded": True, "event": ekey,
                 "concept": calias, "surface": surface, "day": day}
+
+    def op_stats(self) -> Dict[str, Any]:
+        """[pulse.stats] Process-lifetime pulse counters + the recent MISS ring. `rejected` is
+        STRUCTURAL failure only (target 0); `miss` is junk/curation signal (any value fine); `bulk`
+        is the bot hourly-flush count. The miss ring answers 'what are people looking for that we
+        don't have' in one command (names only, bounded, never a stored record)."""
+        c = emit_counters()
+        return {"type": "pulse:stats", "counters": c,
+                "seen": c.get("seen", 0), "emit": c.get("emits", 0), "bulk": c.get("bulk", 0),
+                "miss": c.get("miss", 0), "rejected": c.get("rejected", 0),
+                "recent_misses": list(reversed(_MISS_RING)), "miss_ring_size": len(_MISS_RING)}
+
+    def op_emit_bulk(self, records: Any = None) -> Dict[str, Any]:
+        """[pulse.emit_bulk] Record a batch of PRE-AGGREGATED bot hits as ONE immutable summary atom
+        per flush (C4/F44) — so a crawl storm costs a handful of atoms per day, not one per hit. Each
+        record is {day, concept, surface, ref, count}; they are folded into a single
+        `pulse:botsum` atom (added to `pulse:botsum:<day>` + `pulse:botsummaries`), and the per-concept
+        day counts roll straight into `pulse:concept:<ckey>`-style aggregate meta so bot demand is
+        preserved without a per-hit atom. Write-gated; the recorder calls it under system.librarian."""
+        if not isinstance(records, list) or not records:
+            return {"type": "pulse:emit_bulk", "recorded": 0, "note": "no records"}
+        core = self._wcore()
+        author = getattr(self.session, "client_id", "system")
+        ts = self._now()
+        # Group by day; each day → one summary atom holding {concept_alias: {ref: count}} + totals.
+        by_day: Dict[str, Dict[str, Any]] = {}
+        for rec in records:
+            if not isinstance(rec, dict):
+                continue
+            day = str(rec.get("day") or self._day_str(ts))[:10]
+            concept = str(rec.get("concept") or "")[:160]
+            ref = str(rec.get("ref") or "direct")[:64]
+            try:
+                cnt = max(0, int(rec.get("count") or 0))
+            except (TypeError, ValueError):
+                cnt = 0
+            if not concept or cnt == 0:
+                continue
+            d = by_day.setdefault(day, {"concepts": {}, "srcs": {}, "hits": 0})
+            d["concepts"][concept] = d["concepts"].get(concept, 0) + cnt
+            d["srcs"][ref] = d["srcs"].get(ref, 0) + cnt
+            d["hits"] += cnt
+        written = 0
+        for day, d in by_day.items():
+            meta = {"role": "pulse:botsummary", "provenance": PROVENANCE, "type": "pulse:botsummary",
+                    "day": day, "ts": ts, "hits": d["hits"],
+                    "concepts": d["concepts"], "srcs": d["srcs"]}
+            content = f"[pulse:botsummary] {day} bot_hits={d['hits']} concepts={len(d['concepts'])}"
+            sk = self._put_event(core, content, meta, author)
+            for s in ("pulse:botsummaries", "pulse:botsum:" + day):
+                try:
+                    core.add_to_collection(s, sk)
+                except Exception:
+                    pass
+            written += 1
+        _EMIT_COUNTERS["bulk"] += written
+        return {"type": "pulse:emit_bulk", "recorded": written,
+                "days": sorted(by_day), "bot_hits": sum(d["hits"] for d in by_day.values())}
 
     # ── READ / AGGREGATION / ANALYSIS (admin-only) ────────────────────────────────
     def op_overview(self, window: Any = "7d") -> Dict[str, Any]:
@@ -523,20 +664,44 @@ class PulseConcept(BaseConcept):
         author = getattr(self.session, "client_id", "system")
         now = self._now()
         compacted, evicted = [], 0
-        # Scan a generous back-window (older than keep, up to ~1 year) for un-summarised days.
-        for i in range(keep + 1, 400):
-            day = self._day_str(now - i * _SECS_PER_DAY)
+        # A54 — iterate the days that HAVE raw events (S_DAYS), NOT a blind 397-day back-scan: with
+        # nothing to compact the old loop still did 800 collection materialisations (75 s / +450 MB
+        # transient). A one-time migration seeds S_DAYS from any pre-A54 raw days; the already-summarised
+        # skip is a cheap `collection_exists`, not a member load.
+        self._migrate_days_once(core, author)
+        cutoff = self._day_str(now - keep * _SECS_PER_DAY)   # days strictly OLDER than the keep window
+        _daymark_of = {}
+        for mk in list(self._members(S_DAYS)):
+            _d = (self._meta(mk) or {}).get("day")
+            if _d:
+                _daymark_of[_d] = mk
+
+        def _drop_daymark(_d):
+            mk = _daymark_of.get(_d)
+            if not mk:
+                return
+            try:
+                core.remove_from_collection(S_DAYS, mk)
+                core.drop_chunk(mk)
+            except Exception:
+                pass
+            _MARKED_DAYS.discard(_d)
+
+        for day in sorted(_daymark_of):
+            if day >= cutoff:
+                continue                         # inside the keep window — leave it raw (+ its marker)
             raw = self._members(S_DAY + day)
             if not raw:
-                continue
-            if self._members(S_SUMDAY + day):   # already summarised → idempotent skip
-                continue
+                _drop_daymark(day); continue     # nothing to compact — retire the stale marker
+            if core.collection_exists(S_SUMDAY + day):   # already summarised → idempotent skip
+                _drop_daymark(day); continue
             concepts: Dict[str, int] = {}
             aliases: Dict[str, str] = {}
             srcs: Dict[str, int] = {}
             surfaces: Dict[str, int] = {}
             visits = set()
             hits = human = 0
+            _evict_rows = []                # (ek, ck, ref, visit) — every set this emit joined (C2)
             for ek in raw:
                 m = self._meta(ek)
                 if m.get("provenance") != PROVENANCE:
@@ -547,11 +712,13 @@ class PulseConcept(BaseConcept):
                     aliases.setdefault(ck, m.get("concept_alias") or ck)
                 r = m.get("ref") or "direct"; srcs[r] = srcs.get(r, 0) + 1
                 s = m.get("surface") or ""; surfaces[s] = surfaces.get(s, 0) + 1
-                if m.get("visit"):
-                    visits.add(m.get("visit"))
+                _visit = m.get("visit") or ""
+                if _visit:
+                    visits.add(_visit)
                 hits += 1
                 if m.get("ua") != "bot":
                     human += 1
+                _evict_rows.append((ek, ck, r, _visit))
             summary = {
                 "role": "pulse:summary", "provenance": PROVENANCE, "type": "pulse:summary",
                 "day": day, "hits": hits, "human": human, "visits": len(visits),
@@ -564,15 +731,115 @@ class PulseConcept(BaseConcept):
                     core.add_to_collection(s, sk)
                 except Exception:
                     pass
-            # Soft-evict the raw layer: clear the day-set + drop the raw event atoms.
-            for ek in raw:
+            # Soft-evict the raw layer: drop the raw event atom AND remove it from EVERY set the emit
+            # added it to (C2 — S_DAY, S_CONCEPT+ck, S_SRC+ref, S_VISIT+visit). Leaving those
+            # memberships behind left dangling references to dropped atoms that accumulate forever in
+            # the RAM index — a slow leak that compaction was supposed to reclaim. Links hang off the
+            # dropped atom and go with it.
+            for ek, ck, r, _visit in _evict_rows:
                 try:
                     core.remove_from_collection(S_DAY + day, ek)
+                    if ck:
+                        core.remove_from_collection(S_CONCEPT + ck, ek)
+                    core.remove_from_collection(S_SRC + r, ek)
+                    if _visit:
+                        core.remove_from_collection(S_VISIT + _visit, ek)
                     core.drop_chunk(ek)
                     evicted += 1
                 except Exception:
                     pass
             compacted.append({"day": day, "hits": hits, "concepts": len(concepts)})
+            _drop_daymark(day)                   # A54 — the day is compacted; its marker is retired
         return {"type": "pulse:compact", "keep_days": keep,
                 "days_compacted": len(compacted), "events_evicted": evicted,
                 "summaries": compacted}
+
+    def _migrate_days_once(self, core, author: str) -> None:
+        """A54 — one-time backfill: a store written before S_DAYS existed has raw `pulse:day:<d>`
+        collections that no daymark points at. Seed S_DAYS from them ONCE (bounded by the number of
+        distinct collections, in Python — no server-side LIKE), behind a durable sentinel atom so the
+        scan never repeats. Steady state (post-migration) never touches this path."""
+        try:
+            sentinel = __import__("hashlib").sha256(_MIGRATED.encode("utf-8")).hexdigest()
+            if core.get_chunk_raw(sentinel) is not None:
+                return                           # already migrated
+        except Exception:
+            return
+        try:
+            names = core.get_distinct_collection_names() or []
+        except Exception:
+            names = []
+        seeded = 0
+        for nm in names:
+            if not nm.startswith(S_DAY):
+                continue
+            day = nm[len(S_DAY):]
+            if day and day not in _MARKED_DAYS:
+                try:
+                    mk = self._put_event(core, "[pulse:daymark] %s" % day,
+                                         {"role": "pulse:daymark", "provenance": PROVENANCE, "day": day},
+                                         author)
+                    core.add_to_collection(S_DAYS, mk)
+                    _MARKED_DAYS.add(day)
+                    seeded += 1
+                except Exception:
+                    pass
+        try:
+            core.put_chunk_raw(sentinel, _MIGRATED, json.dumps({"role": "pulse:migrated"}), author,
+                               "verified", self._now())
+        except Exception:
+            pass
+        if seeded:
+            logger.info("[pulse.compact] migrated %d pre-existing raw days into %s", seeded, S_DAYS)
+
+    def op_repair(self, limit: Any = 50000) -> Dict[str, Any]:
+        """[pulse.repair] One-off hygiene (F48 2.2 residue): remove DANGLING memberships left in the
+        pulse index sets (`pulse:day:*`, `pulse:concept:*`, `pulse:src:*`, `pulse:visit:*`) by pre-C2
+        compaction — members that point at raw event atoms already dropped, a standing RAM-index leak
+        from history. Current op_compact evicts fully (C2), so this is a backfill for old days.
+        Idempotent: a second run removes 0. Writer-side + BOUNDED (a hard per-run cap on memberships
+        checked, `truncated` flagged; memory-discipline R1 — never an unbounded walk in one gulp).
+        Admin/write-gated."""
+        cap = self._intf(limit, 50000, 1000, 1000000)
+        core = self._wcore()
+        try:
+            all_names = core.get_distinct_collection_names() or []
+        except Exception:
+            all_names = []
+        pfx = (S_DAY, S_CONCEPT, S_SRC, S_VISIT)
+        names = [n for n in all_names if n.startswith(pfx)]
+        sets_checked = members_checked = dangling = empties = 0
+        truncated = False
+        for name in names:
+            if members_checked >= cap:
+                truncated = True
+                break
+            sets_checked += 1
+            remaining = 0
+            for k in list(core.get_collection_members(name) or []):
+                if members_checked >= cap:
+                    truncated = True
+                    break
+                members_checked += 1
+                try:
+                    exists = core.get_chunk_raw(k) is not None
+                except Exception:
+                    exists = True                    # on a read error keep the membership (conservative)
+                if exists:
+                    remaining += 1
+                    continue
+                try:
+                    core.remove_from_collection(name, k)
+                    dangling += 1
+                except Exception:
+                    pass
+            if remaining == 0 and not truncated:     # a now-empty index set may be dropped
+                try:
+                    core.clear_collection(name)
+                    empties += 1
+                except Exception:
+                    pass
+        logger.info("[pulse.repair] sets=%d members_checked=%d dangling_removed=%d empty_sets=%d "
+                    "truncated=%s", sets_checked, members_checked, dangling, empties, truncated)
+        return {"type": "pulse:repair", "sets": sets_checked, "members_checked": members_checked,
+                "dangling_removed": dangling, "empty_sets_dropped": empties, "truncated": truncated}

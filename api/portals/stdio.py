@@ -126,6 +126,24 @@ def _genesis_rite(gw) -> Optional[Tuple[str, str]]:
     return user_name, user_name, "admin"
 
 
+def _auth_local(gw) -> Optional[Tuple[str, str, str]]:
+    """Passwordless admin login on the local console (TRUST_LOCAL — the OS process
+    boundary is the gate). Returns (user_id, session_token, role), or None to fall
+    back to the passphrase gate (e.g. an older daemon without the auth.local method,
+    or a cell with no admin yet)."""
+    try:
+        resp = gw.dispatch({
+            "jsonrpc": "2.0", "method": "kernel.auth.local",
+            "params": {"data": {}}, "id": "auth-local",
+        })
+    except Exception:
+        return None
+    if not isinstance(resp, dict) or "error" in resp or "result" not in resp:
+        return None
+    r = resp["result"]
+    return r["user_id"], r["session_token"], r.get("role", "user")
+
+
 def _auth_gate(gw, akasha_name: str) -> Optional[Tuple[str, str]]:
     """Login flow. Returns (user_id, session_token, role) or None."""
     print(c(Colors.CYAN, f"\n[ {akasha_name} ]\n"))
@@ -302,11 +320,9 @@ def _print_collision_report(session_token: str, gw) -> None:
 
 
 def _get_ontology_files() -> List[str]:
-    ont_dir = os.path.join(_project_root, "ontology")
-    if not os.path.exists(ont_dir):
-        return []
+    from lib.akasha.ontology.loader import ontology_roots
     files = []
-    for root, _, names in os.walk(ont_dir):
+    for root, _, names in (w for r in ontology_roots() for w in os.walk(r)):
         for n in sorted(names):
             if n.endswith(".ak"):
                 files.append(os.path.join(root, n))
@@ -314,11 +330,9 @@ def _get_ontology_files() -> List[str]:
 
 
 def _get_ontology_csl_files() -> List[str]:
-    ont_dir = os.path.join(_project_root, "ontology")
-    if not os.path.exists(ont_dir):
-        return []
+    from lib.akasha.ontology.loader import ontology_roots
     files = []
-    for root, _, names in os.walk(ont_dir):
+    for root, _, names in (w for r in ontology_roots() for w in os.walk(r)):
         for n in sorted(names):
             if n.endswith(".csl"):
                 files.append(os.path.join(root, n))
@@ -495,13 +509,20 @@ def _units_as_rows(base_dir):
         uptime = int(_t.time() - started) if started else None
         if u.get("kind") == _sv.KIND_JOB:
             state = u.get("state", "?")
-            status = {"running": "Active", "complete": "Done", "starting": "Active"}.get(state, "Dead")
+            # F57 §3 — a unit deliberately kept alive after its work (a resident watcher) renders as
+            # `Resident`, never `Active`/`running` (which reads as "still doing the load"). onto-load's
+            # watcher exits on completion (→ Done); the mapping is here so a resident state is truthful.
+            status = {"running": "Active", "complete": "Done", "starting": "Active",
+                      "resident": "Resident"}.get(state, "Dead")
             if status == "Active" and not _cell_live:
                 status = "Stale"        # owning daemon is gone — the job is not really running
             det = u.get("detail") or {}
             engine = "job"
+            # F27-1 — uptime is only meaningful while the job is actually running. For a Done/Stale
+            # job, started_at is the start of a run that has ended (and may be from a prior boot),
+            # so an "uptime" derived from it is a meaningless weeks-long number — show "—" instead.
             row = {"name": u["id"], "status": status, "engine": engine,
-                   "uptime_sec": uptime, "pid": None,
+                   "uptime_sec": uptime if status == "Active" else None, "pid": None,
                    "host": "", "port": 0}
             if det.get("packs_present") is not None:
                 row["name"] = f"{u['id']} ({det.get('packs_loaded')}/{det.get('packs_present')} packs)"
@@ -513,7 +534,14 @@ def _units_as_rows(base_dir):
             # svc.ls show "Active PID=… uptime 17s" for a pid that no longer existed, costing a
             # false two-writer diagnosis). Live pid → Active + real uptime; dead pid → Stale + "—".
             _live = u.get("live")
-            rows.append({"name": u["id"], "status": "Active" if _live else "Stale (pid gone)",
+            # A20(c) — a live unit whose health probe reports standby (the station standing by with
+            # nothing to air for > 3 intervals) reads `Standby (<reason>)`, not a misleading `Active`.
+            _h = u.get("health") or {}
+            if _live and _h.get("standby"):
+                _status = "Standby (%s)" % (_h.get("standby_reason") or "idle")
+            else:
+                _status = "Active" if _live else "Stale (pid gone)"
+            rows.append({"name": u["id"], "status": _status,
                          "engine": u.get("engine", "?"),
                          "uptime_sec": uptime if _live else None,
                          "pid": u.get("pid"), "host": u.get("host", ""),
@@ -536,7 +564,7 @@ def _svc_rpc(gw, session_token, method, unit_id):
 
 
 def _handle_svc(args_str: str, user_role: str = "user", su_context: dict = None,
-                gw=None, session_token: str = ""):
+                gw=None, session_token: str = "", identity: str = ""):
     try:
         from lib.harmonia import supervisor as _sv
         parts = args_str.split()
@@ -549,10 +577,19 @@ def _handle_svc(args_str: str, user_role: str = "user", su_context: dict = None,
         def _uid(name):
             return name if name.startswith("svc:") else f"svc:{name}"
 
-        is_admin = (user_role == "admin") or (
-            su_context and su_context.get("active") and
-            su_context.get("target") in ("root", None)
-        )
+        # THE GATE, asked once for this console turn (ruling §5). `svc.start`/`stop`/`restart` are
+        # `admin` actions and the kernel refuses them there regardless; this asks the same function
+        # so the console prints the refusal instead of round-tripping to earn it — a pre-check that
+        # cannot disagree with the decision, because it IS the decision. It is asked of the
+        # console's IDENTITY — the one the kernel resolved at login (`auth.local` / `auth.verify`
+        # return it), the same identity `user.ls` is decided for — never of the session token: a
+        # token is a credential (`akt:…`, or empty on an attached console), and the gate holds no
+        # line for it, so it refused the Genesis admin (seeds 13 findings F2).
+        from lib.akasha.api import gate as _gate
+        _who = identity or ""
+        if su_context and su_context.get("active") and su_context.get("target"):
+            _who = str(su_context["target"])
+        is_admin = _gate.gate(_who, _gate.ADMIN)[0]
 
         if sub == "ls":
             from api.shell.renderer import render_svc_list
@@ -709,10 +746,29 @@ def run_cli(gw):
         print(c(Colors.FAIL, f"[!] Kernel unreachable: {ping['error']['message']}"))
         sys.exit(1)
 
-    # Auth
+    # Auth. A redeploy must NEVER look reset (public requirement): while the cell is still booting
+    # (ontology loading; the store / IAM snapshot attaching — pronounced on the native Silica twin),
+    # a transient not-initialized read is NOT a fresh install. On a cell whose data is preserved the
+    # admin becomes visible within seconds of the store attaching, so wait through the boot (showing a
+    # loading line) and only run the Genesis rite once the cell has SETTLED with genuinely no admin.
     status = _auth_status(gw)
-    auth   = (_genesis_rite(gw) if not status.get("initialized")
-              else _auth_gate(gw, status.get("akasha_name", "AKASHA")))
+    if not status.get("initialized"):
+        import time as _t
+        _waited = 0.0
+        while (not status.get("initialized")
+               and (status.get("booting") or _waited < 15.0)
+               and _waited < 45.0):
+            print(c(Colors.CYAN, f"  [*] Cell is initializing (attaching identity store)… {int(_waited)}s"))
+            _t.sleep(3.0); _waited += 3.0
+            status = _auth_status(gw)
+    # Local console = passwordless admin (the OS boundary is the gate — a redeploy on a
+    # cell whose admin already exists lands straight at the prompt, no passphrase). Falls
+    # back to the passphrase gate if the local login is unavailable; a fresh cell (no admin)
+    # still runs the genesis ceremony.
+    if not status.get("initialized"):
+        auth = _genesis_rite(gw)
+    else:
+        auth = _auth_local(gw) or _auth_gate(gw, status.get("akasha_name", "AKASHA"))
 
     if not auth:
         sys.exit(1)
@@ -742,10 +798,9 @@ def run_cli(gw):
     # the prompt gets hidden, and the session becomes unusable. Emit colour only on
     # a capable interactive TTY, and bracket the escapes for readline so even then
     # they cost zero display columns. Any of NO_COLOR / TERM=dumb / a restricted
-    # console / AKASHA_PLAIN_PROMPT forces a bulletproof plain-ASCII prompt.
+    # console forces a bulletproof plain-ASCII prompt.
     _prompt_plain = (
-        bool(os.environ.get("AKASHA_PLAIN_PROMPT"))
-        or bool(os.environ.get("NO_COLOR"))
+        bool(os.environ.get("NO_COLOR"))
         or os.environ.get("TERM") == "dumb"
         or not sys.stdout.isatty()
         or env.is_restricted_console
@@ -1176,7 +1231,8 @@ def run_cli(gw):
                     _sub = full_cmd[4:].strip()          # "svc.start x" → "start x", "svc.ls" → "ls"
                 else:
                     _sub = ""                            # bare `svc` → usage
-                _handle_svc(_sub, user_role, su_context, gw=gw, session_token=session_token)
+                _handle_svc(_sub, user_role, su_context, gw=gw, session_token=session_token,
+                            identity=user_id)
                 continue
 
             _grant_verb = full_cmd.split(" ", 1)[0]

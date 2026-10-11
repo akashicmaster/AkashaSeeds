@@ -71,14 +71,23 @@ This is why the distribution format is named *seeds*. A seed holds the complete 
 https://github.com/akashicmaster/AkashaSeeds/releases
 ```
 
-You will see filenames like:
+The file to download is:
 
 | File | Contents | For |
 |---|---|---|
-| `akasha_seeds_seeds12.py` | Kernel + browser apps (SQLite backend) | General use, independent researchers |
-| `akasha_seeds_seeds12n.py` | Same, native Silica backend twin | General use, independent researchers |
-| `akasha_seeds_thesaurus.py` | + extended vocabulary library | Libraries, research organizations |
-| `akasha_seeds_server.py` | + multi-client configuration | Programmers, institutional deployments |
+| `akasha_seeds_seeds13.py` | The kernel, the browser apps and the built-in ontology (SQLite backend) | General use, independent researchers |
+
+**This guide was written for `akasha_seeds_seeds13.py`**, and its commands were run on that build.
+The number is the release series. If a command here does not behave as described, check which seed
+you unpacked before anything else.
+
+(Libraries and research organisations that run a public thesaurus use a separate, larger line of
+seeds — `akasha_seeds_thesaurus09.py` and its native-store twin `akasha_seeds_thesaurus09n.py`. This
+guide is about the seeds line.)
+
+**Seeds 13 does not read a data directory written by seeds 12 or earlier.** Unpack it into a new,
+empty directory. To keep atoms from an older install, dump them with the old build and describe them
+again as a pack in `ontology/user/<name>/` (see *Adding Your Own Pack* near the end).
 
 Python 3.8 or later is required.
 
@@ -89,7 +98,7 @@ python3 --version
 ### Launch
 
 ```bash
-python3 akasha_seeds_seeds12.py
+python3 akasha_seeds_seeds13.py
 ```
 
 The script unpacks Akasha into the current directory and starts immediately.
@@ -108,14 +117,14 @@ Before the shell opens, Akasha checks for two optional runtime libraries and ins
 
 | Library | Purpose | Installed via |
 |---|---|---|
-| **TFLite / TensorFlow** | Neural engine — enables semantic vector similarity and advanced associative inference | `pip install tflite-runtime` (lightweight) or `tensorflow-cpu` as fallback |
+| **LiteRT** | Neural engine — image labelling and neural inference | `pip install ai-edge-litert` (with `tflite-runtime` / `tensorflow-cpu` as fallbacks) |
 | **SpaCy** | NLP engine — word decomposition, morphological analysis, language detection | `pip install spacy` |
 
 You will see output like:
 
 ```
 [+] Akasha online.
-[ML]  Installing Neural Engine (TFLite)... done.
+[ML]  Installing Neural Engine (LiteRT)... done.
 [NLP] Installing Natural Language Processing (SpaCy)... done.
 ```
 
@@ -127,9 +136,9 @@ Neither library is required for Akasha to run. If installation fails — due to 
 
 | Available | Capability |
 |---|---|
-| TFLite + SpaCy | Full semantic inference: cosine similarity, vector-based associative search, word decomposition |
-| SpaCy only | Word decomposition and morphological analysis; no neural vector similarity |
-| Neither | Text-level search and graph traversal only; all core commands still work |
+| LiteRT + SpaCy | Image labelling, plus word decomposition and morphological analysis |
+| SpaCy only | Word decomposition and morphological analysis |
+| Neither | Graph traversal, search and the meaning layer's own embeddings; all core commands still work |
 
 This is **graceful contraction**: the system calibrates itself to what the hardware and environment can support, then expands as more becomes available. It will never refuse to start because an optional library is missing.
 
@@ -143,7 +152,6 @@ Once libraries are ready, Akasha asks you to create the administrator account.
 
 ```
 [ The Pact of Genesis ]
-  No consciousness has been established. You are the first.
 
   Name this system: MyAkasha
   Your identity (Admin ID): admin
@@ -161,7 +169,8 @@ Once libraries are ready, Akasha asks you to create the administrator account.
 |---|---|
 | **Name this system** | The name of this installation — appears in the shell prompt |
 | **Your identity (Admin ID)** | Your administrator user ID |
-| **Passphrase** | Login password (stored locally, never transmitted) |
+| **Is this correct? [yes/no]** | Answer `yes` to continue. Anything else asks for both names again |
+| **Set passphrase / Confirm** | Your passphrase, typed twice (stored locally as a salted hash, never transmitted) |
 
 After completion, the shell opens:
 
@@ -170,7 +179,10 @@ After completion, the shell opens:
 akasha/user $
 ```
 
-This only happens once. From the second launch onward, Akasha boots directly to the shell.
+Genesis happens once. **From the second launch onward, the local console logs you straight in** —
+`[ MyAkasha online. Welcome, admin. ]` with no `User ID:` or passphrase prompt: on your own machine
+the operating system's account is the gate. The passphrase still guards everything that reaches
+Akasha over the network — the web portal and remote clients.
 
 ---
 
@@ -180,13 +192,28 @@ The shell is now open and Akasha is fully usable. But something continues in the
 
 The ontology is Akasha's shared vocabulary — a pre-built knowledge structure covering common words, geographic places, historical periods, emotional dimensions, and conceptual categories. This is what allows Akasha to associate your observations with existing knowledge without you having to define everything from scratch.
 
-Loading feeds through a low-priority background queue, so your own writes and reads always take precedence. You will see an occasional progress note:
+Loading feeds through a low-priority background queue, so your own writes and reads always take
+precedence. **The first load takes a while** — a few minutes on a fast machine, about an hour on a
+small one — and this is by design, not a hang: the shell is usable the whole time. Watch it with:
 
 ```
-akasha/user $ [loading ontology... 34%]
+akasha/user $ onto.status
 ```
 
-Associative richness grows as loading progresses. You do not need to wait — everything in this guide works at any stage. By the time you reach the concept model examples, loading will likely be complete.
+`onto.status` shows whether the load is in progress or complete, and which packs are loaded and
+pending. Later launches skip everything that has not changed and are quick.
+
+While the load runs, a read that finds nothing tells you so instead of failing silently:
+
+```
+akasha/user $ dive Rome
+  Focus not found: the ontology is still loading, so this may not exist yet — run `onto.status` to
+  see its progress, and try again when it reports complete
+```
+
+Your own atoms work at once. The examples that use the built-in vocabulary (`apple`, `Rome`,
+the colour sets, …) need the load to have finished — check `onto.status` before the concept model
+examples.
 
 ---
 
@@ -243,20 +270,31 @@ Your phrase is now part of Akasha's memory. But Akasha already had memory before
 Try reading something you have never written:
 
 ```
-akasha/user $ r apple
+akasha/user $ r ingred:fruit:apple
 ```
 
-You will see a definition from the built-in ontology and its connections:
+You will see a definition from the built-in ontology and its connections — about thirty of them;
+a few are shown here:
 
 ```
-Content: A round fruit with red or green skin. Used fresh, baked, or juiced.
+Content: [ingred:fruit:apple]
+A round fruit with red or green skin. Used fresh, baked, or juiced.
+  [sys:is_a]              →  fruit
   [calc:associated_with]  →  dna:taste:sweet   "Sweet taste; a pleasurable gustatory sensation."
   [calc:associated_with]  →  dna:color:red     "Red."
   [calc:associated_with]  →  dna:texture:crisp "Crisp texture; firm and brittle."
+  [calc:associated_with]  →  emo:nostalgia
+  [thesaurus:related]     →  concept:autumn
   [rec:sweetness]         →  0.85
   [rec:acidity]           →  0.25
   [rec:color]             →  red
 ```
+
+Why `ingred:fruit:apple` and not just `apple`? The plain word `apple` is also an Atom — a
+**proto-word**, the bare word itself, shared by every sense of it (the fruit, the company, the
+apple of your eye). `r apple` shows that word. The fruit is one *sense* of the word, and it lives
+under its own namespaced key; the key links back to the word (`[specializes] → apple`). The colon
+notation is explained in full a little further on.
 
 Notice that *sweet* appears here too — the same vocabulary atom your phrase connected to moments ago. Your personal memory and the built-in ontology share the same semantic space.
 
@@ -275,9 +313,15 @@ akasha/user $ dive Rome
 You might see:
 
 ```
-Focus: Rome  (geo:capital:rome)
-  → Italy    [sys:capital_of]
+Focus: rome
+  ← word:en:rome       [specializes]
+  ← geo:capital:rome   [specializes]
+  → admin:capital      [geo:instance_of]
+  → geo:country:ITA    [sys:capital_of]
 ```
+
+The focus is the word *rome*; the arrows show which way each link points. Its senses
+(`word:en:rome`, the dictionary sense, and `geo:capital:rome`, the city) point back at it.
 
 From Rome you step to Italy. From Italy the graph opens wider — southern Europe, the G7, the European Union:
 
@@ -450,14 +494,26 @@ Members of set:ingred:fruit  (5)
 
 Meaning does not live in a word. It lives in the network of relationships and groupings that surround it.
 
-Add a new member:
+Add a new member. The ontology already knows passion fruit (`ingred:fruit:passion_fruit`), but
+not as a member of this set:
 
 ```
-akasha/user $ s.add set:ingred:fruit "passion fruit"
+akasha/user $ s.add set:ingred:fruit ingred:fruit:passion_fruit
 akasha/user $ s.ls set:ingred:fruit
 ```
 
-*Passion fruit* is now part of the concept. No schema change. No migration. The concept simply became richer.
+The set now lists six members. *Passion fruit* is part of the concept. No schema change. No
+migration. The concept simply became richer.
+
+`s.add` takes an Atom — its key or its alias. A phrase that names no Atom (`s.add set:ingred:fruit
+"star fruit"`) is stored as a bare string member with no content behind it. To add something new,
+write it first, give it an alias, then add the alias:
+
+```
+akasha/user $ w "Star fruit — a yellow, star-shaped tropical fruit."
+akasha/user $ al $it my:star_fruit
+akasha/user $ s.add set:ingred:fruit my:star_fruit
+```
 
 ---
 
@@ -488,13 +544,16 @@ The `tree` command renders the link graph as a navigable visual tree — useful 
 akasha/user $ tree set:ingred:fruit
 ```
 
+Abridged — each fruit really has a few dozen branches:
+
 ```
-set:ingred:fruit
-├─ apple        [calc:associated_with]→ dna:taste:sweet, dna:color:red, dna:texture:crisp
-├─ banana       [calc:associated_with]→ dna:taste:sweet, dna:color:yellow
-├─ orange       [calc:associated_with]→ dna:color:orange
-├─ lemon        [calc:associated_with]→ dna:taste:sour, dna:color:yellow
-└─ grape
+set:ingred:fruit  (6 members)
+├─ ingred:fruit:apple   [sys:is_a] fruit · [calc:associated_with] dna:taste:sweet, dna:color:red, …
+├─ ingred:fruit:banana  [sys:is_a] fruit · …
+├─ ingred:fruit:orange  …
+├─ ingred:fruit:lemon   …
+├─ ingred:fruit:grape   …
+└─ ingred:fruit:passion_fruit  …
 ```
 
 Try it with a place:
@@ -503,10 +562,10 @@ Try it with a place:
 akasha/user $ tree Spain
 ```
 
-Or with a concept:
+Or with a concept, three hops out:
 
 ```
-akasha/user $ tree France depth=3
+akasha/user $ tree sky:myth:icarus depth=3
 ```
 
 The `depth` parameter controls how many hops outward the tree expands (1–5). The default is 2.
@@ -529,6 +588,18 @@ from the words it contains and from how it sits in the graph. That lets you ask 
 explicit links can't answer — *"what else is like this?"* — even when no link exists yet.
 
 There are three kinds of "related", and Akasha gives you a separate command for each.
+
+> **Before you try `sim` and `node.sim` on a seeds cell:** they rank by *learned* models, and the
+> seeds line learns them on demand, not at startup. Once the ontology load has finished
+> (`onto.status`), run these once as the admin — they take a few minutes:
+>
+> ```
+> akasha/admin $ semantic.learn
+> akasha/admin $ node.learn
+> ```
+>
+> Until then `sim` ranks by a plain word-hashing fingerprint (the results look arbitrary) and
+> `node.sim` says there is no structural model yet.
 
 ### `sim` — atoms that *mean* the same thing
 
@@ -571,17 +642,29 @@ akasha/user $ view Rome
 
 It is the read-only "tell me about this one" companion to `dive`'s "take me there".
 
-### `emotion.find` — atoms that *feel* an emotion
+### `emotion.profile` / `emotion.find` — what an Atom *feels*
 
-Emotions are first-class Atoms in the ontology (`emo:awe`, `emo:fear`, `emo:joy`, …).
+Emotions are first-class Atoms in the ontology (`emo:awe`, `emo:fear`, `emo:joy`, …), and many
+Atoms link to them. `emotion.profile <atom>` gives you the emotional **vector** of a single
+Atom — which emotions it leans toward, and how strongly:
+
+```
+akasha/user $ emotion.profile sky:myth:icarus
+  emo:awe       0.29
+  emo:fear      0.29
+  emo:sadness   0.14
+  emo:surprise  0.14
+  dominant: emo:awe
+```
+
 `emotion.find` runs the lookup in reverse — *which Atoms feel this?*
 
 ```
-akasha/user $ emotion.find emo=awe
+akasha/user $ emotion.find emo=awe limit=5
 ```
 
-The mirror command, `emotion.profile <atom>`, gives you the emotional **vector** of a single
-Atom — which emotions it leans toward, and how strongly.
+You will see the Atoms that link to `emo:awe` — colours such as `color:purple` and
+`color:white`, myths such as `sky:myth:icarus`, and so on.
 
 ### `dream` — sleeping on it
 
@@ -628,10 +711,11 @@ which you have barely connected to anything themselves. That mismatch is a map o
 next. It is the first step of Akasha's **self-expanding loop**: scan for gaps → fill them (write
 links, `fetch` from the web, or let an LLM propose them) → the graph gets richer → scan again.
 
-> **Under the hood.** The semantic search above rests on a *learned model* that Akasha trains from
-> your own graph — it improves as you write. That training runs automatically at startup; an admin
-> can also refresh the structural half by hand with `node.learn`. You never *have* to run it, but
-> it is why `sim` and `node.sim` get sharper the more you use Akasha.
+> **Under the hood — learned on demand.** The semantic search above rests on *learned models* that
+> Akasha trains from your own graph — they improve as you write. On the seeds line they are
+> **learned on demand, not at startup**: run `semantic.learn` (meaning) and `node.learn` (structure)
+> once the ontology load has finished, and again whenever you have written a fair amount. (The
+> thesaurus line, which serves a public library, learns automatically at startup.)
 
 ---
 
@@ -745,11 +829,15 @@ akasha/user $ svc ls
   svc:web-portal running   http://127.0.0.1:8000
 ```
 
-If the portal shows as stopped for any reason, start it with:
+If the portal shows as stopped — for example after you stopped it with `svc stop web-portal` —
+bring it back with:
 
 ```
-akasha/user $ svc start svc:web-portal
+akasha/user $ svc restart web-portal
 ```
+
+(`svc start` only knows a unit the current run has registered; after a stop, `restart` is the verb
+that brings it back. These `svc` commands need the admin you created at Genesis.)
 
 Then open in any browser on the same machine:
 
@@ -774,7 +862,7 @@ The Record and Quadrant models are two of many. Akasha includes:
 | Narrative / World | `cast.*`, `world.*`, `map.*` |
 | Semantic / Ontology | `thesaurus.*`, `curation.*` |
 
-A specialist's field notebook, a librarian's catalogue card, an accountant's ledger — all can be expressed as Concept Models. New models can be added as plugins without modifying the kernel.
+A specialist's field notebook, a librarian's catalogue card, an accountant's ledger — all can be expressed as Concept Models. They belong to the **application** that runs on Akasha's platform: in the unpacked tree they live in `app/concepts/`, one Python module per model, and a new one is added by dropping a module there — the platform discovers it at the next start, without any change to the platform itself.
 
 ---
 
@@ -801,6 +889,130 @@ akasha/user $ onto.dump atoms ns=ingred:fruit:
 ```
 
 As ontology loading progresses, these counts grow. Eventually the full shared vocabulary settles into place and the count stabilizes.
+
+---
+
+## The Workbench: A Research Space on the Shared World
+
+Everything so far lived in your own space. Akasha also has a **shared world** — one common
+timeline that every research group writes onto. A **workbench** (or just *bench*) is a bounded
+workspace on that world where a small group states hypotheses, binds sources, records evidence, and
+keeps a workflow. Every action on a bench is **observed**: it is appended to the bench's own
+timeline, so the bench's whole history is a replayable record, never lost.
+
+This section builds one small bench, `sandbox`, end to end. It uses commands you type at the
+`akasha>` prompt (they create a group and a society, which are console operations, so run them one
+by one rather than as a batch file). A ready-made copy of the whole sequence is in
+`test/test_10_workbench.ak`.
+
+### The shared world
+
+The shared world, `world:default`, is created automatically when your cell starts. You can confirm
+it and read its **axis** — the world's single, append-only timeline of structural events:
+
+```
+akasha> world.genesis
+akasha> world.axis
+```
+
+`world.genesis` is idempotent — if the world already exists it just reports it. `world.axis` will
+fill in as you go below.
+
+### A group, a society, and a bench
+
+A **bench** is owned by a **society** (a group's dialogue-and-decision space), which sits inside the
+world. Create the group, the bench, and the society that binds them:
+
+```
+akasha> grp.new group_id=bench-sandbox admin_id=admin
+akasha> bench.new name=sandbox kind=research group=bench-sandbox
+akasha> society.new group=bench-sandbox name=sandbox world=default bench=sandbox kind=cowork identity=locked
+```
+
+`kind=research` gives the bench its operation families — *source*, *hypothesis*, *evidence*,
+*proof*, *note*. `identity=locked` means members act under their own name here (no pseudonyms).
+Creating the society **connects** it to the bench and records `society.formed` and
+`society.connected` on the world axis; `bench.new` recorded `bench.created`.
+
+### Roles and grants
+
+A society has roles. The **moderator** runs it; an **observer** (scribe) keeps the record. You act
+through an **avatar** (a cast) that must be *admitted* before it can hold a role:
+
+```
+akasha> cast.new name=Chair
+akasha> society.admit group=bench-sandbox name=sandbox cast=Chair
+akasha> society.moderator group=bench-sandbox name=sandbox cast=Chair
+akasha> cast.new name=Scribe
+akasha> society.admit group=bench-sandbox name=sandbox cast=Scribe
+akasha> society.responsible group=bench-sandbox name=sandbox cast=Scribe kind=scribe
+```
+
+Who may do what on the bench is **granted**, per operation family. Give the moderator every family
+plus the right to *decide* (dispatch results to the world):
+
+```
+akasha> society.responsible group=bench-sandbox name=sandbox cast=Chair kind=operator:hypothesis
+akasha> society.responsible group=bench-sandbox name=sandbox cast=Chair kind=operator:evidence
+akasha> society.responsible group=bench-sandbox name=sandbox cast=Chair kind=operator:note
+akasha> society.responsible group=bench-sandbox name=sandbox cast=Chair kind=decide
+```
+
+`bench.grants name=sandbox` shows the resulting grant table. A member who lacks `operator:hypothesis`
+is refused with a clear message (`… holds no operator:hypothesis grant …`) — the bench admits an
+operation only from an agent who holds the matching grant.
+
+### Working the bench
+
+Now do research. Each command is observed on the bench's timeline:
+
+```
+akasha> research.hyp.new name=sandbox text="paragraph 2 restates paragraph 1"
+akasha> research.note name=sandbox text="first pass"
+```
+
+Read the bench's timeline — the **observation stream** — in order:
+
+```
+akasha> source.stream wb:sandbox space=group:bench-sandbox
+```
+
+### A workflow: plan ahead, log behind
+
+A bench keeps one **workflow** — a single line of entries that is a *plan* ahead of a cursor and a
+*log* behind it. Write entries, advance the cursor over them, rewind, or fork a branch:
+
+```
+akasha> wf.new bench=sandbox
+akasha> wf.write bench=sandbox pos=1 entry="read sample-1"
+akasha> wf.write bench=sandbox pos=2 entry="state hypothesis 1"
+akasha> wf.advance bench=sandbox n=2
+akasha> wf.rewind bench=sandbox pos=1
+akasha> wf.branch bench=sandbox from=1 name=alt
+```
+
+A **rewind never erases** — moving the cursor back is itself recorded on the stream, so the history
+of what you tried stays intact. `wf.ls bench=sandbox` shows each entry marked *log* (done) or
+*script* (planned).
+
+### Dispatching a result to the world
+
+When a run is worth publishing to the shared world, **dispatch** it. This is a *decision* — it needs
+the `decide` grant — and it writes exactly **one** event onto the world axis:
+
+```
+akasha> wf.dispatch bench=sandbox branch=main from=1 to=2
+akasha> world.axis
+```
+
+`world.axis` now lists `society.formed`, `society.connected`, `bench.created`, and one
+`workflow.dispatched` record, each stamped with a wall-clock time. The workflow original is never
+altered — a corrected dispatch simply makes a new record.
+
+That is the whole shape: a shared world, a bench owned by a society, roles and grants deciding who
+may act, every action observed, and dispatch as the one governed step that publishes a result to the
+world. A closed bench (created with a group) is private to that group's members — a visitor with no
+membership cannot read it.
 
 ---
 
@@ -838,7 +1050,6 @@ Chapters are aligned by theme across all three tracks. Start with Red 0 regardle
 |---|---|
 | 0 — Basic Operations | Atoms, links, sets, aliases, navigation |
 | 1 — Concept Models | Records, tables, scatter plots, lens scanning |
-| 2 — Maps and Time | Geographic and temporal dimensions *(forthcoming)* |
 
 ### Quick Reference
 
@@ -849,13 +1060,14 @@ Chapters are aligned by theme across all three tracks. Start with Red 0 regardle
 ## Loading Specialist Knowledge Packs
 
 Everything you have done so far used the **base knowledge** — words, feelings, everyday
-things, the sciences, the humanities. On the **Seeds** edition this base is all that loads
-at startup, on purpose: it keeps the first launch quick, and it lets you add only the
+things, food and recipes — together with three subject packs the seeds edition also loads at
+startup: **world** (geography and history), **philosophy** and **domain**. That is all that
+loads at startup, on purpose: it keeps the first launch manageable, and it lets you add only the
 subjects you actually want.
 
-Beyond the base, Akasha ships a shelf of **specialist packs** — world geography and
-history, art, music, literature, law, medicine, wine and drinks, and more. On Seeds they
-are bundled but **switched off** until you ask for them. (The **Thesaurus** edition is
+Beyond that, Akasha ships a shelf of **specialist packs** — art, music, film, law, biology,
+geology, space, wine, and more. On Seeds they are bundled but **switched off** until you ask
+for them. (The **Thesaurus** edition is
 different: it loads every pack automatically at startup, so on Thesaurus you can skip this
 section — the whole shelf is already on.)
 
@@ -876,7 +1088,7 @@ holds. A filled dot ● means the pack is on; an open dot ○ means it is availa
 Switch a pack on by name:
 
 ```
-akasha/user $ onto.pack.enable name=world
+akasha/user $ onto.pack.enable name=art
 ```
 
 The pack starts loading **in the background** — the prompt returns immediately, and the
@@ -885,10 +1097,9 @@ atoms appear as they are woven in. Loading a large pack can take a little while;
 atoms behave exactly like the base: search them with `r`, `sim` and `dive`, walk them with
 `tree`, and they stay loaded across restarts.
 
-A few examples:
+A few more:
 
 ```
-akasha/user $ onto.pack.enable name=art
 akasha/user $ onto.pack.enable name=music
 akasha/user $ onto.pack.enable name=wine
 ```
@@ -896,7 +1107,7 @@ akasha/user $ onto.pack.enable name=wine
 ### Switch a pack off
 
 ```
-akasha/user $ onto.pack.disable name=world
+akasha/user $ onto.pack.disable name=art
 ```
 
 This removes the pack from the startup list so it will not load next time. Atoms already
@@ -907,6 +1118,28 @@ woven into memory stay until a full `onto.reset` — disabling simply stops it l
 > also **idempotent**: enabling one that is already on, or that overlaps another, never
 > creates duplicates — Akasha unifies identical atoms automatically.
 
+### Adding Your Own Pack
+
+You can add knowledge of your own the same way the shelf is built: as a **pack**. Make a directory
+for it under `ontology/user/` in the directory you unpacked Akasha into, and put two kinds of file
+in it:
+
+```
+ontology/user/mypack/PACK.json      {"label": "My pack", "description": "Things I keep"}
+ontology/user/mypack/notes.ak       def "mine:alpha" "The first thing I want to keep"
+                                    set.add name="set:mine:demo" id="mine:alpha"
+```
+
+That is all: **no registry to edit.** A directory under `ontology/user/` holding a `PACK.json` is a
+pack, and it loads at the **next start**, after the built-in packs (`onto.status` lists it). If its
+`PACK.json` says `"autoload": false`, it waits until you switch it on with
+`onto.pack.enable name=mypack`. `ontology/user/` is yours: updating the seed never overwrites or
+removes it.
+
+A `.ak` file uses four lines: `def "<id>" "<description>"` defines an atom, `al <id> <alias>` names
+it, `ln <src> <dst> <rel>` links two atoms, and `set.add name="<set>" id="<id>"` puts an atom in a
+set. A line starting with `#` is a comment.
+
 ---
 
 ## Common Pitfalls
@@ -915,17 +1148,18 @@ woven into memory stay until a full `onto.reset` — disabling simply stops it l
 Navigation commands (`r`, `dive`, `tree`, `explore`) also update `$it`. If you want to keep a reference across several commands, assign an alias immediately after writing.
 
 **"Nothing found" on `r` or `dive`**
-Ontology loading may still be in progress. Try again after a minute, or check `cog` for the load percentage.
+The ontology load may still be in progress — the answer then says so. Check `onto.status`; when it
+reports the load complete, try again.
 
 **Aliases are case-insensitive, but sets are not**
 `apple` and `Apple` refer to the same Atom. `set:Fruit` and `set:fruit` are different sets.
 
 **Browser apps show "Connection refused"**
-The web server may not be running. Check with `svc ls` at the Akasha prompt and start it if needed:
+The web server may not be running. Check with `svc ls` at the Akasha prompt and bring it back if needed:
 
 ```
 akasha/user $ svc ls
-akasha/user $ svc start svc:web-portal
+akasha/user $ svc restart web-portal
 ```
 
 Then open `http://localhost:8000/`.
@@ -943,6 +1177,12 @@ Then open `http://localhost:8000/`.
 | [`docs/concept-model/concept-model-spec.md`](docs/concept-model/concept-model-spec.md) | Concept Model API |
 | [`docs/ontology/ontology-spec.md`](docs/ontology/ontology-spec.md) | Built-in ontology reference |
 | [`docs/developer/api-spec.md`](docs/developer/api-spec.md) | JSON-RPC API reference |
+| [`docs/developer/implementing-a-workload.md`](docs/developer/implementing-a-workload.md) | Adding something that runs — research, broadcast or an operational process |
+
+### What comes next
+
+The seeds line is the substrate and its shell. The next release, **seeds 14**, adds a **no-code
+workbench**: building an application on Akasha from templates, without writing code.
 
 ---
 

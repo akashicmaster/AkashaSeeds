@@ -137,7 +137,7 @@ across the whole Earth extension family.
 
 ## 1. GeoConcept
 
-**File:** `lib/akasha/concepts/geo.py`
+**File:** `app/concepts/geo.py`
 **Concept prefix:** `geo`
 **Context key:** `active_geo_root`
 **Index set:** `set:geo:index`
@@ -947,7 +947,7 @@ geo.affine label="grid_to_pixel" source_system=local_grid target_system=pixel \
 
 ## 2. MapConcept
 
-**File:** `lib/akasha/concepts/map.py`
+**File:** `app/concepts/map.py`
 **Concept prefix:** `map`
 **Context key:** `active_map_root`
 **Index set:** `set:map:index`
@@ -1279,7 +1279,7 @@ map.history limit=20
 
 ## 3. CorrespondenceConcept
 
-**File:** `lib/akasha/concepts/correspondence.py`
+**File:** `app/concepts/correspondence.py`
 **Concept prefix:** `corr`
 **Context key:** `active_corr_root`
 **Index set:** `set:corr:index`
@@ -1819,7 +1819,7 @@ corr.trace <link_using_S1>
 
 ## 4. HumanConcept
 
-**File:** `lib/akasha/concepts/human.py`
+**File:** `app/concepts/human.py`
 **Concept prefix:** `human`
 **Context key:** `active_human_root`
 **CLI prefix:** `hum.*`
@@ -2104,7 +2104,7 @@ akasha/user $ hum.diagnose
 
 ## 5. CountryConcept
 
-**File:** `lib/akasha/concepts/country.py`
+**File:** `app/concepts/country.py`
 **Concept prefix:** `country`
 **Context key:** `active_country_root`
 **Index set:** `set:country:index`

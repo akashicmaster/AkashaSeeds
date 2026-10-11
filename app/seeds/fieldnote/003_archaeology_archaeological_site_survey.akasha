@@ -1,0 +1,80 @@
+{
+  "metadata": {
+    "protocol": "akasha_capsule_v1.2",
+    "author": "system",
+    "timestamp": 1700000000.0,
+    "doc_type": "fieldnote",
+    "concept_id": "7aa9133d0bf2e2d5c8d02d5199c87e65ea0e8d3097077965694f3aee03fc00f8",
+    "extracted_since": 0.0,
+    "seed": {
+      "kind": "sample",
+      "title": "Sample: Bronze Age Ridge Survey",
+      "order": 3,
+      "category": "archaeology",
+      "project": "Bronze Age Ridge Expedition",
+      "region": "Northern Plateau",
+      "season": "2026-Spring",
+      "locale": "en"
+    }
+  },
+  "atoms": {
+    "0bd885dbd43bafdf4ccee1913089c0679390d1695472e0b085064f4a3a4c7bc8": "Stone foundation remains identified along eastern trench boundary.",
+    "fd9e27d0bc1756c20b75ff5881e5927b1405c0fe06d0b6ac2139b519a4fcef16": "High density of charcoal fragments mixed with coarse pottery sherds.",
+    "9bf7d4dc69708d1c8994d95f4a31db528513d1b031868b91b6b8dd4e1a43557b": "Bronze needle recovered near hearth feature.",
+    "17cc0e2c213670f4ab66094726b942869e55319195a3cd5de6a7b6b888633ec3": "Evidence suggests repeated domestic use rather than ceremonial activity.",
+    "7aa9133d0bf2e2d5c8d02d5199c87e65ea0e8d3097077965694f3aee03fc00f8": "Sample: Bronze Age Ridge Survey"
+  },
+  "links": [
+    {
+      "src": "7aa9133d0bf2e2d5c8d02d5199c87e65ea0e8d3097077965694f3aee03fc00f8",
+      "dst": "0bd885dbd43bafdf4ccee1913089c0679390d1695472e0b085064f4a3a4c7bc8",
+      "rel": "sys:top",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "0bd885dbd43bafdf4ccee1913089c0679390d1695472e0b085064f4a3a4c7bc8",
+      "dst": "fd9e27d0bc1756c20b75ff5881e5927b1405c0fe06d0b6ac2139b519a4fcef16",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "fd9e27d0bc1756c20b75ff5881e5927b1405c0fe06d0b6ac2139b519a4fcef16",
+      "dst": "9bf7d4dc69708d1c8994d95f4a31db528513d1b031868b91b6b8dd4e1a43557b",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "9bf7d4dc69708d1c8994d95f4a31db528513d1b031868b91b6b8dd4e1a43557b",
+      "dst": "17cc0e2c213670f4ab66094726b942869e55319195a3cd5de6a7b6b888633ec3",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    }
+  ],
+  "atom_meta": {
+    "0bd885dbd43bafdf4ccee1913089c0679390d1695472e0b085064f4a3a4c7bc8": {
+      "role": "site",
+      "confidence": 1.0,
+      "period": "Sector A"
+    },
+    "fd9e27d0bc1756c20b75ff5881e5927b1405c0fe06d0b6ac2139b519a4fcef16": {
+      "role": "observation",
+      "confidence": 0.9,
+      "period": "Layer III"
+    },
+    "9bf7d4dc69708d1c8994d95f4a31db528513d1b031868b91b6b8dd4e1a43557b": {
+      "role": "find",
+      "confidence": 1.0,
+      "period": "Layer III"
+    },
+    "17cc0e2c213670f4ab66094726b942869e55319195a3cd5de6a7b6b888633ec3": {
+      "role": "interpretation",
+      "confidence": 0.7,
+      "period": "Late Occupation Phase"
+    }
+  },
+  "telemetry": {}
+}

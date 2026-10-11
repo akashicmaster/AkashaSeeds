@@ -1,0 +1,7 @@
+{
+  "label": "Whiteboard — the named meaning session",
+  "description": "The whiteboard vocabulary: a board, its pins (memberships in `set:wb:whiteboard:<board>:pins`, taken at the bench clock) and its focus (a coordinate, not a pin). Declared ahead of the whiteboard port so no Set is minted that the lexicon does not define, and it records the op rename `wb.* → whiteboard.*` — `wb:` is the Workbench namespace, and the ops are no longer spelled like it.",
+  "license": "MIT",
+  "source": "internal",
+  "version": "1.0"
+}

@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Celestial Planisphere</title>
+<meta name="description" content="A celestial planisphere — the northern and southern skies as twin star maps with the constellations, the Milky Way and the ecliptic. Every named star opens its place in the Akasha knowledge graph.">
+<style>
+    :root{ --bg:#04060d; --ink:#e9eefb; --muted:#93a3c4; --faint:#5a6a8a;
+        --gold:#c9b26a; --gold-2:#e7d79a; --line:rgba(150,180,230,.16); --accent:#8fb4ff; }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:radial-gradient(1300px 720px at 50% -10%,rgba(90,120,220,.10),transparent 62%),var(--bg);
+        color:var(--ink);font-family:'Helvetica Neue',Arial,'Hiragino Sans',sans-serif;min-height:100vh;min-height:100dvh;
+        -webkit-text-size-adjust:100%;padding:16px max(12px,env(safe-area-inset-left)) 46px}
+    a{color:inherit;text-decoration:none}
+    .wrap{max-width:1120px;margin:0 auto}
+    .top{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+    .crumb{font-size:.58rem;letter-spacing:2.5px;text-transform:uppercase;color:var(--muted);border:1px solid var(--line);padding:6px 13px;border-radius:3px;transition:.2s}
+    .crumb:hover{color:var(--accent);border-color:var(--accent)}
+    h1{font-family:Georgia,'Times New Roman',serif;font-size:clamp(1.4rem,3.4vw,2.1rem);font-weight:600;letter-spacing:.12em;color:var(--gold-2)}
+    .sub{font-size:.72rem;color:var(--muted);margin:3px 0 4px;letter-spacing:.04em}
+    .readout{min-height:26px;margin:6px 2px 10px;font-size:.8rem;color:var(--muted)} .readout b{color:var(--ink)}
+    .chart-wrap{overflow-x:auto;border:1px solid rgba(201,178,106,.3);border-radius:8px;
+        background:radial-gradient(780px 460px at 50% 45%,rgba(24,34,74,.5),transparent 72%),#050813;
+        box-shadow:inset 0 0 90px rgba(0,0,0,.7)}
+    svg.sky{display:block;min-width:800px;width:100%;height:auto}
+    .legend{display:flex;flex-wrap:wrap;gap:7px 15px;margin-top:14px;font-size:.58rem;color:var(--muted)}
+    .legend span{display:inline-flex;align-items:center;gap:5px} .legend i{width:9px;height:9px;border-radius:50%;display:inline-block}
+    .foot{margin-top:16px;padding-top:14px;border-top:1px solid var(--line);font-size:.55rem;letter-spacing:1.5px;
+        text-transform:uppercase;color:var(--faint);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+    .foot a{color:var(--muted)} .foot a:hover{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+    <div class="top"><a href="/hall/" class="crumb">&#9668; reading hall</a><a href="/" class="crumb">world tree</a></div>
+    <h1>Celestial Planisphere</h1>
+    <div class="sub">The northern and southern skies &mdash; twin maps of the celestial sphere, with the constellations, the Milky Way and the ecliptic.</div>
+    <div class="readout" id="readout">Tap a named star to open its place in the Akasha knowledge graph.</div>
+    <div class="chart-wrap"><svg class="sky" id="sky" viewBox="0 0 940 640" role="img" aria-label="celestial planisphere"></svg></div>
+    <div class="legend" id="legend"></div>
+    <div class="foot"><span id="foot-meta">celestial planisphere &middot; read-only</span>
+        <span>the celestial sphere &middot; <a href="https://github.com/henrigrohmann/AkashicTree" target="_blank" rel="noopener">AKASHA</a></span></div>
+</div>
+<script>
+(function(){
+'use strict';
+var SVGNS='http://www.w3.org/2000/svg',XLINK='http://www.w3.org/1999/xlink';
+function el(t,a,p){var e=document.createElementNS(SVGNS,t);for(var k in a)if(a[k]!=null)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e;}
+function esc(s){var d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML;}
+var sky=document.getElementById('sky');
+function mulberry(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+var rnd=mulberry(20260814);
+var STARS=[["betelgeuse",5.92,7.4,0.42,"Betelgeuse","#ffb0a0"],["rigel",5.24,-8.2,0.13,"Rigel","#a9c3ff"],["bellatrix",5.42,6.3,1.64,"Bellatrix","#a9c3ff"],["mintaka",5.53,-0.3,2.2,"Mintaka","#a9c3ff"],["alnilam",5.6,-1.2,1.69,"Alnilam","#a9c3ff"],["alnitak",5.68,-1.9,1.77,"Alnitak","#a9c3ff"],["saiph",5.8,-9.67,2.06,"Saiph","#a9c3ff"],["sirius",6.75,-16.7,-1.46,"Sirius","#eaf1ff"],["adhara",6.98,-28.97,1.5,"Adhara","#a9c3ff"],["wezen",7.14,-26.39,1.83,"Wezen","#f6f2e0"],["mirzam",6.38,-17.96,1.98,"Mirzam","#a9c3ff"],["procyon",7.66,5.2,0.34,"Procyon","#f6f2e0"],["aldebaran",4.6,16.5,0.85,"Aldebaran","#ffd7a0"],["elnath",5.44,28.6,1.65,"Elnath","#a9c3ff"],["capella",5.28,46.0,0.08,"Capella","#fff2c8"],["menkalinan",5.99,44.9,1.9,"Menkalinan","#eaf1ff"],["castor",7.58,31.9,1.58,"Castor","#eaf1ff"],["pollux",7.76,28.0,1.14,"Pollux","#ffd7a0"],["alhena",6.63,16.4,1.9,"Alhena","#eaf1ff"],["regulus",10.14,12.0,1.35,"Regulus","#a9c3ff"],["denebola",11.82,14.6,2.11,"Denebola","#eaf1ff"],["algieba",10.33,19.8,2.28,"Algieba","#ffd7a0"],["zosma",11.24,20.5,2.56,"Zosma","#eaf1ff"],["spica",13.42,-11.2,0.97,"Spica","#a9c3ff"],["arcturus",14.26,19.2,-0.05,"Arcturus","#ffd7a0"],["izar",14.75,27.07,2.35,"Izar","#ffd7a0"],["dubhe",11.06,61.75,1.79,"Dubhe","#ffd7a0"],["merak",11.03,56.38,2.37,"Merak","#eaf1ff"],["phecda",11.9,53.69,2.44,"Phecda","#eaf1ff"],["megrez",12.26,57.03,3.31,"Megrez","#eaf1ff"],["alioth",12.9,55.96,1.76,"Alioth","#eaf1ff"],["mizar",13.42,54.93,2.23,"Mizar","#eaf1ff"],["alkaid",13.79,49.31,1.85,"Alkaid","#a9c3ff"],["polaris",2.53,89.0,1.98,"Polaris","#f6f2e0"],["kochab",14.85,74.16,2.07,"Kochab","#ffd7a0"],["pherkad",15.35,71.83,3.0,"Pherkad","#eaf1ff"],["schedar",0.68,56.54,2.24,"Schedar","#ffd7a0"],["caph",0.15,59.15,2.28,"Caph","#f6f2e0"],["navi",0.95,60.72,2.15,"Navi","#a9c3ff"],["ruchbah",1.43,60.24,2.68,"Ruchbah","#eaf1ff"],["segin",1.91,63.67,3.35,"Segin","#a9c3ff"],["mirfak",3.41,49.86,1.79,"Mirfak","#f6f2e0"],["algol",3.14,40.96,2.1,"Algol","#a9c3ff"],["alpheratz",0.14,29.09,2.06,"Alpheratz","#a9c3ff"],["mirach",1.16,35.62,2.05,"Mirach","#ffb0a0"],["almach",2.06,42.33,2.1,"Almach","#ffd7a0"],["markab",23.08,15.21,2.49,"Markab","#a9c3ff"],["scheat",23.06,28.08,2.42,"Scheat","#ffb0a0"],["algenib",0.22,15.18,2.83,"Algenib","#a9c3ff"],["hamal",2.12,23.46,2.0,"Hamal","#ffd7a0"],["deneb",20.69,45.28,1.25,"Deneb","#eaf1ff"],["sadr",20.37,40.26,2.23,"Sadr","#f6f2e0"],["gienah_cyg",20.77,33.97,2.48,"Gienah","#ffd7a0"],["delta_cyg",19.75,45.13,2.87,"Fawaris","#a9c3ff"],["albireo",19.51,27.96,3.05,"Albireo","#ffd7a0"],["vega",18.62,38.78,0.03,"Vega","#eaf1ff"],["altair",19.85,8.87,0.77,"Altair","#eaf1ff"],["tarazed",19.77,10.61,2.72,"Tarazed","#ffd7a0"],["antares",16.49,-26.43,0.96,"Antares","#ffb0a0"],["shaula",17.56,-37.1,1.62,"Shaula","#a9c3ff"],["sargas",17.62,-42.99,1.86,"Sargas","#f6f2e0"],["dschubba",16.0,-22.62,2.29,"Dschubba","#a9c3ff"],["kaus_australis",18.4,-34.38,1.85,"Kaus Aus.","#a9c3ff"],["nunki",18.92,-26.3,2.05,"Nunki","#a9c3ff"],["rigil_kentaurus",14.66,-60.83,-0.27,"Rigil Kent.","#fff2c8"],["hadar",14.06,-60.37,0.61,"Hadar","#a9c3ff"],["menkent",14.11,-36.37,2.06,"Menkent","#ffd7a0"],["acrux",12.44,-63.1,0.76,"Acrux","#a9c3ff"],["gacrux",12.52,-57.11,1.63,"Gacrux","#ffb0a0"],["mimosa",12.79,-59.69,1.25,"Mimosa","#a9c3ff"],["imai",12.25,-58.75,2.79,"Imai","#a9c3ff"],["canopus",6.4,-52.7,-0.74,"Canopus","#f6f2e0"],["miaplacidus",9.22,-69.72,1.68,"Miaplacidus","#eaf1ff"],["avior",8.38,-59.51,1.86,"Avior","#ffd7a0"],["aspidiske",9.28,-59.28,2.21,"Aspidiske","#eaf1ff"],["suhail",9.13,-43.43,2.21,"Suhail","#ffd7a0"],["alsephina",8.75,-54.71,1.75,"Alsephina","#eaf1ff"],["achernar",1.63,-57.24,0.46,"Achernar","#a9c3ff"],["fomalhaut",22.96,-29.62,1.16,"Fomalhaut","#eaf1ff"],["alnair",22.14,-46.96,1.74,"Alnair","#a9c3ff"],["peacock",20.43,-56.74,1.94,"Peacock","#a9c3ff"],["atria",16.81,-69.03,1.91,"Atria","#ffd7a0"]];
+var CONS=[{n:"Orion",L:[["bellatrix", "betelgeuse"], ["bellatrix", "mintaka"], ["betelgeuse", "alnitak"], ["alnitak", "alnilam"], ["alnilam", "mintaka"], ["mintaka", "rigel"], ["alnitak", "saiph"]],r:5.55,d:-1},{n:"Canis Major",L:[["sirius", "adhara"], ["adhara", "wezen"], ["wezen", "sirius"], ["mirzam", "sirius"]],r:6.9,d:-22},{n:"Gemini",L:[["castor", "pollux"], ["pollux", "alhena"]],r:7.2,d:25},{n:"Taurus",L:[["aldebaran", "elnath"]],r:4.9,d:21},{n:"Auriga",L:[["capella", "menkalinan"], ["menkalinan", "elnath"]],r:5.6,d:44},{n:"Leo",L:[["regulus", "algieba"], ["algieba", "zosma"], ["zosma", "denebola"], ["denebola", "regulus"]],r:10.8,d:17},{n:"Bootes",L:[["arcturus", "izar"]],r:14.5,d:24},{n:"Ursa Major",L:[["dubhe", "merak"], ["merak", "phecda"], ["phecda", "megrez"], ["megrez", "dubhe"], ["megrez", "alioth"], ["alioth", "mizar"], ["mizar", "alkaid"]],r:11.6,d:55},{n:"Ursa Minor",L:[["kochab", "pherkad"]],r:14.9,d:75},{n:"Cassiopeia",L:[["caph", "schedar"], ["schedar", "navi"], ["navi", "ruchbah"], ["ruchbah", "segin"]],r:1.0,d:62},{n:"Perseus",L:[["mirfak", "algol"]],r:3.3,d:45},{n:"Andromeda",L:[["alpheratz", "mirach"], ["mirach", "almach"]],r:1.3,d:38},{n:"Pegasus",L:[["markab", "scheat"], ["scheat", "alpheratz"], ["alpheratz", "algenib"], ["algenib", "markab"]],r:23.6,d:22},{n:"Cygnus",L:[["deneb", "sadr"], ["sadr", "albireo"], ["delta_cyg", "sadr"], ["sadr", "gienah_cyg"]],r:20.4,d:39},{n:"Aquila",L:[["altair", "tarazed"]],r:19.8,d:7},{n:"Scorpius",L:[["dschubba", "antares"], ["antares", "sargas"], ["sargas", "shaula"]],r:17.0,d:-33},{n:"Sagittarius",L:[["kaus_australis", "nunki"]],r:18.7,d:-30},{n:"Centaurus",L:[["rigil_kentaurus", "hadar"], ["hadar", "menkent"]],r:13.6,d:-46},{n:"Crux",L:[["acrux", "gacrux"], ["mimosa", "imai"]],r:12.5,d:-60},{n:"Carina",L:[["canopus", "avior"], ["avior", "aspidiske"], ["aspidiske", "miaplacidus"]],r:8.4,d:-61},{n:"Vela",L:[["suhail", "alsephina"]],r:9.0,d:-49}];
+var byName={};STARS.forEach(function(s){byName[s[0]]=s;});
+var DESC={sirius:'the brightest star in the night sky, in Canis Major',canopus:'a white supergiant, second-brightest',
+ arcturus:'the brightest star of the northern sky, in Bootes',vega:'the brilliant blue-white star of Lyra',
+ rigel:'a blue supergiant, the foot of Orion',betelgeuse:'the red supergiant shoulder of Orion',
+ polaris:'the North Star, close to the celestial pole',altair:'a bright star of Aquila',deneb:'a supergiant, the tail of Cygnus',
+ antares:'the red heart of Scorpius',acrux:'the top of the Southern Cross',rigil_kentaurus:'Alpha Centauri, the nearest bright star system'};
+
+var R=196, cyN=300, cxN=248, cxS=692, EPS=23.44*Math.PI/180, D2R=Math.PI/180, DEN=125, LIM=35;
+function projN(ra,dec){var rho=R*(90-dec)/DEN,th=ra/24*2*Math.PI;return[cxN+rho*Math.sin(th),cyN-rho*Math.cos(th)];}
+function projS(ra,dec){var rho=R*(90+dec)/DEN,th=ra/24*2*Math.PI;return[cxS-rho*Math.sin(th),cyN-rho*Math.cos(th)];}
+
+function disc(cx,pj,north,titleTxt){
+    el('circle',{cx:cx,cy:cyN,r:R,fill:'#060a18'},sky);
+    // Milky Way band
+    var mw = north ? [[19.6,40],[21.5,52],[23.0,60],[0.7,62],[2.9,56],[4.6,42],[6.2,10],[7.0,-14]]
+                   : [[6.6,-24],[8.4,-44],[10.6,-58],[12.6,-63],[15.2,-52],[17.6,-36],[19.2,-22],[20.5,-8]];
+    var seg=mw.filter(function(p){return north?p[1]>=-LIM:p[1]<=LIM;}).map(function(p){return pj(p[0],p[1]);});
+    if(seg.length>1){var d='M'+seg.map(function(p){return p[0].toFixed(1)+','+p[1].toFixed(1);}).join(' L ');
+        el('path',{d:d,fill:'none',stroke:'rgba(150,180,240,0.10)','stroke-width':24,'stroke-linecap':'round','stroke-linejoin':'round',filter:'url(#mwblur)','clip-path':'url(#c'+cx+')'},sky);
+        el('path',{d:d,fill:'none',stroke:'rgba(180,200,255,0.055)','stroke-width':46,'stroke-linecap':'round','stroke-linejoin':'round',filter:'url(#mwblur)','clip-path':'url(#c'+cx+')'},sky);}
+    var cp=el('clipPath',{id:'c'+cx},sky);el('circle',{cx:cx,cy:cyN,r:R},cp);
+    var g=el('g',{'clip-path':'url(#c'+cx+')'},sky);
+    // dec circles + equator
+    [60,30,-30].forEach(function(dc){var rr=R*(90-(north?dc:-dc))/DEN;el('circle',{cx:cx,cy:cyN,r:rr,fill:'none',stroke:'rgba(150,180,230,0.11)','stroke-width':.6},g);});
+    el('circle',{cx:cx,cy:cyN,r:R*90/DEN,fill:'none',stroke:'rgba(160,190,235,0.28)','stroke-width':1,'stroke-dasharray':'2 3'},g);
+    // RA spokes
+    for(var h=0;h<24;h+=2){var p=pj(h,-LIM);el('line',{x1:cx,y1:cyN,x2:p[0],y2:p[1],stroke:'rgba(150,180,230,0.07)','stroke-width':.5},g);}
+    // decorative starfield
+    for(var i=0;i<520;i++){var rr=R*Math.sqrt(rnd()),an=rnd()*2*Math.PI;var x=cx+rr*Math.sin(an),y=cyN-rr*Math.cos(an);
+        var m=rnd(),rad=m<0.87?0.35+rnd()*0.55:0.85+rnd()*0.85;var op=0.22+rnd()*0.5;
+        el('circle',{cx:x.toFixed(1),cy:y.toFixed(1),r:rad.toFixed(2),fill:'#dfe8ff',opacity:op.toFixed(2)},g);}
+    // ecliptic (full, tilted) — dec within +-23.4 so it shows in both discs
+    var ep=[];for(var lam=0;lam<=360;lam+=3){var lr=lam*D2R;var dec=Math.asin(Math.sin(EPS)*Math.sin(lr))/D2R;
+        var ra=Math.atan2(Math.cos(EPS)*Math.sin(lr),Math.cos(lr))/D2R;if(ra<0)ra+=360;ra/=15;ep.push(pj(ra,dec));}
+    el('path',{d:'M'+ep.map(function(p){return p[0].toFixed(1)+','+p[1].toFixed(1);}).join(' L ')+' Z',fill:'none',stroke:'rgba(220,195,110,0.45)','stroke-width':1,'stroke-dasharray':'5 4'},g);
+    // constellation lines + labels
+    CONS.forEach(function(c){
+        c.L.forEach(function(pr){var a=byName[pr[0]],b=byName[pr[1]];if(!a||!b)return;
+            var ina=north?a[2]>=-LIM:a[2]<=LIM, inb=north?b[2]>=-LIM:b[2]<=LIM;if(!ina||!inb)return;
+            var pa=pj(a[1],a[2]),pb=pj(b[1],b[2]);el('line',{x1:pa[0],y1:pa[1],x2:pb[0],y2:pb[1],stroke:'rgba(140,175,250,0.42)','stroke-width':.9},g);});
+        if(north?c.d>=-LIM+3:c.d<=LIM-3){var lp=pj(c.r,c.d);
+            el('text',{x:lp[0],y:lp[1],'font-size':7,'font-style':'italic',fill:'rgba(150,175,225,.42)','text-anchor':'middle'},g).textContent=c.n;}
+    });
+    // named stars
+    STARS.forEach(function(s){var inh=north?s[2]>=-LIM:s[2]<=LIM;if(!inh)return;
+        var p=pj(s[1],s[2]),rad=Math.max(1.3,Math.min(5.0,4.2-s[3]*0.85)),col=s[5];
+        var a=el('a',{'class':'sgroup'},g);a.setAttributeNS(XLINK,'xlink:href','/word/?name='+encodeURIComponent('astro:star:'+s[0]));a.setAttribute('href','/word/?name='+encodeURIComponent('astro:star:'+s[0]));a.style.cursor='pointer';
+        el('circle',{cx:p[0],cy:p[1],r:rad+3.5,fill:col,opacity:.16},a);
+        el('circle',{cx:p[0],cy:p[1],r:rad,fill:col},a);
+        var big=s[3]<1.6;
+        var tx=el('text',{x:p[0]+rad+2.4,y:p[1]+2.8,'font-size':big?7.4:6.6,fill:big?'rgba(214,226,255,.82)':'rgba(190,205,235,.5)'},a);tx.textContent=s[4];
+        el('circle',{cx:p[0],cy:p[1],r:Math.max(9,rad+6),fill:'transparent'},a);
+        a.addEventListener('mouseenter',function(){document.getElementById('readout').innerHTML='<b>'+esc(s[4])+'</b>'+(DESC[s[0]]?' — '+esc(DESC[s[0]]):'')+' · RA '+s[1].toFixed(1)+'h, Dec '+(s[2]>=0?'+':'')+s[2].toFixed(0)+'°, mag '+s[3];
+            tx.setAttribute('fill','#e7d79a');tx.setAttribute('font-size','9');});
+        a.addEventListener('mouseleave',function(){tx.setAttribute('fill',big?'rgba(214,226,255,.82)':'rgba(190,205,235,.5)');tx.setAttribute('font-size',big?'7.4':'6.6');});
+    });
+    // rim rings + ticks + hour numerals + months
+    el('circle',{cx:cx,cy:cyN,r:R,fill:'none',stroke:'var(--gold)','stroke-width':1.6},sky);
+    el('circle',{cx:cx,cy:cyN,r:R+7,fill:'none',stroke:'rgba(201,178,106,.55)','stroke-width':1},sky);
+    el('circle',{cx:cx,cy:cyN,r:R+18,fill:'none',stroke:'rgba(201,178,106,.32)','stroke-width':.8},sky);
+    var ROM=['XXIV','I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII','XIII','XIV','XV','XVI','XVII','XVIII','XIX','XX','XXI','XXII','XXIII'];
+    var sgn=north?1:-1;
+    for(var hh=0;hh<24;hh++){var th=hh/24*2*Math.PI;
+        el('line',{x1:cx+sgn*Math.sin(th)*R,y1:cyN-Math.cos(th)*R,x2:cx+sgn*Math.sin(th)*(R+7),y2:cyN-Math.cos(th)*(R+7),stroke:'rgba(201,178,106,.5)','stroke-width':hh%6===0?1.3:.7},sky);
+        var lr=R+13;el('text',{x:cx+sgn*Math.sin(th)*lr,y:cyN-Math.cos(th)*lr+2.4,'font-size':6.4,fill:'rgba(201,178,106,.72)','text-anchor':'middle'},sky).textContent=ROM[hh];}
+    var MON=['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE','JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'];
+    MON.forEach(function(name,mi){var ra=((12+(mi-2)*2)%24+24)%24;var th=ra/24*2*Math.PI;var lr=R+30;
+        var x=cx+sgn*Math.sin(th)*lr,y=cyN-Math.cos(th)*lr;var deg=Math.atan2(sgn*Math.sin(th),-Math.cos(th))*180/Math.PI;
+        var rot=deg+(Math.cos(th)<0?90:-90);
+        el('text',{x:x,y:y,'font-size':6.6,fill:'rgba(190,205,235,.55)','text-anchor':'middle',transform:'rotate('+rot.toFixed(1)+' '+x.toFixed(1)+' '+y.toFixed(1)+')'},sky).textContent=name;});
+    el('text',{x:cx,y:cyN-R-44,'font-size':10.5,fill:'var(--gold-2)','text-anchor':'middle','letter-spacing':'2.5'},sky).textContent=titleTxt;
+    el('circle',{cx:cx,cy:cyN,r:1.6,fill:'rgba(201,178,106,.85)'},sky);
+}
+var defs=el('defs',{},sky);var f=el('filter',{id:'mwblur',x:'-40%',y:'-40%',width:'180%',height:'180%'},defs);el('feGaussianBlur',{'in':'SourceGraphic',stdDeviation:6},f);
+disc(cxN,projN,true,'NORTHERN HEMISPHERE');
+disc(cxS,projS,false,'SOUTHERN HEMISPHERE');
+// centre insets
+var midx=(cxN+cxS)/2;
+var ss=el('g',{},sky);el('circle',{cx:midx,cy:80,r:5,fill:'#e8b84a'},ss);
+[12,20,28,36].forEach(function(rr,i){el('ellipse',{cx:midx,cy:80,rx:rr,ry:rr*0.42,fill:'none',stroke:'rgba(150,180,230,.3)','stroke-width':.7},ss);
+    var an=i*1.7;el('circle',{cx:midx+rr*Math.cos(an),cy:80+rr*0.42*Math.sin(an),r:1.6,fill:'#bcd'},ss);});
+el('text',{x:midx,y:124,'font-size':6.5,fill:'rgba(190,205,235,.55)','text-anchor':'middle','letter-spacing':'2'},sky).textContent='THE SOLAR SYSTEM';
+var gx=el('g',{},sky);for(var s2=0;s2<64;s2++){var t=s2/64*Math.PI*4,rr=2+t*3.3;el('circle',{cx:midx+rr*Math.cos(t),cy:560+rr*0.5*Math.sin(t),r:0.9,fill:'rgba(200,215,255,'+(0.72-t/16).toFixed(2)+')'},gx);}
+el('ellipse',{cx:midx,cy:560,rx:6,ry:3,fill:'rgba(240,230,200,.6)'},gx);
+el('text',{x:midx,y:592,'font-size':6.5,fill:'rgba(190,205,235,.55)','text-anchor':'middle','letter-spacing':'2'},sky).textContent='THE MILKY WAY';
+// legend (spectral colours)
+document.getElementById('legend').innerHTML=[['#a9c3ff','hot blue'],['#eaf1ff','white'],['#fff2c8','yellow'],['#ffd7a0','orange'],['#ffb0a0','red giant']]
+ .map(function(c){return '<span><i style="background:'+c[0]+'"></i>'+c[1]+'</span>';}).join('')+
+ '<span style="margin-left:6px;color:var(--faint)">&mdash; star size = brightness &middot; gold dashes = ecliptic</span>';
+try{if(navigator.sendBeacon){var prev='';try{prev=sessionStorage.getItem('pulse_prev')||'';}catch(e){}
+ navigator.sendBeacon('/pulse',new Blob([JSON.stringify({concept:'site:archives_starchart',surface:'starchart',prev:prev,page_referrer:document.referrer||''})],{type:'application/json'}));
+ try{sessionStorage.setItem('pulse_prev','site:archives_starchart');}catch(e){}}}catch(e){}
+}());
+</script>
+</body>
+</html>

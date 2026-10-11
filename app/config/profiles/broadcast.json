@@ -1,0 +1,45 @@
+{
+ "title": "Broadcast station",
+ "admits": {
+  "guest": "read"
+ },
+ "space": {
+  "public": true,
+  "open_guest": false
+ },
+ "duty": "wb:duty:continuous",
+ "trigger": {
+  "boot": true,
+  "then": "every:1800s"
+ },
+ "budget": {
+  "per_day": 48
+ },
+ "moderator": {
+  "chairman": "Producer",
+  "scribe": "Scribe",
+  "on_failure": {
+   "retries": 1,
+   "breaker": 3
+  }
+ },
+ "effect": "publish",
+ "gate_facts": [
+  "source_ready",
+  "headroom"
+ ],
+ "roles_min": 1,
+ "output": {
+  "feed": true,
+  "room": true
+ },
+ "retention": {
+  "feed": "240 messages",
+  "observations": "keep"
+ },
+ "lock": [
+  "effect",
+  "admits",
+  "gate_facts"
+ ]
+}

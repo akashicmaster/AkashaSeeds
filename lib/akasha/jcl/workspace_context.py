@@ -20,11 +20,33 @@ untracked hot path is one thread-local read.
 """
 import threading
 import logging
+import time
 from contextlib import contextmanager
 
 logger = logging.getLogger("Akasha.Workspace")
 
 _local = threading.local()
+
+
+# ── Soft step deadline (A41.2) ──────────────────────────────────────────────
+# The JCL worker sets this before dispatching a step, from the job's soft
+# timeout (`started_at + timeout_s`). A long, resumable op (learning.feature.execute
+# `until=complete`) reads `budget_exhausted()` between chunks and yields early so
+# the step returns cleanly (the run resumes on the next daily rerun) rather than
+# overrunning the block's wall-clock share. Per-thread; None = no deadline.
+
+def set_deadline(ts) -> None:
+    _local.deadline = ts
+
+
+def deadline():
+    return getattr(_local, "deadline", None)
+
+
+def budget_exhausted() -> bool:
+    """True when the current step has a deadline and it has passed."""
+    d = getattr(_local, "deadline", None)
+    return d is not None and time.time() >= d
 
 # ── Hard-guard state (slice 2) ──────────────────────────────────────────────
 # ENFORCE selects the guard's mode: reject (True, shipped) vs observe/warn (False).

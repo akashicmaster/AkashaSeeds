@@ -25,7 +25,6 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
 sys.path.insert(0, ROOT)
 os.environ["AKASHA_SKIP_AUTOINSTALL"] = "1"
-os.environ["AKASHA_NO_AUTOLEARN"] = "1"
 
 _results = []
 

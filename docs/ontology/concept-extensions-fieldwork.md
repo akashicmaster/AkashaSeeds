@@ -19,7 +19,8 @@ responses can be indexed as Aggregation units, Synthesis sources, or Presentatio
 nodes without copying data.
 
 All concept models are registered automatically via the **Concept Model Plugin Registry**
-(`lib/akasha/concepts/registry.py`). See `docs/concept-model-spec.md §7` for the plugin
+(`lib/akasha/concepts/registry.py`), which discovers the application's models in `app/concepts/`.
+See `docs/concept-model/concept-model-spec.md §7` for the
 authoring guide.
 
 ---
@@ -47,7 +48,7 @@ authoring guide.
 
 ## 1. FieldNote
 
-**Source:** `lib/akasha/concepts/fieldnote.py`  
+**Source:** `app/concepts/fieldnote.py`  
 **Context key:** `active_fieldnote_root`  
 **Global index:** `set:fieldnote:index`
 
@@ -415,7 +416,7 @@ was adopted as-is.
 
 ## 2. Survey
 
-**Source:** `lib/akasha/concepts/survey.py`  
+**Source:** `app/concepts/survey.py`  
 **Context key:** `active_survey_root`  
 **Global index:** `set:survey:index`
 

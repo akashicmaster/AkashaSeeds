@@ -1,0 +1,7 @@
+# research.argument (seeds-14 §2 macro) — the Labo notebook's chunks in argument order. A chunk is a note-family
+# entry on the research bench; this is the argument projection of that bench's chunks (superseded retained).
+# Coarser than the Set primitives, so it is a MACRO — never a kernel handler. Forward to the bench op.
+# Invoke: macro.run name=research.argument bench=<labo> —  (not , which macro.run reserves).
+#
+#!params bench,limit=500
+research.note.timeline name="$bench" order=argument limit="$limit"

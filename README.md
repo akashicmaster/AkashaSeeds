@@ -86,7 +86,7 @@ Download the seed from [Releases](https://github.com/akashicmaster/AkashaSeeds/r
 mkdir akasha
 cd akasha
 
-python akasha_seeds_seeds12.py
+python akasha_seeds_seeds13.py
 ```
 
 The seed expands into a complete local semantic environment.
@@ -103,6 +103,32 @@ No mandatory infrastructure.
 
 Runs on Linux, macOS, Windows, Raspberry Pi—even iPad.
 
+> **This release** starts a fresh instance; it does not read data from an earlier
+> seeds series. Begin in a new directory. (To carry atoms forward, export them from the
+> old build and describe them again as a pack in `ontology/user/`.)
+
+---
+
+# A substrate, and the things built on it
+
+This release is the first **regular edition** of the seeds series, and it marks a line
+in the architecture: Akasha is now cleanly divided into a **platform** and the
+**applications** built on it.
+
+- The **platform** is a pure substrate. It depends on nothing of any application, and it
+  boots, serves, and passes its own tests with every application removed. It is the part
+  held fixed — the kernel, the gate, the record, the engines — the way an operating
+  system keeps its kernel fixed beneath the programs that run on it.
+- An **application** — the archives, a kitchen, a research space, your own — is built
+  entirely on top, through a published specification and a stable API, without touching
+  one line of platform code.
+
+That boundary is why the next step is possible: a **no-code workbench**, where a
+developer composes concept models and wires them into a running application from
+templates, with the code path still open underneath for anyone who wants it. The
+archives you can explore today are the proof that the substrate carries real
+applications; the workbench is how you will build your own.
+
 ---
 
 # Why Akasha?
@@ -116,6 +142,7 @@ Its architecture is built around a few simple principles:
 - 🔗 Semantic graphs instead of isolated documents
 - 🧩 Plug-in Concept Models
 - 🏗 World, Workbench, and Workflow on the same substrate as the knowledge they act on
+- 🧱 A pure platform / application boundary — build on the substrate, never inside it
 - 🤝 Humans, LLMs, programs, and sensors as peers in one semantic world
 - 🔌 Native MCP integration
 - 🌍 Browser portals generated from the same semantic space
@@ -175,6 +202,7 @@ The readable account of the design. It covers:
 - World, Workbench, Workflow, Chronon
 - Society
 - Seeds, retreat, and continuity
+- The world is plural — reasoning with, without, and about it
 
 # 📐 [Akasha — Foundational Design Context](AKASHA_FOUNDATIONAL_DESIGN_CONTEXT.md)
 
@@ -192,7 +220,8 @@ Nor another AI framework.
 
 It is an experiment in treating **concepts as computational objects**.
 
-The substrate has been built, and it has survived reality.
+The substrate has been built, it has survived reality, and it now stands on a clean
+boundary between the platform and the worlds built on it.
 
 Now it is being used—
 

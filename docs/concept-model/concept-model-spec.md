@@ -1,7 +1,7 @@
 # Akasha Concept Model — Contributor & LLM Specification
 
 > **Audience**: Contributors, LLM co-developers  
-> **Purpose**: Everything you need to build a new Concept Model for `lib/akasha/concepts/`  
+> **Purpose**: Everything you need to build a new Concept Model for the application's `app/concepts/`  
 > **Version**: 1.3 — Akasha kernel series `seeds`
 
 ---
@@ -258,7 +258,7 @@ a plugin registered at `self.cortex._plugins["transform.export.<format>"]`.
 
 ## 3. NoteConcept — Reference Implementation
 
-**File**: `lib/akasha/concepts/note.py`
+**File**: `app/concepts/note.py`
 
 NoteConcept is the canonical reference for a **stateful, structured concept** with dual-
 namespace set management and a sequential timeline topology.
@@ -435,7 +435,7 @@ import time
 import logging
 from typing import List, Dict, Any, Optional
 
-from lib.akasha.concepts.base import BaseConcept
+from lib.akasha.api.concepts import BaseConcept
 
 logger = logging.getLogger("Harmonia.Concept.MyThing")
 
@@ -1003,10 +1003,12 @@ These are the `AkashaEngine` methods a concept model may call:
 
 ### 7.1 Registering a New Concept — Plugin Registry
 
-**No changes to `kernel.py` are required.**
+**No change to the platform is required.**
 
-Drop your Python file into `lib/akasha/concepts/`. The Concept Model Plugin Registry
-(`lib/akasha/concepts/registry.py`) auto-discovers all eligible classes at kernel startup.
+Drop your Python file into the application's `app/concepts/`. The platform's Concept Model
+registry (`lib/akasha/concepts/registry.py`) imports every module there at startup and registers
+each eligible class (platform-spec §3.2). The platform's own models live in `lib/akasha/concepts/`;
+an application never adds files there — everything an application provides lives under `app/`.
 
 A class is eligible if it defines both `CONCEPT_PREFIX` and `CONCEPT_METHODS`:
 
@@ -1027,7 +1029,7 @@ class MyThingConcept(BaseConcept):
     }
 ```
 
-At startup, `ConceptRegistry.discover(concepts_dir)` scans the directory, imports each
+At startup, `ConceptRegistry.discover(concepts_dir)` scans `app/concepts/`, imports each
 `*.py` file that is not a dunder file, and registers every top-level class that has both
 `CONCEPT_PREFIX` and `CONCEPT_METHODS`. The full method name dispatched in JSON-RPC is
 `"{CONCEPT_PREFIX}.{suffix}"`.
@@ -1042,7 +1044,7 @@ At startup, `ConceptRegistry.discover(concepts_dir)` scans the directory, import
 | Any other | `-32603` | Internal error |
 
 **Concept model commands are intentionally hidden from the main `help` output.**
-Document each model's API in `docs/concept-model-spec.md` (this file).
+Document each model's API in `docs/concept-model/concept-model-spec.md` (this file).
 
 ### 7.2 IAM Routing — auto-derived (do NOT hand-wire)
 
@@ -1274,7 +1276,7 @@ via the Plugin Registry. Their commands are hidden from the main `help` output.
 
 ### 10.1 Cockpit
 
-**Source:** `lib/akasha/concepts/cockpit.py`  
+**Source:** `app/concepts/cockpit.py`  
 **Session context key:** `active_cockpit_root`
 
 A stateful navigational vessel for the Semantic Cosmos. Maintains a **transient instrument
@@ -1337,7 +1339,7 @@ Full reference: `docs/developer/cosmos-frontend-requirements.md` (viewport contr
 
 ### 10.2 FieldNote
 
-**Source:** `lib/akasha/concepts/fieldnote.py`  
+**Source:** `app/concepts/fieldnote.py`  
 **Session context key:** `active_fieldnote_root`
 
 A flat, context-tagged field observation record. Unlike the Note concept (hierarchical
@@ -1363,7 +1365,7 @@ Optional params for `fieldnote.new`: `project`, `region`, `season` (all strings)
 
 ### 10.3 Survey
 
-**Source:** `lib/akasha/concepts/survey.py`  
+**Source:** `app/concepts/survey.py`  
 **Session context key:** `active_survey_root`
 
 A pure-structural data-collection universe. Maintains five typed atom populations — root,
@@ -1397,7 +1399,7 @@ Optional params: `survey.new` accepts `description`; `survey.q.add` accepts `qty
 
 ### 10.4 Aggregation
 
-**Source:** `lib/akasha/concepts/aggregation.py`  
+**Source:** `app/concepts/aggregation.py`  
 **Session context key:** `active_aggregation_root`  
 **Prefix:** `agg` · **Index set:** `set:agg:index`
 
@@ -1428,7 +1430,7 @@ See `docs/concept-extensions.md §3` for design rationale, topology, and cross-c
 
 ### 10.5 Synthesis
 
-**Source:** `lib/akasha/concepts/synthesis.py`  
+**Source:** `app/concepts/synthesis.py`  
 **Session context key:** `active_synthesis_root`  
 **Prefix:** `synth` · **Index set:** `set:synth:index`
 
@@ -1465,7 +1467,7 @@ See `docs/concept-extensions.md §4` for design rationale, topology, and cross-c
 
 ### 10.6 Presentation
 
-**Source:** `lib/akasha/concepts/presentation.py`  
+**Source:** `app/concepts/presentation.py`  
 **Session context key:** `active_presentation_root`  
 **Prefix:** `pres` · **Index set:** `set:pres:index`
 
@@ -1498,13 +1500,13 @@ See `docs/concept-extensions.md §5` for design rationale, topology, and cross-c
 
 ### 10.7 Thesaurus
 
-**Source:** `lib/akasha/concepts/thesaurus.py`
+**Source:** `app/concepts/thesaurus.py`
 **Prefix:** `thesaurus` · **CLI:** `thesaurus.<op>` (canonical) · `th.<op>` (abbrev) · `thesaurus` mode. Operators: reference / explore / concept
 
 A **glossary read surface** over the graph — the preparation layer for projecting
 concepts onto web concept pages. Three read operators, no writes: the model reads
 the `thesaurus:*` relations (written by ontology load / Weaver — see
-`ontology/thesaurus/a_thesaurus_core.csl`) and the incrementally-maintained
+`ontology/lexicon/01_relations_core.ak`) and the incrementally-maintained
 `meta['salience']` meaning-density score. It has no root lifecycle; it operates
 across the whole graph.
 
@@ -1566,7 +1568,7 @@ curated yet (common right after ontology load).
 
 ### 10.8 Curation
 
-**Source:** `lib/akasha/concepts/curation.py`
+**Source:** `app/concepts/curation.py`
 **Prefix:** `curation` · **CLI:** `curation.<op>` (canonical) · `cur.<op>` (abbrev) · `curation` mode. Operators: new / narrate / ls · **Index set:** `set:curation:index`
 
 Curation is **interpretation as a narrative path over relationships**. Where `fact` /
@@ -1601,15 +1603,15 @@ Two invariants:
 | `curation.ls` (`cur.ls`) | — | — | List curations. |
 
 **Relations:** `curation:next` (path step, w = order), `curation:over` (root → each atom
-interpreted). **Examples shipped:** `ontology/curation/lineage_demo.ak` (a patriline with
+interpreted). **Examples shipped:** `app/ontology/curation/lineage_demo.ak` (a patriline with
 `chrono:before` + `lineage:begat` for **derived** auto path-discovery, autoloaded) and
-`curations/sky_dreamers.csl` (an **authored** thematic narrative). See
+`app/curations/sky_dreamers.csl` (an **authored** thematic narrative). See
 `docs/for-llm/curation-model.md`.
 
 
 ### 10.9 Recipe
 
-**Source:** `lib/akasha/concepts/recipe.py` · **extends `FormulaConcept`** (§10.10)
+**Source:** `app/concepts/recipe.py` · **extends `FormulaConcept`** (§10.10)
 **Prefix:** `recipe` · **CLI:** `recipe.<op>` (canonical) · `rcp.<op>` (abbrev) · `recipe` mode. Operators: new / add / step / food / nutrition / view / ls / suggest · **Index set:** `set:recipe:index`
 
 Recipe is the **cooking specialization of the `formula` base model** (§10.10): a root plus
@@ -1642,7 +1644,7 @@ paths work:
 
 - **Structured meta** — `recipe.food` writes `food:{slug}` with `meta.nutrition =
   {"basis_g": 100, "kcal": …, "protein_g": …}`.
-- **USDA content string** — the ontology importer (`scripts/usda_food_import.py`) can't write
+- **USDA content string** — the ontology importer (`app/scripts/usda_food_import.py`) can't write
   meta through `.ak def`, so it stamps `"… — per 100g: 18 kcal, Protein 0.6g, Fat 0.1g, …"`
   into the atom's **content**; `recipe.nutrition` parses that (`_parse_nutrition_content`,
   fires only on the `per <N>g:` marker) and maps USDA labels to the same canonical keys.
@@ -1692,15 +1694,15 @@ allergen; it never enters the `avoid=` subtraction set.
 **Axis index sets:** `set:recipe:group:{axis}:{value}`, `set:recipe:ing:{slug}`,
 `set:recipe:method:{slug}`, `set:recipe:constraint:{slug}`. **Nutrition:** stored in the
 `food:{slug}` atom's meta (`nutrition.basis_g` + per-nutrient values). **Examples shipped:**
-`ontology/recipe/pantry.ak` (canonical method + constraint vocab, autoloaded) and
-`curations/recipe_demo.csl` (three recipes + their `recipe.food` nutrition + a `kcal<=600`
+`app/ontology/recipe/pantry.ak` (canonical method + constraint vocab, autoloaded) and
+`app/curations/recipe_demo.csl` (three recipes + their `recipe.food` nutrition + a `kcal<=600`
 target, authored via CSL — recipes carry runtime state, so they are CSL not flat `.ak`; run at
 boot so `recipe.suggest` / `recipe.nutrition` work on a fresh install).
 
 
 ### 10.10 Formula (base model)
 
-**Source:** `lib/akasha/concepts/formula.py`
+**Source:** `app/concepts/formula.py`
 **Prefix:** `formula` · **CLI:** `formula.<op>` · `form.<op>` (abbrev) · `formula` mode. Operators: new / material / op / step / source / rollup / spec / view / ls / suggest · **Index set:** `set:formula:index`
 
 `FormulaConcept` is the **domain-neutral base** for "materials + operations + ordered
@@ -1919,19 +1921,19 @@ level `CONTEXT_KEY_ACTIVE` is already unique and no namespace is required.
 | 1.3 | Rewrote §4.1 template to reflect all patterns from Aggregation, Synthesis, Presentation implementations: `CONCEPT_METHODS` with `coerce`, `INDEX_SET`, `_require_access`, `_visible_members`, correct set creation order. Expanded §4.2 checklist. Added §4.3 Common Implementation Bugs (B1–B11). Added concept-namespace relation convention to §9 with full table for agg/synth/pres relations. Added §10.4–10.6 API reference entries for Aggregation, Synthesis, Presentation. |
 | 1.4 | Fixed Two-Namespace Rule violation in template: `_register(root_id)` — no `concept_word` on root atom (§4.1, §4.3 B1, §5.1). Added root atom corollary to §5.1. Added §7.4 Session Instance Layer Integration: two binding modes, `CONTEXT_KEY_ACTIVE` convention, `concept_id` return requirement, multi-instance lifecycle. Added §11 Root Lifecycle Guarantees stub: current behaviour, open questions on drop policy, GC, alias invalidation, orphan policy, SessionSpace cleanup. |
 | 1.5 | Added `namespace` parameter to `BaseConcept.__init__` and `_ctx_key()` helper (§2.1, §2.3). Updated template `__init__`, `op_new`, `op_open` to use `_ctx_key()` (§4.1). Added §12 Service Namespace Isolation: problem statement, solution, design rules, affected models table. |
-| 1.6 | Added §10.7 Thesaurus: cross-graph semantic enrichment model with ShelfScore, typed relation registry, and CurationCollection management. Unlike other models, Thesaurus has no single root — it operates across the entire graph. Relation types registered in `ontology/thesaurus/a_thesaurus_core.csl`. |
+| 1.6 | Added §10.7 Thesaurus: cross-graph semantic enrichment model with ShelfScore, typed relation registry, and CurationCollection management. Unlike other models, Thesaurus has no single root — it operates across the entire graph. Relation types registered in `ontology/lexicon/01_relations_core.ak`. |
 | 1.7 | Thesaurus §10.7 extended: `thesaurus:external_ref` relation type added; `thesaurus.shelf.link_ext` operator attaches external URLs (Wikipedia, Britannica, etc.) to atoms; `external_refs` ShelfScore component (w=0.10) counts external refs / 4. `thesaurus.view.atom` and `thesaurus.view.curation` operators added for complete UI projection. ShelfScore weights rebalanced: `link_total` 0.10→0.05, `chain_balance` 0.10→0.05, `external_refs` new 0.10. Shell renderer extended to handle `thesaurus:AtomView` and `thesaurus:CurationView` result types. |
 | 1.8 | Thesaurus §10.7 extended with ExhibitionSeries: `thesaurus:in_series` relation added (many-to-many: a CurationCollection can belong to multiple series). `thesaurus.series.new`, `thesaurus.series.ls`, `thesaurus.series.add`, `thesaurus.view.series` operators added. `set:thesaurus:series` index set. `url_slug` field added to all view projections (series, curation, collection). URL permanence convention documented: `/series/{slug}`, `/exhibition/{slug}`, `/word/{alias}`. Shell renderer extended with `_render_thesaurus_series_view` for `thesaurus:SeriesView` result type. |
-| 1.9 | Added §10.9 Recipe: a `survey`-shaped cookable universe (root + ingredients/methods/steps/hints/presentation/constraints) with axis-driven suggestion. Dimensional axes (season/ethnic/course/scene + ingredients/methods/constraints) are cross-recipe membership sets; `recipe.suggest` ranks by weighted intersection (the `cross_query` idea on a menu). Constraints are a **hard, fail-closed filter** (`avoid=` subtracts candidates, never soft-ranks) — the deliberate asymmetry vs curation's no-burden-of-proof. Operators: new / add / step / view / ls / suggest. Examples: `ontology/recipe/pantry.ak` (method + constraint vocab, autoloaded) + `curations/recipe_demo.csl` (three recipes, boot-run so suggest works fresh). |
-| 1.10 | Recipe §10.9 nutrition: `recipe.food` (open nutrient set via `**kwargs`) writes USDA-style nutrition into `food:{slug}` meta (the USDA import endpoint); `recipe.nutrition` accumulates (grams/`basis_g`)×nutrient over an ingredient's food atom (resolved by slug/name at read time — recipes never stub `food:`, so a USDA load wins), schema-agnostic over nutrient keys, degradation-first (`unmeasured` for non-mass units, `no_data` for missing food). Reads nutrition from **either** structured `meta.nutrition` (`recipe.food`) **or** a USDA `.ak` content string `"… — per 100g: 18 kcal, Protein 0.6g, …"` (`_parse_nutrition_content`), since `.ak def` can't write meta — reconciles with `scripts/usda_food_import.py`. A `constraint=` nutrient bound (`kcal<=600`) becomes a `recipe:target` checked against totals, separate from allergen constraints; `recipe.view` gains a nutrition summary + targets. Registry `_filter_params` now passes all params through to VAR_KEYWORD ops (others unchanged). Loader contract documented: alias each food by `food:{slug}` so recipes resolve. |
+| 1.9 | Added §10.9 Recipe: a `survey`-shaped cookable universe (root + ingredients/methods/steps/hints/presentation/constraints) with axis-driven suggestion. Dimensional axes (season/ethnic/course/scene + ingredients/methods/constraints) are cross-recipe membership sets; `recipe.suggest` ranks by weighted intersection (the `cross_query` idea on a menu). Constraints are a **hard, fail-closed filter** (`avoid=` subtracts candidates, never soft-ranks) — the deliberate asymmetry vs curation's no-burden-of-proof. Operators: new / add / step / view / ls / suggest. Examples: `app/ontology/recipe/pantry.ak` (method + constraint vocab, autoloaded) + `app/curations/recipe_demo.csl` (three recipes, boot-run so suggest works fresh). |
+| 1.10 | Recipe §10.9 nutrition: `recipe.food` (open nutrient set via `**kwargs`) writes USDA-style nutrition into `food:{slug}` meta (the USDA import endpoint); `recipe.nutrition` accumulates (grams/`basis_g`)×nutrient over an ingredient's food atom (resolved by slug/name at read time — recipes never stub `food:`, so a USDA load wins), schema-agnostic over nutrient keys, degradation-first (`unmeasured` for non-mass units, `no_data` for missing food). Reads nutrition from **either** structured `meta.nutrition` (`recipe.food`) **or** a USDA `.ak` content string `"… — per 100g: 18 kcal, Protein 0.6g, …"` (`_parse_nutrition_content`), since `.ak def` can't write meta — reconciles with `app/scripts/usda_food_import.py`. A `constraint=` nutrient bound (`kcal<=600`) becomes a `recipe:target` checked against totals, separate from allergen constraints; `recipe.view` gains a nutrition summary + targets. Registry `_filter_params` now passes all params through to VAR_KEYWORD ops (others unchanged). Loader contract documented: alias each food by `food:{slug}` so recipes resolve. |
 | 1.11 | Recipe food resolution adopts **both** aliases instead of excluding one: `recipe.nutrition` resolves an ingredient from `food:fdc:{id}` (pinned via `fdc=` on `recipe.add`, or an `fdc:11429`-style value) → `food:{slug}` → plain-name/leaf, so a food is reachable by name **or** by fdc id. `recipe.add ingredient=` gains `fdc=`; the id is stored on the ingredient line and surfaced in `recipe.view`. Bridges the short-cooking-name → USDA-descriptive-name gap without a synonym table. Loader contract updated: keep both `food:fdc:{id}` and `food:{slug}`. |
-| 1.12 | Added §10.10 **Formula base model** (`FormulaConcept`, `lib/akasha/concepts/formula.py`): the domain-neutral base for "materials + operations + ordered process" — generalises `recipe` to dye/perfume/cosmetics/manufacturing (ISA-88-style materials + procedure + cost/BOM rollup). Machinery (relations/sets parametrised by prefix, property rollup, specs, axis suggestion) is inherited; `recipe` is refactored to a **thin subclass** (`RecipeConcept(FormulaConcept)`) with its `recipe.*` API/field names unchanged (product-surface stability). New generic `formula.*` model registered (S1 of the base-model plan). **Property rollup** generalises `recipe.nutrition`: direct line props (`cost=`) + source-scaled props (`formula.source` / food nutrition), schema-agnostic; **specs** unify numeric targets and categorical constraints (with `step=`/`ccp=` scoping reserved for HACCP). `test/formula_eval.py` (6/6); `recipe_eval` 10/10 unchanged. Reserved: PERT (`dur`/`after`/`formula.critical`, S2) and HACCP control specs (S3). |
+| 1.12 | Added §10.10 **Formula base model** (`FormulaConcept`, `app/concepts/formula.py`): the domain-neutral base for "materials + operations + ordered process" — generalises `recipe` to dye/perfume/cosmetics/manufacturing (ISA-88-style materials + procedure + cost/BOM rollup). Machinery (relations/sets parametrised by prefix, property rollup, specs, axis suggestion) is inherited; `recipe` is refactored to a **thin subclass** (`RecipeConcept(FormulaConcept)`) with its `recipe.*` API/field names unchanged (product-surface stability). New generic `formula.*` model registered (S1 of the base-model plan). **Property rollup** generalises `recipe.nutrition`: direct line props (`cost=`) + source-scaled props (`formula.source` / food nutrition), schema-agnostic; **specs** unify numeric targets and categorical constraints (with `step=`/`ccp=` scoping reserved for HACCP). `app/test/formula_eval.py` (6/6); `recipe_eval` 10/10 unchanged. Reserved: PERT (`dur`/`after`/`formula.critical`, S2) and HACCP control specs (S3). |
 | 1.13 | Formula **PERT / critical path** (S2): `formula.step`/`recipe.step` gain `dur=`/`dur_unit=` and `after=` (predecessor steps by order/label/key), forming a dependency DAG — omit `after` for the linear default, use it for parallel branches. `formula.critical`/`recipe.critical` run the Critical Path Method (forward/backward pass) → per-step ES/EF/LS/LF + slack, the zero-slack critical path, the makespan (parallel-aware) and the sequential total. Relation `P:after`; duration on step meta. Design-time planning, distinct from JCL runtime `depends_on`. `formula_eval` 7/7, `recipe_eval` 11/11. |
-| 1.21 | **Reference-recipe expansion** (ontology dish → structured recipe). The recipe ontology (TheMealDB ~744) stores each dish as ONE described atom in the shared nucleus, in a labelled grammar (`<Title> (<Cat> · <Cuisine> · <Country>). Ingredients: <m> <name>; …. Method: <step 1 …>. Source: <url>`). Module parser `_parse_dish` (+ `_parse_ing_line`, `_split_steps`) turns that back into `{title, axes, ingredients(+qty/unit), steps, source}` deterministically (validated across all 744: 0 with zero steps/ingredients; median 9 steps / 10 ingredients; `step N` markers → split, else newlines, else sentence segmentation). Two operators: **`recipe.reference.get`** (READ, guest-ok) projects a dish atom into a recipe card on the fly (parsed steps + ingredients + linked `ingred:*` concepts + image + source) with NO materialisation — the reference library browses the shared atoms in place; **`recipe.reference.clone`** (WRITE) materialises a dish into the caller's OWN editable recipe (recipe.new + a step per instruction + an ingredient per parsed line, best-effort food pin), counts against quota — "save & customise". `test/recipe_reference_eval.py` 4/4 (parser on the exact grammar, guest projection, clone→editable recipe.view, step-marker vs prose fallback). Regression green (recipe/dict/food_search/tier/account/formula, cli_router, invariants 0 fail). External spec §4.2 (reference.get/clone). |
-| 1.20 | **Food-app surface** (iOS-lead consolidated spec — the app is now a food-information app, not only recipe suggestion). **A-1 `recipe.food.lookup`** — food-dictionary read of one food (nutrition + allergens/season/categories surfaced generically from the atom's links); exact-match preferred (case-insensitive), ambiguous → `{found:false, candidates:[…]}`. **A-2 `recipe.method.list` / A-3 `recipe.tool.list`** — catalogue reads `{methods|tools:[{name,label,desc}]}` via generic `FormulaConcept._catalog_scan(prefix)` over `method:`/`tool:` (cortex+nucleus). **A-4 `recipe.publish`** — publish own recipe to the public feed (`set:{P}:published` + public read grant); paid → free gets `{locked, upgrade_required}`. **B-1** `recipe.step` gains `tools=`/`temp=` (stored on step meta + `step_tool` link); `recipe.view` steps[] now return `dur_min`/`temp`/`tools`. **B-2 (answered)** the picked food id pins via a new `food=` field AND a tolerant `fdc=` (accepts a `food:…` id or a raw key, not just numeric — so the already-deployed client sending `fdc=food:daikon` works); resolved food stored as `food_key` on the ingredient line, honoured first by `_resolve_food`. **C-1** `mine` (owner, cross-device) on `recipe.ls`/`view`; **C-2** `hint_items` (item ids for per-memo delete). **D-2 (contract fix)** an unimplemented method now returns **-32601** (was -32001) so a client can tell "not built yet" from "not allowed" — capability-mapped/handled methods unaffected (cli_router + all evals green). Generic bits (`_catalog_scan`, `_published_set`/`_is_published`, step tools/temp, `mine`/published in `_ls`) live on `FormulaConcept`; recipe skins the food/method/tool/publish surface. `test/recipe_dict_eval.py` 9/9 (method/tool catalogues, dictionary lookup + allergen link + ambiguous candidates, food=/fdc= pin round-trip to nutrition, step tools/temp in view, publish free-lock vs paid, mine, hint_items, and the D-1/D-4/-32601 contract). Regression clean (recipe 13/13, formula 8/8, tier 6/6, account 5/5, food_search 5/5; thesaurus/curation/semantic green). External spec §4.1/§4.2/§6 updated. |
-| 1.19 | **Food catalogue search** (`recipe.food.search` / generic `formula.source.search`) — the ingredient picker the app needs. When the food ontology (base pack ~380 + the archives nutrition pack ~38k) loads, food atoms carry **category-namespaced keys** (`food:<category>:<slug>`) + a `food:fdc:<id>` alias and live in the **shared nucleus**, so a bare ingredient name is ambiguous and only `fdc=`-pinned adds resolved nutrition. New READ op searches by name (all tokens, via `get_aliases_by_pattern`) across **both** the shared nucleus catalogue AND the caller's private foods (`food:user:<uid>:…`), returning each hit's display name + `fdc` + per-basis nutrition (parsed from `meta.nutrition` or the `"… — per 100g: …"` content string) + `scope` (catalog|personal); paginated (default 20/max 100), guest-allowed. Flow: search → pick → `recipe.add ingredient=<name> fdc=<id>` → exact nutrition. Generic `_source_scan`/`op_source_search` on `FormulaConcept`; recipe skins it with fdc+nutrition. `test/recipe_food_search_eval.py` 5/5 (drives REAL base food data loaded into the nucleus: catalogue hit + fdc→nutrition round trip + personal-food merge + pagination + guest read). Regression clean (recipe 13/13, formula 8/8, tier 6/6, account 5/5). External spec §4.2 + §5 updated. |
+| 1.21 | **Reference-recipe expansion** (ontology dish → structured recipe). The recipe ontology (TheMealDB ~744) stores each dish as ONE described atom in the shared nucleus, in a labelled grammar (`<Title> (<Cat> · <Cuisine> · <Country>). Ingredients: <m> <name>; …. Method: <step 1 …>. Source: <url>`). Module parser `_parse_dish` (+ `_parse_ing_line`, `_split_steps`) turns that back into `{title, axes, ingredients(+qty/unit), steps, source}` deterministically (validated across all 744: 0 with zero steps/ingredients; median 9 steps / 10 ingredients; `step N` markers → split, else newlines, else sentence segmentation). Two operators: **`recipe.reference.get`** (READ, guest-ok) projects a dish atom into a recipe card on the fly (parsed steps + ingredients + linked `ingred:*` concepts + image + source) with NO materialisation — the reference library browses the shared atoms in place; **`recipe.reference.clone`** (WRITE) materialises a dish into the caller's OWN editable recipe (recipe.new + a step per instruction + an ingredient per parsed line, best-effort food pin), counts against quota — "save & customise". `app/test/recipe_reference_eval.py` 4/4 (parser on the exact grammar, guest projection, clone→editable recipe.view, step-marker vs prose fallback). Regression green (recipe/dict/food_search/tier/account/formula, cli_router, invariants 0 fail). External spec §4.2 (reference.get/clone). |
+| 1.20 | **Food-app surface** (iOS-lead consolidated spec — the app is now a food-information app, not only recipe suggestion). **A-1 `recipe.food.lookup`** — food-dictionary read of one food (nutrition + allergens/season/categories surfaced generically from the atom's links); exact-match preferred (case-insensitive), ambiguous → `{found:false, candidates:[…]}`. **A-2 `recipe.method.list` / A-3 `recipe.tool.list`** — catalogue reads `{methods|tools:[{name,label,desc}]}` via generic `FormulaConcept._catalog_scan(prefix)` over `method:`/`tool:` (cortex+nucleus). **A-4 `recipe.publish`** — publish own recipe to the public feed (`set:{P}:published` + public read grant); paid → free gets `{locked, upgrade_required}`. **B-1** `recipe.step` gains `tools=`/`temp=` (stored on step meta + `step_tool` link); `recipe.view` steps[] now return `dur_min`/`temp`/`tools`. **B-2 (answered)** the picked food id pins via a new `food=` field AND a tolerant `fdc=` (accepts a `food:…` id or a raw key, not just numeric — so the already-deployed client sending `fdc=food:daikon` works); resolved food stored as `food_key` on the ingredient line, honoured first by `_resolve_food`. **C-1** `mine` (owner, cross-device) on `recipe.ls`/`view`; **C-2** `hint_items` (item ids for per-memo delete). **D-2 (contract fix)** an unimplemented method now returns **-32601** (was -32001) so a client can tell "not built yet" from "not allowed" — capability-mapped/handled methods unaffected (cli_router + all evals green). Generic bits (`_catalog_scan`, `_published_set`/`_is_published`, step tools/temp, `mine`/published in `_ls`) live on `FormulaConcept`; recipe skins the food/method/tool/publish surface. `app/test/recipe_dict_eval.py` 9/9 (method/tool catalogues, dictionary lookup + allergen link + ambiguous candidates, food=/fdc= pin round-trip to nutrition, step tools/temp in view, publish free-lock vs paid, mine, hint_items, and the D-1/D-4/-32601 contract). Regression clean (recipe 13/13, formula 8/8, tier 6/6, account 5/5, food_search 5/5; thesaurus/curation/semantic green). External spec §4.1/§4.2/§6 updated. |
+| 1.19 | **Food catalogue search** (`recipe.food.search` / generic `formula.source.search`) — the ingredient picker the app needs. When the food ontology (base pack ~380 + the archives nutrition pack ~38k) loads, food atoms carry **category-namespaced keys** (`food:<category>:<slug>`) + a `food:fdc:<id>` alias and live in the **shared nucleus**, so a bare ingredient name is ambiguous and only `fdc=`-pinned adds resolved nutrition. New READ op searches by name (all tokens, via `get_aliases_by_pattern`) across **both** the shared nucleus catalogue AND the caller's private foods (`food:user:<uid>:…`), returning each hit's display name + `fdc` + per-basis nutrition (parsed from `meta.nutrition` or the `"… — per 100g: …"` content string) + `scope` (catalog|personal); paginated (default 20/max 100), guest-allowed. Flow: search → pick → `recipe.add ingredient=<name> fdc=<id>` → exact nutrition. Generic `_source_scan`/`op_source_search` on `FormulaConcept`; recipe skins it with fdc+nutrition. `app/test/recipe_food_search_eval.py` 5/5 (drives REAL base food data loaded into the nucleus: catalogue hit + fdc→nutrition round trip + personal-food merge + pagination + guest read). Regression clean (recipe 13/13, formula 8/8, tier 6/6, account 5/5). External spec §4.2 + §5 updated. |
 | 1.18 | **Recipe launch-hardening** (10-point iOS-lead review; all generic in `FormulaConcept` + the `recipe` skin + kernel). **(1) Monotonic `revision`** — an append-only revlog (`set:{P}:{root}:revlog`, uuid-fenced marker atoms, never removed) bumps on every write, so it changes even across an in-place edit (detach+recreate keeps the parts count); `expected_revision` is the preferred optimistic-lock guard (legacy `expected_updated_at` still honoured); `updated_at` kept for display, `version` (parts count) kept for back-compat but must not be locked on. **(2) Stable item ids** — each per-formula item atom (ingredient/step/note/target/measurement) carries a lid fenced into its content (`text⁣lid`, U+2063) so identical text across formulas never collapses into one meta-clobbered atom, and an edit carries the lid forward onto the new atom key; `recipe.step`/`recipe.add` return `step_id`/`ingredient_id` (stable) alongside `atom_key`; `after=`/`item=` resolve the lid → current key. **(3) request_key** scoped to `(client, rpc_method, request_key)` + ~24 h retention (expired hits re-execute). **(4) `recipe.food`** gated to librarian/admin (shared catalogue `food:<slug>`; `catalog_denied`); new **`recipe.food.personal`** writes a private `food:user:<uid>:<slug>` that `_resolve_food` prefers for that user. **(6) `auth.account.delete`** — self-service (own account only; `confirm` required; refuses guests/admins): deregisters the identity (soft-delete = retained audit), purges the private cell (`manager.purge_client_cell`), and deletes the entitlement entry; mapped to capability `read` so it does NOT open a graph workspace on the cortex it deletes. **(9) Pagination** default `limit=20`, max 100, whole list (`limit=0`) admin-only (`_page_limit`). **(10)** `recipe.control`/`recipe.measure` gated with `recipe.haccp` (one paid HACCP feature). Docs (5/7/8): billing wording → StoreKit 2 signed transaction / store purchase credential + server-to-server notifications; `session_token` exceptions (`auth.status`/`auth.register`/`/health`); `recipe_quota` documented as the single source of truth. `recipe_eval` 13/13, `formula_eval` 8/8, `recipe_tier_eval` 6/6, new `recipe_account_eval` 5/5. **Security:** account-delete only ever targets the caller; `recipe.food` catalogue write is librarian/admin; no invariant weakened. External spec `docs/api/recipe-jsonrpc-v1.md` updated end-to-end. |
-| 1.17 | **General self-registration + entitlement** (kernel, product-neutral, for iOS/Android). `auth.register` — bounded self-service signup: OFF unless `AKASHA_ALLOW_SELF_REGISTER=1`; role FORCED to `user` (client-supplied role ignored — no escalation); a taken id is REJECTED (never overwritten → no hijack); passphrase ≥8 chars (raw over HTTPS); auto-logs-in (returns an `akt:` token) on the free plan. `auth.plan` (read own tier, capability `read`) / `auth.plan.set` (admin, capability `iam.manage` — the billing hook) store the tier in the shared nucleus vault (`entitlement` KV, product-neutral); recipe tiering now reads this general store (`recipe.plan.set` ≡ `auth.plan.set`). Billing wiring documented (external receipt-validation service → `auth.plan.set` with an admin token; client never self-upgrades). `test/recipe_tier_eval.py` 6/6 (adds register + general plan). **Security:** self-registration is a deliberate, config-gated loosening of the admin-only user-management rule — role-forced, no-overwrite, verified adversarially (no privilege escalation; bare-id-over-network invariant intact). External spec `docs/api/recipe-jsonrpc-v1.md` §2.4 documents `auth.register` + the upgrade flow. |
-| 1.16 | Recipe **entitlement / tiering** (server-side, the akashickitchen product model): OFF by default (`AKASHA_RECIPE_TIERING`) so the OSS recipe model has no limits. When on, a free plan is capped at `AKASHA_RECIPE_FREE_QUOTA` own recipes (default 5; `recipe.new` → `quota_reached` error over quota) and the analytics in `AKASHA_RECIPE_PAID_FEATURES` (default nutrition/critical/haccp) return a `locked` result for free users (`recipe.view`'s nutrition block too). A user's plan lives in the shared **nucleus vault** (`recipe_plan` KV — server-side, cross-session, never a client-writable atom), set by the admin-only `recipe.plan.set user= tier=paid|free` (the billing/receipt-validation hook); `recipe.plan` reads the caller's tier/quota/usage/locked-features for the app UI. Per-user recipe ownership indexed via `set:recipe:owner:{uid}` (added to `FormulaConcept._mk_root`). `test/recipe_tier_eval.py` 5/5 (quota, gates, cross-session upgrade/downgrade, self-upgrade denied, OFF=unlimited); `recipe_eval` 13/13 unchanged (tiering off). Free self-registration (`auth.register`) + receipt-validation upgrade endpoint are the remaining product pieces (a deliberate loosening of the admin-only user-management invariant — pending review). |
+| 1.17 | **General self-registration + entitlement** (kernel, product-neutral, for iOS/Android). `auth.register` — bounded self-service signup: OFF unless `AKASHA_ALLOW_SELF_REGISTER=1`; role FORCED to `user` (client-supplied role ignored — no escalation); a taken id is REJECTED (never overwritten → no hijack); passphrase ≥8 chars (raw over HTTPS); auto-logs-in (returns an `akt:` token) on the free plan. `auth.plan` (read own tier, capability `read`) / `auth.plan.set` (admin, capability `iam.manage` — the billing hook) store the tier in the shared nucleus vault (`entitlement` KV, product-neutral); recipe tiering now reads this general store (`recipe.plan.set` ≡ `auth.plan.set`). Billing wiring documented (external receipt-validation service → `auth.plan.set` with an admin token; client never self-upgrades). `app/test/recipe_tier_eval.py` 6/6 (adds register + general plan). **Security:** self-registration is a deliberate, config-gated loosening of the admin-only user-management rule — role-forced, no-overwrite, verified adversarially (no privilege escalation; bare-id-over-network invariant intact). External spec `docs/api/recipe-jsonrpc-v1.md` §2.4 documents `auth.register` + the upgrade flow. |
+| 1.16 | Recipe **entitlement / tiering** (server-side, the akashickitchen product model): OFF by default (`AKASHA_RECIPE_TIERING`) so the OSS recipe model has no limits. When on, a free plan is capped at `AKASHA_RECIPE_FREE_QUOTA` own recipes (default 5; `recipe.new` → `quota_reached` error over quota) and the analytics in `AKASHA_RECIPE_PAID_FEATURES` (default nutrition/critical/haccp) return a `locked` result for free users (`recipe.view`'s nutrition block too). A user's plan lives in the shared **nucleus vault** (`recipe_plan` KV — server-side, cross-session, never a client-writable atom), set by the admin-only `recipe.plan.set user= tier=paid|free` (the billing/receipt-validation hook); `recipe.plan` reads the caller's tier/quota/usage/locked-features for the app UI. Per-user recipe ownership indexed via `set:recipe:owner:{uid}` (added to `FormulaConcept._mk_root`). `app/test/recipe_tier_eval.py` 5/5 (quota, gates, cross-session upgrade/downgrade, self-upgrade denied, OFF=unlimited); `recipe_eval` 13/13 unchanged (tiering off). Free self-registration (`auth.register`) + receipt-validation upgrade endpoint are the remaining product pieces (a deliberate loosening of the admin-only user-management invariant — pending review). |
 | 1.15 | Recipe **client-facing contract additions** (for the iOS product surface): idempotent writes (`request_key` on `recipe.add`/`step`/`measure` → a retry returns `status:"duplicate"`, no double insert); edit/delete (`recipe.remove`, `recipe.ingredient.remove`/`.update`, `recipe.step.remove`/`.update` — detach the immutable atom; update = detach + re-add); derived `version`/`updated_at` on the card + optimistic-lock `expected_updated_at` on writes (stale → `-32002` conflict); `limit`/`cursor` pagination on `recipe.ls`/`suggest` (→ `next_cursor`/`has_more`). All generic in `FormulaConcept`. External spec `docs/api/recipe-jsonrpc-v1.md` documents these + the MVP policy (HTTPS-gated writes, admin-provisioned users, guest read-only). `recipe_eval` 13/13, `formula_eval` 8/8. |
 | 1.14 | Formula **control points / HACCP** (S3): `formula.control`/`recipe.control` add a bound on a process parameter (`param=temp op='>=' value=75 step=<ref> ccp=yes`) — a step/formula-scoped target with a critical-control-point flag; `formula.measure`/`recipe.measure` record observed values (audit trail, latest per param/step wins); `formula.checkpoints`/`recipe.haccp` check each target against the best actual (a measurement for its param, preferring the same step, else the rollup) → per-target pass/fail/pending, the CCP subset, violations, and an overall `safe` flag. For cooking: cook temperature (CCP), storage temperature, serve-within, shelf life. Relation `P:measure`; `set:P:{id}:measurements`. `formula_eval` 8/8, `recipe_eval` 12/12, cli_router 5/5. Base-model plan (S1–S3) complete. |

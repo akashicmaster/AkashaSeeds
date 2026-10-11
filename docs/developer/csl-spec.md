@@ -27,7 +27,7 @@
 9. [Runtime Module Architecture](#9-runtime-module-architecture)
 10. [LLM Integration Guide](#10-llm-integration-guide)
 11. [Error Reference](#11-error-reference)
-12. [Ontology Drafting (future)](#12-ontology-drafting-future)
+12. [Ontology Drafting (reserved)](#12-ontology-drafting-reserved)
 13. [Multi-locale Roadmap](#13-multi-locale-roadmap)
 14. [Examples](#14-examples)
 
@@ -795,9 +795,9 @@ Returned in `ExecutionResult.error`.
 
 ---
 
-## 12. Ontology Drafting (future)
+## 12. Ontology Drafting (reserved)
 
-The `ontology` block keyword is reserved for a future phase:
+The `ontology` block keyword is reserved; it is not implemented in this release:
 
 ```
 ontology CountryControl:

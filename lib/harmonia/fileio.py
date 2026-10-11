@@ -24,10 +24,11 @@ from typing import Any, Dict, List, Optional, Tuple, Iterator
 _EXT_FORMAT = {
     ".csv": "csv", ".tsv": "csv",
     ".json": "json",
+    ".jsonl": "jsonl", ".ndjson": "jsonl",
     ".md": "md", ".markdown": "md",
     ".txt": "txt", ".text": "txt",
 }
-IMPORT_FORMATS = frozenset({"csv", "json", "md", "txt"})
+IMPORT_FORMATS = frozenset({"csv", "json", "jsonl", "md", "txt"})
 EXPORT_FORMATS = frozenset({"csv", "json", "md"})
 
 
@@ -95,6 +96,14 @@ class FileIO:
             if isinstance(data, list) and data and all(isinstance(x, dict) for x in data):
                 return "table", cls._records_to_table(data)
             return "doc", {"text": json.dumps(data, ensure_ascii=False, indent=2), "title": name}
+        if fmt == "jsonl":
+            # one JSON object per line (JSONL / NDJSON) → a table of records. The common shape for
+            # large record corpora (e.g. per-feedback consultation exports).
+            recs = [json.loads(ln) for ln in raw.splitlines() if ln.strip()]
+            recs = [r for r in recs if isinstance(r, dict)]
+            if not recs:
+                return "doc", {"text": raw, "title": name}
+            return "table", cls._records_to_table(recs)
         if fmt in ("md", "txt"):
             return "doc", {"text": raw, "title": cls._md_title(raw) or name}
         raise ValueError(f"unsupported import format: {fmt}")

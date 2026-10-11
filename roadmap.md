@@ -2,278 +2,194 @@
 
 *Where this is going — and why it matters.*
 
----
-
-## Where We Are Today
-
-Akasha started as a local-first semantic graph running on a single SQLite file.
-It grew incrementally — often written on an iPad mini, between trains and quiet evenings —
-into something that manages knowledge across multiple users, languages, namespaces,
-and access scopes, with a full concept-model ecosystem on top.
-
-The core is stable and the engineering foundation is solid. The write path and orchestration
-layer were rebuilt from the ground up for the open-source release, and on that base the outward-
-facing layers — a native storage engine, inductive discovery, an external-LLM interface, and a
-shared dialogue space — have now shipped:
-
-- **Security model hardened** — signed, expiring session tokens (`gbk:` / `akt:`, HMAC-SHA256);
-  server-set transport trust (`NETWORK` / `LOCAL` / `INTERNAL`); PBKDF2 + per-user-salt
-  passphrases; fail-closed scope enforcement on every read; `iam.manage` capability gating;
-  internal-only system identities. (`security-audit-report.md`, `security-fix-proposal.md`)
-- **Harmonia orchestration, slices 1–4** — the WriteQueue is a priority queue served by a
-  single worker (priority changes *order*, never parallelism); the JCL worker schedules at
-  step granularity with PERT `depends_on`, bounded transient-only retry, and soft timeouts;
-  a **single-route write guard** forces every memory write through one orchestrated path;
-  cross-DB bundles commit forward with a boot-time orphan scan.
-  (`docs/for-llm/orchestration-architecture.md`)
-- **Minimal workflow reception** — a workflow is stored *as an executable atom* (CSL body,
-  `wf:` alias) and run as one bounded JCL job. The static content-addressed graph is
-  beginning to be re-read as a dynamic execution model. (`docs/for-llm/workflow-reception.md`)
-- **Meaning layer — self-owned, degradation-first** — semantic embeddings in three tiers
-  (feature-hashing floor → learned PPMI+SVD mid tier → optional sentence-transformer), a
-  boot auto-learn that bakes vectors onto atoms, the self-expanding-ontology loop
-  (`gap.scan` → `gap.fetch` → weave → `semantic.learn`), structural node embeddings, image
-  classification via the **LiteRT** backend ladder (`image.profile`), and the link-based
-  emotion axis (`emotion.profile`). Zero heavy dependencies; degrades cleanly.
-  (`docs/for-llm/semantic-layer.md`)
-- **One data I/O route** — a single disk-I/O layer (`fileio.py`) and one **pipe interface**
-  (`pipeline.py`: `Source` | `Sink` | `run_pipeline`) replace the former scattered import/
-  export paths. Files (CSV/JSON/MD/TXT), in-memory uploads, the `table` model (both ways),
-  sets, client-receive, and lens projection into a concept model are all the *same*
-  interface — the Unix pipe of the data plane. Contexa input (`contexa.ingest`) and Jataka
-  output (`jataka.present`) ride it live. (`docs/for-llm/io-pipeline.md`)
-- **Silica — a self-owned native storage engine** — a hardware-mappable *pseudo-ISA* memory
-  store (banked hash keyspace, custom WAL, transactions/rollback, checkpoint, read cache).
-  `SilicaBackend` implements the `AkashaBackend` instruction set and is a **drop-in equal of
-  the SQLite backend** (parity verified). This is the SQLite → own-ISA migration path — and
-  the concrete foundation under the hardware arc below. SQLite stays the default; Silica is
-  the verified alternative. (`docs/for-llm/silica-store-pseudo-isa-spec.md`)
-- **nebula — inductive schema formation** — a third explorer that surveys accumulated concept
-  atoms for dense clusters sharing a relation schema (an emerging concept model) and proposes
-  it for a human to plant. Unlike `assoc` (local gap-fill) or `dream` (incidental affinity),
-  nebula is global and inductive — it *closes the induction → deduction loop*, so categories
-  like fruit or recipe can crystallize after the fact. (`docs/for-llm/nebula-spec.md`)
-- **MCP service — external LLMs as first-class clients** — a Model Context Protocol server
-  implemented in **pure stdlib (no `mcp-python-sdk`)**, so it installs on the seeds/edge tier.
-  Two transports ship together: **local stdio** (`akasha.py --mcp`, `TRUST_LOCAL`, attaches to
-  the daemon for shared memory) and **remote HTTP** (`/mcp`, `TRUST_NETWORK`: anonymous →
-  guest read-only, `Bearer akt:` → scoped write). The kernel is the capability gate. 15 tools,
-  including `akasha_command` (run any CLI command). (`docs/for-llm/mcp-spec.md`)
-- **society — a virtual dialogue space (avatar-mediated, LLM-agnostic)** — a first-class chat
-  space on a group: it holds a roster of avatars (`cast`s), owns the timeline, and defines turn
-  ordering. *cast = persona; society = space.* Multiple named channels per group, flat + reply
-  threading, crossing with the `world` model, pseudonymous-by-default participation. A society
-  is not just a chat room but a **coworking space** — the anchors for governance (`kind=cowork`,
-  a responsible `society.decider`) are in place, with deliberation/voting/decision and society-
-  scoped workflow reserved on the same substrate. (`docs/for-llm/society-space-spec.md`)
-- **LLM connection experiment kit** — two use cases over MCP: **UC1** human ↔ LLM natural-
-  language chat through a society, and **UC2** *LLM-as-operator* (a human's request → the LLM
-  runs CLI-equivalent operations over MCP and reports back). Ollama drivers included, with a
-  `--mock` mode that verifies the plumbing without a model. (`docs/for-llm/llm-connection-experiment.md`)
-
-The base is durable and the outward-facing layers are live. What follows is the near-term work,
-then the longer arc.
+This roadmap states directions, not dates. It is grouped by how settled each
+direction is: what the substrate already does, what is being built on it now, what
+follows, and what is still research. Anything marked research is evaluated in an
+experiment world before it is allowed near the canonical one.
 
 ---
 
-## Now — validate the LLM collaboration, and harden for beta
+## Where we are today
 
-The substrate is shipped; the immediate work is to *use* it and polish for release.
+Akasha is a local-first, concept-oriented semantic operating system. Knowledge is
+stored as content-addressed **atoms** linked by typed relations and grouped into
+**sets**; typed **Concept Models** project those atoms into structured views. The
+design keeps three things strictly apart — the immutable **operand** (an atom), the
+**operator** (a Concept Model), and the **agent** (a human, an LLM, or a script) —
+and that separation is what the rest of the system is built to protect.
 
-- **Run and tune the local-LLM (Ollama) connection experiment.** Drive UC1 and UC2 on real
-  hardware and tune tool selection, context budget, and English response quality. The strategy
-  is deliberate: **bootstrap on a low-accuracy local model now** so the substrate — tools,
-  provenance guardrails, confirm-staging, the society/workflow seams — matures. When more
-  capable (paid) LLMs connect over the *same* MCP surface later, they inherit a proven
-  substrate and extract far more performance with no redesign.
-- **Beta pre-ship polish.** Cookbook (basic ops, CSL syntax, adding ontology), documentation
-  consistency, a smoke test of every RPC method, and the archives portal's display/links.
+Two commitments run underneath. Memory has two layers: a **durable semantic universe**
+that is the only source of truth, and an **active horizon** — indexes, caches,
+projections, materialized sets — that is an accelerator, disposable, and regenerable
+from the universe. And time is not a clock service: a **chronon** is a set, and reading
+history is intersection.
 
----
+What is shipped and verified:
 
-## Next — a few releases out
+- **The substrate** — atoms, links, sets, Source, World, Observation, Society,
+  Workbench, Workflow, Chronon — running offline on modest hardware, and on a public
+  server.
+- **The learning workbench** — the first complete observe → learn → observe-again
+  cycle, with its numbers.
+- **The seeds distribution** — the whole system as a single self-extracting file that
+  germinates into a running instance, with user knowledge protected across updates.
+- **The platform / application boundary.** The platform is now a **pure substrate**:
+  it imports, names and depends on nothing of any application, and it boots, serves and
+  passes its own tests with every application removed. An application reaches the
+  platform only through a published **specification** and a stable API; it builds its
+  concept models, packs, pages and declarations without touching one line of platform
+  code. This boundary is the foundation everything below rests on — a flagship feature
+  should not sit on a base that still leaks across its own layers.
 
-- **Curation → Presentation → Export — one meaning graph, many tellings** (a headline
-  differentiator). The pipeline is already **Semantic Graph → Interpretation → Presentation →
-  Export**: `curation.project` / `pres.export` render a curated path through the Consciousness
-  interpretation layer (`generate_view`) into a **Scroll** or **Kamishibai** artifact today. The
-  evolution: (1) **project the same graph into multiple interpretations** — different lenses,
-  emphases, and emotional tones over the identical atoms; (2) **more presentation targets** —
-  Scroll / Kamishibai (shipped) + **Markdown** + **LLM narration** + future forms; (3) the key
-  idea — **the form is chosen by a concept model, not by UI**. Switching from a data table to a
-  scroll to a narrated story is a *lens / presentation-model* swap on the same pipe, not a
-  bespoke screen. **LLM narration** plugs in here (degradation-first): `jataka.present … as=narrative`
-  already emits a deterministic structural template with no model; an injected narrator (over MCP,
-  the same substrate as the content ops) lifts it to generated prose — the meaning stays in the
-  graph, the LLM supplies only the telling. This is the strongest "same substrate, many faces"
-  story to show off. (`docs/for-llm/curation-presentation-scroll-spec.md`, `io-pipeline.md`)
-- **LLM-assisted content operations** (all on the provenance guardrail + confirm-staging): long-
-  atom summarization (`sys:summary_of`, `provenance=inferred`); short title / auto-alias
-  generation **staged as suggestions and human/decider-confirmed** (aliases are a definition-
-  completeness surface — never written canonically by an LLM directly); condition-driven
-  autonomous bot avatars; and a "secretary" avatar that grounds command recall via a command-
-  catalogue read tool instead of hallucinating syntax.
-- **seeds13 — Space · Process · Time: society ≡ workflow on the chronon network** (the next
-  release's integrating refactor; spec finalized, implementation phased P0–P7 — the first wave
-  is on `main`: the agent/responsible/chronon/scenario models, the society governance ladder,
-  the clab GUI projection, and a both-topology eval suite). Three new
-  primitives complete the collaboration ladder: an **agent** is a cast admitted to a society
-  (the cast×society binding atom — one cast may be an agent of many societies, each with its
-  own per-workflow state); a **responsible** (chairman / scribe / broadcaster / workflow-defined)
-  is the accountability relation an agent bears there, deliberately separate from the
-  permission line and crossing it at exactly one point — the admin-appointed chairman, to whom
-  admission and responsible-setting are delegated per society. On top, the **chronon** layer:
-  a chronon is a *semantic state boundary* sealed by the scribe — its members are the
-  references bound to that meaning (neither a snapshot nor a delta; the transition lives in
-  `chronon:mutates` and the executable body), and the succession-and-mutation of the chronon
-  network **is Akasha Time** — traversable both ways, branching, decoupled from wall-clock.
-  The laws that fall out: **society ≡ workflow** (two faces of one chronon graph — feed
-  utterances become members, the `chronon:next` topology is the DAG, responsibles are the
-  gates) and **record ≡ scenario** (one structure; PERFECTIVE looks back, PROSPECTIVE plans
-  forward, and running a scenario flips it into the record). Harmonia keeps executing at CPU
-  grain underneath; the chronon network is the coarse, client-visible, programmable face.
-  **Concept Laboratory becomes the canonical exemplar** — a research workflow bound to a
-  research society on this same network: hypotheses, thesis-argument clusters, key proofs,
-  turning points, and first-class *conclusions* (plural, competing, traceable — the lab does
-  not avoid conclusions; it avoids forcing the conceptual world to collapse into one), with
-  an explicit ontology-promotion boundary so experimental concepts never silently mutate the
-  canonical graph. A read-only **Concept Laboratory Projection Model** rides on top for the
-  archives GUI: research graphs project deterministically into visual primitives (concepts,
-  clusters, family regions, key proofs, turning points, conclusions, tensions) with semantic
-  layout hints — depth from `chronon:next` topology, never wall-clock or pixels — on the rule
-  that *projection decides how to see, not what is true*.
-- **Multi-LLM pipeline + async handoff** (#29) —
-  one agent explores, another generates CSL; `pending_links` gives disruption tolerance (DTN),
-  so agents collaborate without being online at the same moment. Remove the human relay.
-- **Knowledge-exchange ecosystem** (#26) —
-  Akasha / thesaurus instances safely exchange curations, ontology, and links; content-
-  addressing unifies identical knowledge. Portable, signed, provenance-preserving exchange units.
-- **Cloud offload / on-demand retrieval** (#27) —
-  an iCloud-style "what isn't local is fetched on demand" tier at the atom/cortex level, for a
-  personal cortex and a shared group graph alike. SQLite stays ground truth; the cloud is a
-  volatile eviction tier. (*Exchange* and *retrieval* are orthogonal axes.)
-- **Silica native-engine tuning** (robustness is proven green; this is speed/indexing only) —
-  group-commit fsync amortisation, O(1) `status` counters, auto-checkpoint, and secondary
-  link/collection indexes to replace the remaining O(n) scans. Drop-in behind the unchanged
-  `AkashaBackend` contract; not required for the reference release. Backlog + code anchors:
-  `docs/for-llm/silica-store-pseudo-isa-spec.md` (Performance & indexing backlog).
-- **Meaning-layer extensions** — vision (detection, caption/OCR, gap-driven image fetch;
-  #40), an external-NLP sentiment
-  second track (#42), and multi-locale
-  NLP (mixed-script text).
+The first **regular release** of the seeds series stands on that boundary: the layer
+separation is normalized, the architecture does not wobble, and the substrate carries
+no conspicuous defect.
 
 ---
 
-## The Longer Arc
+## Now — a no-code workbench, and the first world-reasoning foundations
 
-The near-term steps serve one line: collapse the human relay, let knowledge move between
-instances and agents, and let the same graph reach from the cloud down to a sensor — and,
-eventually, into silicon.
+**Build an application without code.** The Workbench gains a no-code authoring GUI
+(Studio): from a seeds install, a developer composes concept models, declarations and
+pages and wires them into a running application, without editing platform code. The
+code path stays open — a developer may still author a Concept Model and wire it in
+JavaScript — but it is no longer the only way in. The look and feel of that GUI belongs
+to the application; the authoring substrate underneath is reserved to the platform, and
+every GUI action maps to a command the CLI already has.
 
-### Collapsing the human relay (MCP + self-expanding graph)
+**The world is plural — the first foundations.** A world is not one model but many
+**projections** of the durable universe, each built for a purpose, time and scope.
+The early, foundational pieces land first, kept small so they do not expand the
+release they ride in:
 
-Today the loop is: *human explains ontology → LLM writes CSL → human runs it → human reviews →
-repeat.* The human is the relay and every session starts blank. The MCP service collapses it:
-an LLM scans the existing ontology directly (`akasha_explore` / `akasha_gap_scan`), fills precise
-structural holes, and checks its proposals against what already exists. The human stops
-explaining the graph before each session and instead sets goals and evaluates outcomes:
+- every projection carries its **source lineage, observation time, freshness and
+  scope**, and a run is pinned to the exact projection it reasoned over, so a result is
+  reproducible;
+- a result records **what kind of claim it is** — observation, hypothesis, verified —
+  and an unverified result is shown as a hypothesis, never as truth;
+- a **projection contract** and a **binding manifest** are introduced as ordinary
+  concept models (not new kernel primitives), so what a projection can and cannot
+  observe is explicit and machine-readable;
+- the Studio gains a **read-only projection inspector** — what is bound, how fresh,
+  how much is covered, what was lost in compression.
 
-```
-Richer graph → better LLM contributions → richer graph → ...
-```
-
-### Multi-LLM collaboration without a shared protocol
-
-Group sessions — and now the **society** dialogue space on top of them — let multiple clients
-(human or LLM) share one graph space, with scope-controlled access, attributed writes, and
-preserved temporal order. Two LLMs from different providers collaborate because their **common
-language is Akasha's concept model, not the transport protocol**. `pending_links` adds disruption
-tolerance: one agent explores, another generates CSL, a third validates — none needing to be
-online at the same moment.
-
-> A low-cost, local-first, semantically grounded multi-agent environment that doesn't require
-> proprietary orchestration infrastructure or cloud accounts.
-
-### Akasha as the hippocampus for AI
-
-LLMs are extraordinary pattern-recognition engines with no episodic memory. Every conversation
-starts blank; long-term experience disappears at context reset. Anchored to an Akasha session, an
-LLM gains persistence (experiences as atoms and typed links), recall by graph traversal,
-preserved temporal structure, and scope-isolated memory that can be selectively shared through
-group sessions. The result is a complete cognitive loop:
-
-```
-Neocortex (LLM)         — pattern recognition, language generation
-Hippocampus (Akasha)    — episodic fixation and recall
-Sensorimotor (hardware) — interaction with the physical world
-```
-
-### One substrate across every scale
-
-`AkashaBackend` defines ~50 primitive operations — a minimal instruction set for semantic
-memory — with no reference to files, tables, or SQL. It describes *what the substrate must do*,
-not *how*. Different scales swap the implementation; the upper layers (composite, session, IAM,
-concept models) run unchanged:
-
-| Scale | Backend | Status |
-|---|---|---|
-| Local / edge | SQLite | ✅ Working (default) |
-| Native ISA store | **Silica** — banked pseudo-ISA, custom WAL/txn | ✅ Drop-in parity with SQLite; the own-ISA migration path |
-| Cloud / distributed | Object store + event-driven growth (S3 + Lambda affinity) | 🔲 Offload seams exist (#27); full backend designed |
-| Embedded / IoT | Hardware register mapping | 🔲 Seams ready; first PoC planned (#28) |
-| Silicon | Custom chip implementing the ISA | 🔮 Long-term — now standing on the Silica pseudo-ISA |
-
-**IoT.** Override `get_chunk_raw` for a live sensor read and `put_chunk_raw` for an actuator
-command; scopes become device-authorization capabilities. The semantic graph becomes the control
-plane *and* the memory of what the system reported and when. A Raspberry Pi with a sensor array
-becomes a semantic edge node — the same graph and upper layers move from seeded-value simulation
-to real control by swapping only the backend.
-
-**Silicon.** The fabless era means you no longer need a fab to design a chip, and RISC-V showed a
-clean open ISA is a legitimate basis for real hardware. `AkashaBackend` *is* an instruction set
-architecture for semantic-memory operations — and **Silica is that ISA already realized in a
-banked, WAL-backed store**, one step from a register map. Implemented in dedicated silicon
-pipelines (on-chip graph traversal, scope filtering, alias resolution), its performance profile
-would be entirely different — a natural fit for robotics control planes, embedded sensor
-networks, and low-latency edge inference. Not next year; not structurally impossible either. The
-architecture was built to support it.
+**Instance email, on the protocol model.** Mail is added the way other protocols
+already are — a platform transport, like the web portal, off by default on a seeds
+install but present in the code. An instance administrator can grant a client an
+address on the instance's own domain, as a client-management function continuous with
+session management; inbound mail resolves to that client. The transport faces the
+public internet, so it is safe by construction: no open relay, size and rate caps,
+sender checks recorded with each message, and the port stays closed unless a
+deployment declares it.
 
 ---
 
-## How to Contribute
+## Next — reasoning with, without, and about the world
 
-The GitHub issues are the live worklist. Good places to push:
+The reasoning layer the projection foundations make possible:
 
-**Near-term (LLM + multi-agent):**
-- Run the local-LLM connection experiment and report findings (UC1 chat, UC2 operator)
-- Test multi-LLM group/society sessions and DTN handoff (#29)
-- Prototype the reserved society governance/workflow (deliberation → vote → decide)
+- **Three modes.** *Reason under the world* — plan and choose within the current
+  projections as constraints. *Reason without selected constraints* — build a
+  counterfactual with a constraint deliberately suspended, recorded as suspended, with
+  no authority to touch reality. *Reason about the world* — treat a projection's own
+  gaps, staleness, missing axes and contradictions as the subject, producing a
+  projection-update or world-change proposal, never a direct change.
+- **Three levels of validation.** Local consistency, global satisfiability across
+  projections and policies, and correspondence to the observable world — kept distinct,
+  so passing the first is never shown as passing the third, and *not observed* is never
+  shown as *passed*.
+- **Cross-projection work** — aligning different observation geometries on explicit
+  keys, time, units and evidence, and recording what was assumed and what was lost.
+- **Blindness diagnosis** — when several agents fail the same way, or results swing
+  with the projection, the system proposes a missing axis or a new projection instead
+  of only retrying the agent.
+- **Structural diversity and replay** — heterogeneous agent roles, and long
+  deliberations run on a daily budget and recorded as chronons, replayable fast for
+  review (replay fires no real effect).
 
-**Medium-term (edge + cloud + IoT):**
-- Implement a cloud offload / retrieval tier (#27) and deploy targets (#25)
-- Build the sensor-node IoT binding, simulation-first (#28, #17)
-- Extend the declarative workflow DAG (#24)
-
-**Long-term (silicon):**
-- Map the Silica pseudo-ISA onto an FPGA register interface
-- Benchmark hardware-accelerated graph traversal vs. the SQLite baseline
-
-**Concept-model work (always open):**
-- Extend the thesaurus ontology with new namespaces and domains
-- Write semantic extensions for your field of expertise
-- Connect Akasha to external knowledge sources via import pipelines
-
----
-
-The architecture is ready.
-The instruction set is defined — and now realized as a native engine.
-The concept-model ecosystem is live, and external intelligence can plug into it.
-
-What remains is the work of connecting it to the world.
-
-*One contribution at a time.*
+**Counterfactual freedom stops at the effect boundary.** Inside the workbench, removing
+constraints and proposing the radical is allowed; the only path to a real change runs
+proposal → evaluation → human / authority / moderation → grant → execution →
+observation.
 
 ---
 
-**→ Start with the concepts:** the architecture-vision overview — the full technical picture
-**→ Start building:** [`quick-start.md`](quick-start.md) — running Akasha in 20 minutes
+## Later — the thin client, and seeing the work
+
+- **Field Notes — a thin client.** A pared-down, local-first app: capture, ask,
+  connect, inspect the source, mark uncertain, approve or reject a proposal, sync.
+  Knowledge continues across a person's devices; light work is local-first and heavy
+  work is deferred to a VPS or archive — all through the same operations and the same
+  provenance. The experience to aim at is an intelligent iCloud, not a new silo.
+- **Seeing the work.** Visualization surfaces built on the projection layer: a
+  cross-projection canvas that edits alignment and conflict rules (and saves the result
+  as data, not as canvas state), and a validation matrix that shows each claim's three
+  levels — where *not observed* never shares a color with *passed*.
+- **The cognitive seam.** The more smoothly a result is presented, the easier it is to
+  lose the boundary of who reasoned. The interface keeps the necessary friction: fact,
+  inference, hypothesis, proposal and decision are told apart; AI-generated and
+  human-confirmed are distinguished; a strong claim cannot be promoted without its
+  grounds.
+
+---
+
+## Research track
+
+Evaluated in an explicitly-marked experiment world, promoted only after it survives
+review — never dropped straight into the canonical universe.
+
+- **An embedded situated inference engine** — not a small LLM clone, but a lightweight
+  reasoning layer over the durable memory, judged on local cost, traceability,
+  incremental update, uncertainty and counterfactual usefulness rather than on prose.
+- **Adapters as observers** — LoRA, steering, tool and prompt policies treated as
+  versioned participant components with their own provenance, assigned per run, with no
+  implicit continuous learning.
+- **Internal-state observation** — introspection and activation analysis as a *source*,
+  not a self-authority, with its confounders recorded.
+- **Distributed source** — referencing other Akasha repositories by locator, digest,
+  license and provenance receipt, without central collection; meaning and authority
+  stay on the Akasha side.
+- **Limited anchoring** — blockchain used only for digest anchors, signatures,
+  timestamps and consent receipts, never as a truth layer for meaning.
+
+---
+
+## Engineering, under all of it
+
+- **Keep the boundary pure.** Every release proves the platform still boots, serves and
+  passes its suite with every application removed, and that no application name appears
+  in platform code.
+- **Then the inside.** With the boundary between the layers settled, the next depth is
+  the dependency graph *inside* the kernel — import direction, internal layering,
+  cycles — cleaned on the same principle. This follows the no-code GUI, not before it.
+- **A fresh cell on each format change.** The design keeps the history of its mistakes;
+  during development a format change is a clean start, not a migration, and old data is
+  archived, never silently misread.
+
+---
+
+## Principles that do not change
+
+1. **Source precedes interpretation.** Every projection, inference and critique traces
+   back to a source or an observation.
+2. **Atoms, links and sets are the whole persistent substrate.** New capabilities are
+   concept models over them, not new kernel primitives.
+3. **The durable universe is the only truth; the horizon is disposable.**
+4. **A world is plural.** It is a set of provenance-linked projections, not one model.
+5. **A projection is an observation geometry** — a contract for what can be observed,
+   compared and verified, not a way of displaying.
+6. **Counterfactual freedom stops at the effect boundary.** Thought is free; changing
+   reality goes through proposal, grant, gate and observation.
+7. **The platform is a pure substrate.** It carries no reverse dependency on any
+   application; an application consumes it through a specification and never edits it.
+
+---
+
+## How to contribute
+
+Akasha is MIT-licensed and built in public. The substrate, the seeds distribution and
+the documentation are open; the design documents — the White Paper and the Foundational
+Design Context — are the place to understand why the system is shaped the way it is
+before proposing a change. The most useful contributions right now are concept models
+and ontology packs authored against the published specification, and honest reports
+from running a seed as a real user would.

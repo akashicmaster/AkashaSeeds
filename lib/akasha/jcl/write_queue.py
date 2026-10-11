@@ -60,20 +60,38 @@ def _host_is_constrained() -> bool:
     return (os.cpu_count() or 4) <= 2
 
 
-# Background-write pacing (constrained hosts only). While a background job (priority
-# >= _BG_PRIO) is flooding the queue, cede the CPU for _YIELD_S every _YIELD_INTERVAL
-# of processing so interactive threads (the portal's RPCs) get a fair share. Only
-# background items are paced — interactive writes (priority 0) are never delayed. The
-# overhead is proportional (~_YIELD_S/_YIELD_INTERVAL of background time) and tunable.
+# Background-write pacing. While background work floods the queue, cede the CPU for _YIELD_S every
+# _YIELD_INTERVAL of processing so the interactive threads that serve the CLI's sys.ping and the
+# portal's forwarded guest/auth calls get a fair share of the GIL. Two regimes:
+#
+#   • Steady state — pace only background items (priority >= _BG_PRIO); interactive writes (0..1)
+#     run full speed. Enabled on EVERY host now (was constrained-only): a multi-core VPS starves
+#     just the same, because the single writer + CPU-bound boot weave (NLP C-extensions) defeats
+#     the GIL's own time-slicing — the observed "CLI takes 5 min / portal never renders" boot.
+#   • Boot flood (set_boot_flood(True)) — pace EVERY item regardless of priority. During the boot
+#     ontology load the only writes in the queue ARE the load (atoms are class BATCH_ATOM=prio 1,
+#     which steady-state would NOT pace), and what must be un-starved are the O(1) interactive
+#     READS contending for the GIL, not any user write. Cleared when the load settles.
+#
+# The overhead is proportional (~_YIELD_S/_YIELD_INTERVAL of the paced time) and tunable. Set
+# AKASHA_WQ_YIELD_MS=0 to disable pacing entirely.
 _CONSTRAINED = _host_is_constrained()
 _BG_PRIO = 2                                                    # 0=HIGH..3=IDLE; >=2 is background
-# Defaults cede ~35% of background time to interactive threads — enough to keep the
-# portal responsive on a-Shell; boot (already slow there) is proportionally longer.
-# Tune with AKASHA_WQ_YIELD_INTERVAL_MS / AKASHA_WQ_YIELD_MS (larger yield = snappier
-# portal, slower boot; set yield to 0 to disable pacing entirely).
 _YIELD_INTERVAL = float(os.environ.get("AKASHA_WQ_YIELD_INTERVAL_MS", "15")) / 1000.0
 _YIELD_S = float(os.environ.get("AKASHA_WQ_YIELD_MS", "8")) / 1000.0
-_PACING = _CONSTRAINED and _YIELD_S > 0                         # off on desktop / when disabled
+_PACING = _YIELD_S > 0                                          # on everywhere unless disabled
+
+# Boot-flood flag — set by the ontology boot loader for the duration of the load so EVERY write is
+# paced (not just priority >= _BG_PRIO). Module-global so it governs whichever WriteQueue serves the
+# load; a plain bool assignment is atomic under the GIL (no lock needed).
+_boot_flood = False
+
+
+def set_boot_flood(on: bool) -> None:
+    """Turn boot-flood pacing on/off. The boot ontology loader wraps its load window in this so the
+    daemon stays interactively responsive (CLI ping, portal guest/auth) while the load runs."""
+    global _boot_flood
+    _boot_flood = bool(on)
 
 
 class WriteQueue:
@@ -111,10 +129,11 @@ class WriteQueue:
                 future.set_result(fn())
             except Exception as exc:
                 future.set_exception(exc)
-            # Constrained hosts only: while a background flood (boot ontology load)
-            # runs, briefly cede the CPU so the web portal's interactive RPCs are not
-            # starved. Paces BACKGROUND items only; interactive writes run full speed.
-            if _PACING and _prio >= _BG_PRIO:
+            # While a background flood (boot ontology load) runs, briefly cede the CPU so the
+            # interactive threads (CLI sys.ping, portal guest/auth) are not starved. During the
+            # boot flood EVERY item is paced (the whole load is background); in steady state only
+            # background items (priority >= _BG_PRIO) are — interactive writes run full speed.
+            if _PACING and (_boot_flood or _prio >= _BG_PRIO):
                 if time.monotonic() - _last_yield >= _YIELD_INTERVAL:
                     time.sleep(_YIELD_S)
                     _last_yield = time.monotonic()

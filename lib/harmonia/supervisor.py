@@ -47,8 +47,8 @@ Hardened control path (経路の厳格化 — no hole even though local shell st
                  MUST carry a valid HMAC written by the process that had the key. No key today →
                  the OS boundary (layer 1) is the gate (the deliberate local-trust posture). Set a
                  key → only the keyed daemon can mint a respawnable recipe; interactive shells and
-                 remote admins can REQUEST a restart but cannot forge one. AKASHA_SUPERVISOR_STRICT=1
-                 refuses any unsigned recipe outright (enterprise: mandatory-sign).
+                 remote admins can REQUEST a restart but cannot forge one. Whether a key is present is
+                 the one fact that decides (the strict-signing switch is deleted, purge order §4.5).
 """
 import hashlib
 import hmac
@@ -62,6 +62,40 @@ import time
 from typing import Any, Dict, List, Optional, Callable, Tuple
 
 logger = logging.getLogger("Harmonia.Supervisor")
+
+
+def _writer_ipc_desc() -> str:
+    """A53 items 4b/4c — best-effort `ipc(pool,q)` snippet for a Supervisor log line. Reads the live
+    CellIPC pool stats (only meaningful when the tick runs INSIDE the writer daemon, which owns the
+    server); degrades to `ipc=?` where no server is listening in this process. Never raises."""
+    try:
+        from api.portals.cell_ipc import server_stats
+        st = server_stats() or {}
+        if not st:
+            return "ipc=?"
+        return "ipc(pool=%s q=%s)" % (st.get("pool", "?"), st.get("q", st.get("queued", "?")))
+    except Exception:
+        return "ipc=?"
+
+
+def _reap_log(base_dir: str, action: str, pid: int, unit: str, caller: str, grace_s: float) -> None:
+    """A53 item 3 — the KILLER writes the record (the victim cannot). Supervisor.stop() SIGTERMs a
+    unit directly (it never went through akasha.py's _terminate_pid), so a health-tick reap of the
+    portal — or of the writer — used to leave NO `[reap]` line. Emit the same shape here and mirror
+    it to system.log, so the writer's own log always attributes a disappearance to who reaped it.
+    Best-effort, never raises."""
+    line = "[reap] %s pid=%s unit=%s caller=%s grace=%.1fs" % (action, pid, unit, caller, grace_s)
+    (logger.warning if action == "SIGKILL" else logger.info)(line)
+    try:
+        p = os.path.join(base_dir, "logs", "system.log")
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        stamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        with open(p, "a", encoding="utf-8") as fh:
+            fh.write("%s | Harmonia.Supervisor | %-8s | %s\n"
+                     % (stamp, "WARNING" if action == "SIGKILL" else "INFO", line))
+    except OSError:
+        pass
+
 
 # Unit kinds
 KIND_SERVICE = "service"
@@ -91,7 +125,7 @@ _ALLOWED_MODULE_PREFIXES = ("services.",)   # bundled app services (cosmos, note
 # env_add carries NON-SECRET operational keys only. Anything credential-shaped is refused;
 # real secrets are inherited from the daemon's own environment at respawn (never serialized).
 _ALLOWED_ENV_KEYS = frozenset({
-    "PYTHONUNBUFFERED", "AKASHA_SERVE_ONLY", "AKASHA_NO_AUTOLEARN",
+    "PYTHONUNBUFFERED", "AKASHA_SERVE_ONLY",
     "AKASHA_BACKEND", "AKASHA_HOST", "AKASHA_DATA_DIR", "AKASHA_SERIES",
     # R5: the daemon's launch argv (JSON of --server/--host/--port/--portal), so a health-tick
     # respawn keeps the portal's self-watchdog able to spawn an identical daemon. Non-secret
@@ -147,6 +181,31 @@ def _pid_alive(pid: Optional[int]) -> bool:
         return True                            # exists but owned by another uid
     except OSError:
         return False
+
+
+def _proc_advancing(pid: Optional[int], window: float = 0.5) -> bool:
+    """True only if `pid` burns CPU (utime+stime advances) over `window` s. Distinguishes a BUSY unit
+    genuinely WORKING (a serve-only portal grinding through a crawl burst, which can miss a health
+    probe while its threads run) from a HUNG/idle one. CPU-ONLY BY DESIGN (F29-R3.2): a major-fault
+    increase is a swap-IN, not work — counting it would make this ~always true on a swapping host and
+    disable the respawn net exactly when the box is sickest. The caller BOUNDS how long it will honour
+    this (a spinning-but-never-serving process is not immortal). Linux /proc only; unknown → False."""
+    if not pid:
+        return False
+    def _cpu():
+        try:
+            with open(f"/proc/{pid}/stat", "rb") as fh:
+                data = fh.read()
+            rest = data[data.rfind(b")") + 2:].split()   # fields from #3 (state) onward
+            return int(rest[11]) + int(rest[13])          # utime+stime (CPU ticks) — NOT majflt
+        except (OSError, ValueError, IndexError):
+            return None
+    a = _cpu()
+    if a is None:
+        return False
+    time.sleep(window)
+    b = _cpu()
+    return b is not None and b > a
 
 
 # ── F12b — stagger the respawn memory spike ─────────────────────────────────────
@@ -215,11 +274,6 @@ def _supervisor_key(base_dir: str) -> Optional[bytes]:
         return data or None
     except OSError:
         return None
-
-
-def _strict_signing() -> bool:
-    """Enterprise lever: refuse any unsigned recipe even when no key is otherwise required."""
-    return os.environ.get("AKASHA_SUPERVISOR_STRICT", "").strip().lower() in ("1", "true", "yes")
 
 
 def _canonical_recipe(spec: Dict[str, Any]) -> bytes:
@@ -354,8 +408,6 @@ def authorize_recipe(base_dir: str, unit_id: str, spec: Dict[str, Any]) -> Tuple
             # build_recipe signs that record with the CURRENT key. So after any boot the stored
             # recipe verifies, and the running health tick respawns it cleanly.
             return False, "recipe signature invalid or missing (key present)"
-    elif _strict_signing():
-        return False, "strict signing on but no supervisor key available to verify recipe"
     return True, ""
 
 
@@ -523,8 +575,15 @@ def record_job(base_dir: str, unit_id: str, state: str,
                detail: Optional[Dict[str, Any]] = None) -> None:
     """Mount an in-process job onto the plane as a unit (e.g. 'job:onto-load'). The JobExecutor
     (JCL/WriteQueue) still runs it; this only records state so it appears in the unified view."""
-    unit = read_unit(base_dir, unit_id) or {"id": unit_id, "kind": KIND_JOB,
-                                             "started_at": time.time()}
+    prior = read_unit(base_dir, unit_id)
+    unit = prior or {"id": unit_id, "kind": KIND_JOB, "started_at": time.time()}
+    # F27-1 — a job (re)entering an active state after a terminal/absent/prior-boot record is a
+    # FRESH run; its uptime must reset. Reusing a prior boot's started_at once showed a 24-day
+    # "uptime" for a job that had just begun this boot. started_at is refreshed only on the
+    # active-transition, so repeated "running" polls keep accumulating this boot's real uptime.
+    if state in ("running", "starting") and (prior or {}).get("state") in (
+            None, "complete", "failed", "aborted"):
+        unit["started_at"] = time.time()
     unit["kind"] = KIND_JOB
     unit["state"] = state
     unit["updated_at"] = time.time()
@@ -553,6 +612,7 @@ class Supervisor:
         self._procs: Dict[str, subprocess.Popen] = {}      # id → live handle (this process)
         self._specs: Dict[str, Dict[str, Any]] = {}        # id → {spawn_fn, deps, grace, restart}
         self._health_fails: Dict[str, int] = {}            # id → consecutive health-probe failures
+        self._busy_defers: Dict[str, int] = {}             # id → consecutive advancing-but-failing ticks (F29-R3)
         self._health_fail_reason: Dict[str, str] = {}      # id → last probe failure cause (F14a)
         self._last_respawn: Dict[str, float] = {}          # id → monotonic time of last health respawn
         self._logfds: Dict[str, Any] = {}                  # id → open log file handle (this process)
@@ -700,11 +760,39 @@ class Supervisor:
         pid = unit.get("pid") if unit else None
         if grace_s is None:
             grace_s = (unit or {}).get("grace_s", 5.0) if unit else 5.0
+        # SUBSTRATE_THREAD is HOST-BOUND: its `pid` is the OWNING interpreter's, not the thread's.
+        # Signalling it would take down the host process AND every unit it carries — a stop of the
+        # in-process poller must never SIGTERM the Cell daemon (and, via the reverse-dep cascade,
+        # rob the writer of its checkpoint grace). Only the owning interpreter can stop the thread,
+        # through its own in-process handle (an Event + a lifecycle closer). So from here we NEVER
+        # kill: we drop only OUR tracked handles and leave the descriptor for the host to remove
+        # when it stops the thread — so the unit is never orphaned (a live thread with no record).
+        # If the host is already gone, the thread died with it → the stale descriptor is safe to
+        # scrub (boot reconcile would do so anyway).
+        if unit and unit.get("substrate") == SUBSTRATE_THREAD:
+            self._procs.pop(unit_id, None)
+            fd = self._logfds.pop(unit_id, None)
+            if fd is not None:
+                try:
+                    fd.close()
+                except Exception:
+                    pass
+            if not (pid and _pid_alive(pid)):
+                remove_unit(self.base_dir, unit_id)
+                return {"status": "stopped", "id": unit_id,
+                        "note": "thread unit; host already exited"}
+            return {"status": "host-managed", "id": unit_id,
+                    "note": "in-process thread unit — stopped by its host process, not by signal"}
+        try:
+            _caller = sys._getframe(1).f_code.co_name
+        except Exception:
+            _caller = "?"
         proc = self._procs.get(unit_id)
         stopped = False
         if pid and _pid_alive(pid):
             try:
                 os.kill(pid, signal.SIGTERM)
+                _reap_log(self.base_dir, "SIGTERM", pid, unit_id, _caller, max(0.5, grace_s))
             except (ProcessLookupError, PermissionError):
                 pass
             deadline = time.time() + max(0.5, grace_s)
@@ -716,6 +804,7 @@ class Supervisor:
             if not stopped and _pid_alive(pid):
                 try:
                     os.kill(pid, signal.SIGKILL)          # last resort
+                    _reap_log(self.base_dir, "SIGKILL", pid, unit_id, _caller, max(0.5, grace_s))
                 except (ProcessLookupError, PermissionError):
                     pass
                 stopped = True
@@ -739,8 +828,22 @@ class Supervisor:
         # Capture the persisted descriptor BEFORE stop() removes it, so a cross-process
         # restart (no in-memory blueprint) can still respawn from the recipe (P1).
         prior = read_unit(self.base_dir, unit_id)
-        self.stop(unit_id)
-        time.sleep(0.3)
+        _old_pid = (prior or {}).get("pid")
+        _grace = float((prior or {}).get("grace_s", 5.0) or 5.0)
+        _sub = (prior or {}).get("substrate")
+        res = self.stop(unit_id)
+        # F12b — the MANUAL restart path must stagger the memory spike exactly like the health-tick
+        # respawn: wait for the old PROCESS worker to truly exit (stop() may SIGKILL and return before
+        # the kernel reaps it), let the kernel reclaim its pages, then warn on low memory, BEFORE
+        # spawning the replacement — so old+new never co-reside and graze the OOM ceiling. Skip for
+        # THREAD units: stop() is host-managed and the host pid is alive by definition, so
+        # _await_pid_gone would burn its whole cap for nothing (and stall the restart ~15 s).
+        if _sub != SUBSTRATE_THREAD and str((res or {}).get("status")) != "host-managed":
+            _await_pid_gone(_old_pid, cap_s=_grace + 10.0)
+            _settle = float(os.environ.get("AKASHA_RESPAWN_SETTLE", "").strip() or 3)
+            if _settle > 0:
+                time.sleep(min(_settle, 30.0))
+            _warn_if_low_memory(unit_id)
         if unit_id in self._specs:
             return self.start(unit_id)
         if prior and prior.get("spec"):
@@ -770,6 +873,30 @@ class Supervisor:
         descriptor is scrubbed. svc:cell (the daemon itself) is never respawned from within.
         Jobs are left as-is (their executor owns them)."""
         for u in list_units(self.base_dir):
+            if u.get("kind") == KIND_JOB:
+                # F27-1 — in-process JCL jobs die with the daemon (they carry no pid). Any job
+                # descriptor found at boot is therefore from a PRIOR boot and cannot be running
+                # now, yet a non-terminal one keeps rendering "Active … PID=None … uptime <weeks>".
+                # Re-stamp a finished load to Done (with the finish time) and drop anything else,
+                # so svc.ls never shows a dead job as Active. This boot's fresh job re-records
+                # itself with a new started_at right after (record_job).
+                if u.get("state") in ("running", "starting"):
+                    det = u.get("detail") or {}
+                    loaded, present = det.get("packs_loaded"), det.get("packs_present")
+                    if present and loaded is not None and loaded >= present:
+                        u["state"] = "complete"
+                        u["updated_at"] = time.time()
+                        try:
+                            write_unit(self.base_dir, u)
+                        except OSError:
+                            pass
+                        logger.info("[Supervisor] reconciled completed job '%s' (%s/%s) → Done.",
+                                    u["id"], loaded, present)
+                    else:
+                        remove_unit(self.base_dir, u["id"])
+                        logger.info("[Supervisor] reconciled stale job '%s' (state=%s, dead boot) → dropped.",
+                                    u["id"], u.get("state"))
+                continue
             if u.get("kind") != KIND_SERVICE:
                 continue
             if _pid_alive(u.get("pid")):
@@ -801,6 +928,10 @@ class Supervisor:
     # hung-but-alive worker. A 20-30 s stall (a crawler-triggered heavy read) is NOT worth a
     # respawn whose memory spike can OOM the daemon; a truly wedged worker still goes at ~45 s.
     _HEALTH_FAIL_THRESHOLD = 3
+    # Max consecutive health ticks a probe-failing but CPU-ADVANCING unit is spared (F29-R3): the
+    # busy-gate defers a respawn while the unit works, but never forever — past this bound a spinning-
+    # but-never-serving process is respawned anyway. ~5 min at the 15 s tick (20 × 15 s = 300 s).
+    _BUSY_DEFER_MAX = 20
     _RESPAWN_MIN_S = 30.0                 # min seconds between health respawns of the SAME unit
                                           # (backoff — stops a can't-start service hammering in a loop)
 
@@ -836,6 +967,32 @@ class Supervisor:
                 self._health_fail_reason.pop(uid, None)
                 continue
             alive = _pid_alive(u.get("pid"))
+            # BUSY-but-not-hung gate (BOUNDED — F29-R3): a unit that missed its probe but is burning
+            # CPU is a serve-only portal grinding through a crawl burst; respawning it mid-work drops
+            # in-flight requests and flashes the 'warming up' page. Defer the respawn WHILE it works —
+            # but only up to `_BUSY_DEFER_MAX` consecutive ticks (~5 min). Past that a spinning-but-
+            # never-serving process is respawned anyway with a truthful reason, so the busy-gate can
+            # never permanently disable the respawn net (the C11 hole). CPU-only signal (majflt=swap).
+            if alive and _proc_advancing(u.get("pid")):
+                bd = self._busy_defers.get(uid, 0) + 1
+                if bd < self._BUSY_DEFER_MAX:
+                    self._busy_defers[uid] = bd
+                    self._health_fails.pop(uid, None)
+                    self._health_fail_reason.pop(uid, None)
+                    # A53 item 4b — a portal that missed its probes but is BURNING CPU is grinding
+                    # through a crawl burst, not wedged. Name it plainly (and carry the writer's IPC
+                    # backlog, the usual cause) once the defer count reaches the fail threshold, so an
+                    # operator reading the log sees "busy, not wedged" instead of a silent DEBUG defer
+                    # that looks like nothing.
+                    logger.log(logging.INFO if bd >= self._HEALTH_FAIL_THRESHOLD else logging.DEBUG,
+                               "[Supervisor] '%s' missed %d probes but is advancing — busy, not "
+                               "wedged (writer %s) defer=%d/%d",
+                               uid, bd, _writer_ipc_desc(), bd, self._BUSY_DEFER_MAX)
+                    continue
+                self._busy_defers.pop(uid, None)          # bound reached → respawn despite busy
+                reason = f"busy but unresponsive across {bd} health ticks ({reason})"
+            else:
+                self._busy_defers.pop(uid, None)          # not advancing → normal debounce path
             if alive:
                 # hung (alive but not answering) — debounce before acting
                 n = self._health_fails.get(uid, 0) + 1
@@ -845,8 +1002,9 @@ class Supervisor:
                 # never a mystery again. Sub-threshold at DEBUG; the threshold-crossing tick logs
                 # at WARNING below with the accumulated reason, so one occurrence names the cause.
                 logger.log(logging.WARNING if n >= self._HEALTH_FAIL_THRESHOLD else logging.DEBUG,
-                           "[Supervisor] probe fail %d/%d '%s' %s → %s",
-                           n, self._HEALTH_FAIL_THRESHOLD, uid, _probe_desc(u), reason)
+                           "[Supervisor] probe fail %d/%d '%s' %s → %s (writer %s)",
+                           n, self._HEALTH_FAIL_THRESHOLD, uid, _probe_desc(u), reason,
+                           _writer_ipc_desc())
                 if n < self._HEALTH_FAIL_THRESHOLD:
                     continue
             self._health_fails.pop(uid, None)
@@ -887,8 +1045,8 @@ class Supervisor:
                 # F14a — name the cause on the respawn line itself, not a bare "(unhealthy)".
                 _detail = (f"{self._HEALTH_FAIL_THRESHOLD}×{_why}" if alive and _why
                            else (_why or "pid gone"))
-                logger.warning("[Supervisor] health tick respawned '%s' (%s: %s, policy=%s).",
-                               uid, r["reason"], _detail, policy)
+                logger.warning("[Supervisor] health tick respawned '%s' (%s: %s, policy=%s, writer %s).",
+                               uid, r["reason"], _detail, policy, _writer_ipc_desc())
         return actions
 
 
@@ -970,6 +1128,8 @@ def _probe_desc(unit: Dict[str, Any]) -> str:
         return f"http {(probe.get('method') and 'POST') or 'GET'} {probe.get('target')}"
     if kind == "tcp":
         return f"tcp {probe.get('target') or ''}".rstrip()
+    if kind == "heartbeat":
+        return f"heartbeat stale>{probe.get('stale_s', 90)}s"
     return "pid"
 
 
@@ -989,6 +1149,32 @@ def probe_health_detail(unit: Dict[str, Any]) -> Tuple[bool, str]:
     if kind == "http":
         return _http_probe(probe.get("target"), int(probe.get("expect", 200)),
                            timeout=float(probe.get("timeout", 2.0)), method=probe.get("method"))
+    if kind == "heartbeat":
+        # An in-process (SUBSTRATE_THREAD) unit has no port to probe and shares the host's pid, so
+        # `kill -0` (pid) always passes even when the thread itself has died/wedged. Instead the
+        # thread STAMPS `last_tick` into its own health descriptor each cycle (update_unit_health),
+        # and this probe judges the unit stale when that heartbeat is older than `stale_s`. No
+        # last_tick yet = freshly registered, not yet ticked → healthy (booting).
+        last = probe.get("last_tick")
+        if not last:
+            return True, ""
+        try:
+            age = time.time() - float(last)
+            stale = float(probe.get("stale_s", 90.0))
+        except (TypeError, ValueError):
+            return True, ""
+        if age <= stale:
+            return True, ""
+        # F27-2 — during the boot window a thread's first ticks can be slow under the I/O storm,
+        # and last_tick may still be the registration stamp (which predates the thread's real
+        # start), so the age overstates staleness. Honor the SAME boot grace process units get
+        # (started_at + boot_grace): a healthy-but-slow-to-warm thread does not raise a false
+        # alarm. Past the grace, a genuinely wedged thread that stopped ticking still trips.
+        started = unit.get("started_at") or 0
+        grace = float(unit.get("boot_grace_s") or _DEFAULT_BOOT_GRACE_S)
+        if started and (time.time() - float(started)) < grace:
+            return True, ""
+        return False, f"stale heartbeat ({age:.0f}s > {stale:.0f}s)"
     return True, ""                               # unknown probe kind → don't false-kill
 
 
@@ -1000,6 +1186,8 @@ def probe_health(unit: Dict[str, Any]) -> bool:
       {"kind":"http","target":"http://…/healthz","expect":200}   a route answers (GET)
       {"kind":"http","target":"http://…/api/rpc","method":"sys.ping"}   the worker RUNS code
                                                  (detects a WEDGED process a TCP connect misses)
+      {"kind":"heartbeat","stale_s":90,"last_tick":<epoch>}   an in-process thread unit is alive if
+                                                 it stamped `last_tick` within the last `stale_s`
     """
     return probe_health_detail(unit)[0]
 

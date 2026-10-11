@@ -136,12 +136,12 @@ class ChrononConcept(BaseConcept):
         return [l.get("dst") for l in ge.core.get_adjacent_links(society_key, "society:now")]
 
     # ── the seal (shared with scenario.run / society.workflow) ───────────────────────
-    def _mint(self, ge, gid: str, space: str, society_key: str, body: str,
+    def mint(self, ge, gid: str, space: str, society_key: str, body: str,
               label: str = "", members: List[str] = None, aspect: str = PERFECTIVE,
               from_key: str = "", mutates_key: str = "", scribe: str = "",
               advance_now: bool = True) -> Dict[str, Any]:
-        """Mint one chronon and (optionally) advance society:now by compare-and-set. This is the
-        single sealing primitive; scenario.run and society.workflow call it too.
+        """PUBLIC (group 4, 4.16; `_mint` kept one seed). Mint one chronon and (optionally) advance
+        society:now by compare-and-set. This is the single sealing primitive; scenario.run and society.workflow call it too.
 
         R6 identity: content-addressed over (society|body|mutates) — STABLE across the aspect flip,
         so R5 (aspect is meta-only, body immutable) and R6 (content-addressed, idempotent) both
@@ -194,6 +194,9 @@ class ChrononConcept(BaseConcept):
                 "advanced_now": moved != "no", "frontier_op": moved, "members": len(members or [])}
 
     # ── operators ────────────────────────────────────────────────────────────────────
+
+    _mint = mint              # the old spelling, kept ONE seed (4.16)
+
     def op_seal(self, society: str = "", group: str = "", name: str = "", space: str = "",
                 label: str = "", members: str = "", body: str = "", **kw) -> Dict[str, Any]:
         """Draw a semantic state boundary — mint a PERFECTIVE chronon and advance society:now.

@@ -82,7 +82,7 @@ def _d(k):
 
 def main():
     print("\n  vision eval — LiteRT image profiling\n")
-    from lib.akasha.vision import VisionEngine
+    from lib.akasha.source.vision import VisionEngine
 
     if not VisionEngine.backend_available():
         record("V1 classify", True, "no TFLite/LiteRT backend — vision skipped (ok)")

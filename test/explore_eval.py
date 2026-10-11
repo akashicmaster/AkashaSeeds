@@ -87,6 +87,24 @@ def main():
     record("X3 emotion.find", x3,
            f"emotion={ef.get('emotion')}, count={ef.get('count')}, icarus={any(x['key']==ic for x in ef.get('results',[]))}")
 
+    # X3b — the emotion as an ontology pack writes it: its atom and the links that FEEL it live in
+    # the shared nucleus, while the caller's cell holds its own innate copy of the same `emo:*`
+    # alias (dna.py), which wins alias resolution. emotion.find must still see the nucleus links.
+    from lib.akasha.jcl.workspace_context import system_context
+    nuc = k.manager.shared_nucleus
+    with system_context():
+        nuc.core.delete_alias("emo:curiosity")          # the pack's def rebinds the alias
+        ek = nuc.put_atom("[emo:curiosity]\nThe desire to explore the unknown.", {}, "admin",
+                          alias="emo:curiosity")
+        sk = nuc.put_atom("[concept:map_room]\nA room of unexplored charts.", {}, "admin",
+                          alias="concept:map_room")
+        nuc.put_link(sk, ek, "calc:has_emotion")
+    ef2 = d("emotion.find", {"emo": "curiosity"})
+    hit = [x for x in ef2.get("results", []) if x["key"] == sk]
+    record("X3b emotion.find (nucleus)", bool(hit) and hit[0].get("rel") == "calc:has_emotion",
+           f"count={ef2.get('count')}, nucleus source found={bool(hit)}, "
+           f"rel={hit[0].get('rel') if hit else None}")
+
     # X4 + X5 — structural node embeddings: two link-clusters bridged once. Contents are
     # DIGIT strings, which the weaver skips (no proto-word links), so the learned graph is
     # exactly the two explicit cliques + one bridge — deterministic and noise-free, isolating

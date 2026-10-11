@@ -36,6 +36,7 @@ from typing import Dict, Optional, List, Tuple
 from lib.akasha.jcl.job import (JCLJob, JCLStep, PENDING, RUNNING, DONE, FAILED,
                                 CANCELLED, CLASS_CONVERSATION, CLASS_BATCH_ATOM,
                                 CLASS_LINK, CLASS_MAINTENANCE)
+from lib.akasha import api as _api
 
 logger = logging.getLogger("Akasha.JCL.Worker")
 
@@ -89,7 +90,7 @@ class JCLWorker:
             from lib.akasha import lifecycle
             _n = max_workers
             lifecycle.register_wake(
-                lambda: [self._queue.put((9999, next(self._seq), None)) for _ in range(_n)])
+                lambda: [self._queue.put((9999, 0, next(self._seq), None)) for _ in range(_n)])
         except Exception:
             pass
 
@@ -125,6 +126,7 @@ class JCLWorker:
         if job.status == PENDING:
             job.status = CANCELLED
             job.completed_at = time.time()
+            self._settle_llm(job)        # B10 — a job cancelled before it ran still prepaid at admission
             with self._lock:
                 self._blocked.pop(job_id, None)
             logger.info(f"[JCL] Cancelled {job_id}")
@@ -137,9 +139,28 @@ class JCLWorker:
     # ----------------------------------------------------------------- queue ops
 
     def _enqueue(self, job: JCLJob) -> None:
-        # (priority, seq, job_id): PriorityQueue orders by the tuple; seq breaks ties
-        # FIFO and guarantees job_id is never compared (job_ids are not ordered).
-        self._queue.put((int(getattr(job, "priority", 2)), next(self._seq), job.job_id))
+        # (priority, cost, seq, job_id): PriorityQueue orders by the tuple; the B10 cost axis breaks
+        # ties among same-priority (batch) jobs — a programme over its LLM allotment sorts after those
+        # under it (0 = under / non-LLM, 1 = over). seq still breaks final ties FIFO so job_id is never
+        # compared. priority stays element 0 (the interruption peek reads only q[0][0]).
+        self._queue.put((int(getattr(job, "priority", 2)), self._cost_bucket(job),
+                         next(self._seq), job.job_id))
+
+    def _cost_bucket(self, job: JCLJob) -> int:
+        """B10 §2.2 — 0 unless this job's LLM programme is over its fair share of today's pool. Weights
+        are READ but not applied until a programme starves (decision 2); log the declared weight so its
+        value is visible (`applied=false`)."""
+        res = getattr(job, "llm_reservation", None)
+        if not res:
+            return 0
+        try:
+            over = _api.hook(self._kernel, "llm_over_allotment")
+            w = getattr(job, "llm_weight", None)
+            if w is not None:
+                logger.info("[llm] cost-axis program=%s weight=%s applied=false", res.get("program"), w)
+            return 1 if over and over(res.get("provider"), res.get("program")) else 0
+        except Exception:
+            return 0
 
     def _higher_priority_waiting(self, job: JCLJob) -> bool:
         """True if a strictly-higher-priority job is queued right now — the signal for
@@ -189,6 +210,7 @@ class JCLWorker:
                 job.status = CANCELLED
                 job.error = f"dependency {finished.job_id} did not complete"
                 job.completed_at = time.time()
+                self._settle_llm(job)     # B10 — a cascade-cancelled job returns its prepaid calls
                 logger.warning(f"[JCL] {job.job_id} CANCELLED (dep {finished.job_id} "
                                f"{finished.status})")
                 # Propagate the cascade: this job's own dependents must fall too.
@@ -222,7 +244,7 @@ class JCLWorker:
         while True:
             if lifecycle.is_shutting_down():
                 return
-            _prio, _seq, job_id = self._queue.get()
+            _prio, _cost, _seq, job_id = self._queue.get()
             if job_id is None:            # shutdown poison-pill (see register_wake below)
                 return
             job = self._jobs.get(job_id)
@@ -247,6 +269,7 @@ class JCLWorker:
                             job.status = CANCELLED
                             job.error = "dependency did not complete"
                             job.completed_at = time.time()
+                            self._settle_llm(job)
                             self._wake_dependents(job)
                         else:
                             self._enqueue(job)
@@ -255,6 +278,7 @@ class JCLWorker:
                 job.status = CANCELLED
                 job.error = "dependency did not complete"
                 job.completed_at = time.time()
+                self._settle_llm(job)
                 self._wake_dependents(job)
                 continue
 
@@ -273,6 +297,7 @@ class JCLWorker:
             job.status = FAILED
             job.error = f"Session unavailable: {e}"
             job.completed_at = time.time()
+            self._settle_llm(job)    # B10 — FAILED here too: the job never ran, the calls were prepaid
             logger.error(f"[JCL] {job.job_id} session error: {e}")
             return None, None
 
@@ -294,6 +319,16 @@ class JCLWorker:
                 "params":  {"session_token": job.owner, "data": expanded},
                 "id":      f"{job.job_id}:s{index}",
             }
+            # A41.2 — publish the step's soft deadline on this thread so a long, resumable op
+            # (learning.feature.execute until=complete) can yield before the block's wall-clock share is
+            # spent. Between-step timeout checking stays the worker's job; this only lets a single
+            # long step self-limit.
+            try:
+                from lib.akasha.jcl import workspace_context as _wsctx
+                _wsctx.set_deadline((job.started_at + float(job.timeout_s))
+                                    if (job.timeout_s and job.started_at) else None)
+            except Exception:
+                pass
             # Kernel-originated in-process dispatch: the job owner is trusted here.
             resp = self._kernel.dispatch(payload, "internal")
 
@@ -328,10 +363,76 @@ class JCLWorker:
     def _execute_job(self, job: JCLJob):
         if job.started_at is None:
             job.started_at = time.time()
-        if job.job_class == CLASS_CONVERSATION:
-            self._run_atomic(job)
-        else:
-            self._run_interruptible(job)
+        # B10 — if this job prepaid LLM calls at admission, make its reservation the worker thread's
+        # active one for this run slice so the gate debits it; end_run clears it, settle (at terminal)
+        # returns the unused. A job with no reservation (every job today) is unaffected.
+        _res = getattr(job, "llm_reservation", None)
+        if _res is not None:
+            try:
+                _begin = _api.hook(self._kernel, "llm_begin_run")
+                _begin and _begin(_res)
+            except Exception:
+                pass
+        try:
+            if job.job_class == CLASS_CONVERSATION:
+                self._run_atomic(job)
+            else:
+                self._run_interruptible(job)
+        finally:
+            if _res is not None:
+                try:
+                    _end = _api.hook(self._kernel, "llm_end_run")
+                    _end and _end()
+                except Exception:
+                    pass
+
+    def _settle_llm(self, job: JCLJob) -> None:
+        """B10 — release the job's LLM reservation at its TERMINAL transition, whichever one it is:
+        return the unused calls and fill the cost ledger (api_calls / tokens_est / wall_s) from the
+        actual spend.
+
+        Called from every path that assigns a terminal status — DONE, FAILED, CANCELLED, and the two
+        that never enter the run loop (a job cancelled while PENDING, and one whose session could not
+        be acquired). A prepaid job holds its calls out of today's pool from admission onward, so a
+        terminal transition that does not release them leaves `reserved` standing until the UTC day
+        rolls: the pool shrinks by one run's worth per failure, and admission starts refusing under a
+        cap that looks empty. `llm_pool.settle` is the one that guarantees ONCE; this is the one that
+        guarantees ALWAYS.
+
+        A settle that raises still clears the job's handle: a reservation this worker cannot release
+        is not one it should carry, and the failure is reported (WARNING), never swallowed."""
+        res = getattr(job, "llm_reservation", None)
+        if not res:
+            return
+        _settle = _api.hook(self._kernel, "llm_settle")
+        if _settle is None:
+            # Nothing to call: the pool is not reachable from here, so the handle STAYS — a later
+            # terminal path with the hook present can still release it.
+            logger.warning("[llm] settle skipped reason=no_hook program=%s calls=%s status=%s",
+                           res.get("program"), res.get("calls"), job.status)
+            return
+        try:
+            end = job.completed_at or time.time()
+            wall = max(0.0, end - (job.started_at or end))
+            st = _settle(res, wall_s=wall)
+            job.api_calls = int(st.get("spent", 0))
+            job.tokens_est = int(st.get("tokens_spent", 0))
+            job.wall_s = round(float(st.get("wall_s", 0.0)), 3)
+            if not st.get("repeat"):
+                logger.info("[llm] settle program=%s status=%s reserved=%s spent=%s returned=%s",
+                            res.get("program"), job.status, st.get("reserved"),
+                            st.get("spent"), st.get("returned"))
+            # SETTLE IS THE SECOND MOMENT THE ANSWER CAN CHANGE (`api/facts.py` says so at the
+            # Set's definition): the returned calls put room back. Stated through the hook, because
+            # `jcl/` is the heart and the pool is an application package.
+            _room = _api.hook(self._kernel, "llm_state_headroom")
+            if _room:
+                _room(self._kernel, str(res.get("program") or ""), True)
+        except Exception as _se:
+            logger.warning("[llm] settle failed reason=settle_error program=%s status=%s: %s",
+                           res.get("program"), job.status, _se)
+        finally:
+            job.llm_reservation = None      # released, or unreleasable — either way not carried on
 
     # ---- atomic (Class-1 conversation): one workspace, no yielding ---------
 
@@ -448,6 +549,7 @@ class JCLWorker:
     def _finish_done(self, job: JCLJob):
         job.status = DONE
         job.completed_at = time.time()
+        self._settle_llm(job)            # B10 — return unused LLM reservation + fill the cost ledger
         logger.info(f"[JCL] {job.job_id} DONE ({job.step_done}/{job.step_count})")
         self._wake_dependents(job)
 
@@ -455,6 +557,7 @@ class JCLWorker:
         job.error = str(exc)
         job.status = FAILED
         job.completed_at = time.time()
+        self._settle_llm(job)            # B10 — return unused LLM reservation even on failure
         logger.error(f"[JCL] {job.job_id} FAILED: {exc}")
 
         if rollback and tx_id and self._kernel.harmonia:

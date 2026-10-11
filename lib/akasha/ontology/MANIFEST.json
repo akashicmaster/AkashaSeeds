@@ -1,0 +1,214 @@
+{
+  "package": "ontology",
+  "version": 1,
+  "depends_on": [],
+  "ops": {
+    "onto.dump": {
+      "fn": "lib.akasha.ontology.ops:handle_onto_dump",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "onto.dump": {
+          "args": [
+            "mode",
+            "ns",
+            "rel",
+            "collection",
+            "sort",
+            "limit"
+          ],
+          "desc": "Dump ontology (modes: atoms|links|antonyms|aliases|sets|namespaces)"
+        }
+      }
+    },
+    "onto.export": {
+      "fn": "lib.akasha.ontology.ops:handle_onto_export",
+      "stage": "pre",
+      "access": "read"
+    },
+    "onto.reload": {
+      "fn": "lib.akasha.ontology.ops:handle_onto_reload",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "onto.reload": {
+          "args": [
+            "confirm"
+          ],
+          "desc": "Clear ontology sentinels and re-trigger boot load (requires librarian, confirm=RELOAD)"
+        }
+      }
+    },
+    "onto.reconcile": {
+      "fn": "lib.akasha.ontology.ops:handle_onto_reconcile",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "onto.reconcile": {
+          "args": [
+            "pack"
+          ],
+          "desc": "Retire atoms a pack no longer contributes (librarian): dry=yes preview, apply=yes retire, compact=yes vacuum (superuser)"
+        }
+      }
+    },
+    "onto.reset": {
+      "fn": "lib.akasha.ontology.ops:handle_onto_reset",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "onto.reset": {
+          "args": [
+            "confirm"
+          ],
+          "desc": "⚠ Wipe nucleus ontology data (DNA preserved) then reload (requires librarian, confirm=RESET)"
+        }
+      }
+    },
+    "onto.pack.list": {
+      "fn": "lib.akasha.ontology.ops:handle_onto_pack_list",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "onto.pack.list": {
+          "args": [],
+          "desc": "List all ontology packages from REGISTRY.json with load status"
+        }
+      }
+    },
+    "onto.pack.enable": {
+      "fn": "lib.akasha.ontology.ops:handle_onto_pack_enable",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "onto.pack.enable": {
+          "args": [
+            "name"
+          ],
+          "desc": "Enable an optional ontology pack and trigger load (requires librarian)"
+        }
+      }
+    },
+    "onto.pack.disable": {
+      "fn": "lib.akasha.ontology.ops:handle_onto_pack_disable",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "onto.pack.disable": {
+          "args": [
+            "name"
+          ],
+          "desc": "Disable an optional ontology pack (atoms remain until onto.reset) (requires librarian)"
+        }
+      }
+    },
+    "onto.report": {
+      "fn": "lib.akasha.ontology.ops:handle_onto_report",
+      "stage": "pre",
+      "access": null,
+      "cli": {
+        "onto.report": {
+          "args": [
+            "since",
+            "limit"
+          ],
+          "desc": "Alias overwrite collision report [since=<epoch>] [limit=N] [clear=true]"
+        }
+      }
+    },
+    "onto.status": {
+      "fn": "lib.akasha.ontology.ops:handle_onto_status",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "onto.status": {
+          "args": [],
+          "desc": "Ontology load status: progress (loading/complete), packs, sentinels, nucleus counts"
+        }
+      }
+    },
+    "onto.genesis.redo": {
+      "fn": "lib.akasha.ontology.ops:handle_onto_genesis_redo",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "onto.genesis.redo": {
+          "args": [
+            "confirm"
+          ],
+          "desc": "⚠ Remove genesis anchors to allow re-running genesis_rite (requires admin, confirm=GENESIS)"
+        }
+      }
+    },
+    "onto.scope.drop": {
+      "fn": "lib.akasha.ontology.ops:handle_onto_scope_drop",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "onto.scope.drop": {
+          "args": [
+            "scope",
+            "confirm"
+          ],
+          "desc": "⚠ Delete all nucleus atoms carrying a given scope (requires librarian, confirm=DROP:<scope>)"
+        }
+      }
+    },
+    "sys.weaver.weave": {
+      "fn": "lib.akasha.ontology.weave:handle_weave",
+      "stage": "pre",
+      "access": "record"
+    },
+    "sys.weaver.weave_batch": {
+      "fn": "lib.akasha.ontology.weave:handle_weave_batch",
+      "stage": "pre",
+      "access": "record"
+    },
+    "sys.weaver.weave_client": {
+      "fn": "lib.akasha.ontology.weave:handle_weave_client",
+      "stage": "pre",
+      "access": "record"
+    },
+    "sys.weaver.decompose": {
+      "fn": "lib.akasha.ontology.weave:handle_weave_decompose",
+      "stage": "pre",
+      "access": "record"
+    },
+    "sys.weaver.drain_pending": {
+      "fn": "lib.akasha.ontology.weave:handle_weave_drain_pending",
+      "stage": "pre",
+      "access": "record"
+    }
+  },
+  "schedules": {
+    "ontology_load": {
+      "fn": "lib.akasha.ontology.loader:boot_load_ontology",
+      "phase": "load",
+      "order": 10,
+      "when": "new_build",
+      "provides": "ontology.loaded,ontology.normalized"
+    }
+  },
+  "thread_units": [],
+  "provision": {},
+  "hydrate": [],
+  "declarations": [
+    "ontology/REGISTRY.json",
+    "ontology/*/PACK.json"
+  ],
+  "code_paths": [
+    "lib/akasha/ontology/",
+    "ontology/",
+    "config/ontology/"
+  ],
+  "data_paths": [
+    "ontology/user/"
+  ],
+  "evals": [
+    "test/onto_*_eval.py",
+    "test/ontology_*_eval.py",
+    "test/verify_lexicon.py"
+  ],
+  "_comment": "ontology — .ak packs → the graph. Ops and the load-phase body; nothing rightward.",
+  "owner": "platform"
+}

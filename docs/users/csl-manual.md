@@ -979,7 +979,7 @@ csl> curation.ls
 | `alias` | Optional alias for the curation root (re-running with the same alias is idempotent). |
 | `thesis` | Optional one-line statement of the interpretation's standpoint. |
 
-> **Roadmap note.** A richer argumentation layer — premises, perspective-scoped views, conflict-resolution folds, and recorded conclusions — is a *planned* extension, not part of the shipped model. Today curation is the three operators above (`new` / `narrate` / `ls`). Do not rely on `cur.premise`, `cur.input`, `cur.view`, `cur.fold`, `cur.conclude`, `cur.dispute`, or `cur.trace` — they are not implemented and will return "Unknown method".
+> **Scope note.** A richer argumentation layer — premises, perspective-scoped views, conflict-resolution folds, and recorded conclusions — is not part of the shipped model. Today curation is the three operators above (`new` / `narrate` / `ls`). Do not rely on `cur.premise`, `cur.input`, `cur.view`, `cur.fold`, `cur.conclude`, `cur.dispute`, or `cur.trace` — they are not implemented and will return "Unknown method".
 
 ### 5.4 Intelligence
 

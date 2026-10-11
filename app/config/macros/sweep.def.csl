@@ -1,0 +1,8 @@
+# sweep.def (P0-a §2.3 macro) — define a hyperparameter sweep: expand a grid into condition tuples
+# (cartesian product, bounded by max) under a bench. A thin forward to the `sweep.def` operator (CSL
+# has no loops, so the expansion lives in the concept). NOTE: macro.run reserves `name` for the macro
+# itself, so the SWEEP name is passed as `sweep=`; the direct op `sweep.def … name=<sweep>` is
+# equivalent. grid form: head=logreg,linear;split=0.8,0.7 (axes by ';', values by ',') or JSON.
+#
+#!params bench,sweep,grid,max=18,template=learn_observe,fixed=
+sweep.def bench="$bench" name="$sweep" grid="$grid" max="$max" template="$template" fixed="$fixed"

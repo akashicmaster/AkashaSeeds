@@ -70,6 +70,19 @@ class JCLJob:
     retries_used: int = 0                 # retries consumed so far
     started_at: Optional[float] = None    # first RUNNING transition (for timeout_s)
 
+    # ── B10 — shared LLM resource allocation ──────────────────────────────────────
+    # An LLM-using programme prepays its per-run calls at admission; the job carries the
+    # reservation and runs prepaid, the gate debits it, and the worker settles the unused
+    # at DONE/FAILED. None = a job that declared no LLM calls (every job today).
+    llm_reservation: Optional[Dict[str, Any]] = None
+    # Cost ledger, filled at settle from the reservation's actual spend (job.stat shows them).
+    api_calls: int = 0                    # LLM calls this job actually made
+    tokens_est: int = 0                   # estimated tokens this job spent
+    wall_s: float = 0.0                   # wall-clock seconds the job ran
+    # Stage 2.2 — a declared weight for the cost-axis. READ but not applied until a programme starves
+    # (decision 2); the projection logs `weight=<w> applied=false` so the value is visible.
+    llm_weight: Optional[float] = None
+
     @property
     def step_count(self) -> int:
         return len(self.steps)

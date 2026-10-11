@@ -33,6 +33,7 @@
 13. [Sharing Knowledge — Delegation Sets](#13-sharing-knowledge--delegation-sets)
 14. [Roles and Permissions](#14-roles-and-permissions)
 15. [Tips and Patterns](#15-tips-and-patterns)
+16. [The Station — Watching Something Run By Itself](#16-the-station--watching-something-run-by-itself)
 
 ---
 
@@ -743,9 +744,12 @@ disagree: `sim` answers *"means the same"*, `node.sim` answers *"connected the s
 akasha/user $ node.sim icarus
 ```
 
-> **Implicit behaviour:** `node.sim` needs a trained structural model. The boot auto-learn builds
-> one; on a fresh, sparsely-linked Cell an admin can run `node.learn` once to train it, otherwise
-> `node.sim` returns nothing until enough structure exists.
+> **Implicit behaviour — learned on demand on the seeds line.** `sim`/`search` rank by a learned
+> content model and `node.sim` by a learned structural model. On the seeds line neither is learned
+> at startup (the thesaurus line learns at boot): until then `sim` returns little and `node.sim`
+> answers `no structural model — run node.learn first`. Once the ontology load is complete
+> (`onto.status`), an admin runs `semantic.learn` and `node.learn` (both need numpy), and re-runs
+> them when the graph has grown.
 
 **`view <id>` (alias `cosmos`) — the consciousness view of one atom, in place.** Signposts (1-hop
 links), resonance (semantically-near atoms two hops out, ranked by real vector cosine), and the
@@ -1407,10 +1411,16 @@ These are invisible in the sense that they require no loading step — they are 
 
 ### 9.2 Acquired Ontology (.ak files)
 
-Acquired ontology is organised as **namespace packs**: one directory per pack under
-`ontology/<name>/`, each holding `.ak` scripts plus a `PACK.json` manifest. Every pack is
-listed in `ontology/REGISTRY.json`, which records its load order and whether it autoloads at
-startup. Packs extend the graph with domain-specific knowledge: emotional spectrums, narrative
+Acquired ontology is organised as **namespace packs**: one directory per pack, each holding `.ak`
+scripts plus a `PACK.json` manifest. Packs live in three places, loaded in this order:
+
+| Where | Whose | Registered in |
+|---|---|---|
+| `ontology/<name>/` | the platform's own vocabulary (`lexicon`, `workbench`, `whiteboard`, `scenario`) | `ontology/REGISTRY.json` |
+| `app/ontology/<name>/` | the application's content packs (`base1`…`base3`, `curation`, `recipe`, `world`, `art`, …) | `app/ontology/REGISTRY.json` |
+| `ontology/user/<name>/` | **yours** — packs you add; never shipped, never overwritten by a seed update | nowhere: a `PACK.json` is enough |
+
+A registry records each pack's load order and whether it autoloads at startup. Packs extend the graph with domain-specific knowledge: emotional spectrums, narrative
 archetypes, vocabulary corpora, recipes, and more. They are written in the same `.ak` command
 language as user scripts.
 
@@ -1418,25 +1428,31 @@ language as user scripts.
 
 | Pack | Contents |
 |---|---|
-| `lexicon` | Relation / namespace definitions (`reldef:` / `nsdef:`) — the defined vocabulary |
+| `lexicon` (platform) + `app_lexicon` | Relation / namespace definitions (`reldef:` / `nsdef:`) — the defined vocabulary |
 | `base1` | Core super-concepts and structural primitives |
 | `base2` | Core word, feeling, and domain atoms |
 | `base3` | The knowledge canopy — higher-level concept scaffolding |
 | `curation` | Curated views and premise-bound constructions |
 | `recipe` | The food/drink product-dictionary seed layer |
 
-All other packs (liberal-arts discipline packs like `world`, `tech`, `law`, `art`, `wine`, …
-and deep reference layers) are **not autoloaded by default** — they are bundled per release and
-enabled explicitly with `onto.pack.enable <name>`, or autoloaded in bulk on the thesaurus /
-server tiers. Use `onto.pack.list` to see which packs are available and which are loaded.
+The seeds 13 series also autoloads three subject packs: `world`, `philosophy` and `domain`.
+All other packs (liberal-arts discipline packs like `tech`, `law`, `art`, `wine`, … and deep
+reference layers) are **not autoloaded on seeds** — they are bundled and enabled explicitly with
+`onto.pack.enable <name>`, or autoloaded in bulk on the thesaurus tier. Use `onto.pack.list` to see
+which packs are available and which are loaded.
+
+**Your own pack.** Make `ontology/user/<name>/` with a `PACK.json` (`{"label": "…"}`) and your
+`.ak` files; it loads at the next start, after the built-in packs — no registry edit. With
+`"autoload": false` in its `PACK.json` it waits for `onto.pack.enable <name>`.
 
 ### Loading Acquired Ontology
 
-The autoload packs are loaded **automatically at first startup**, in the order given by
-`REGISTRY.json`. The boot load runs in named phases, each guarded by its own sentinel so nothing
-double-loads on a subsequent start: **load** (atoms) → **relations** → **canon** →
-**reconcile** → **curations**. Per-file sentinels (keyed by a manifest hash of each pack's
-files) skip any pack whose files are unchanged.
+The autoload packs are loaded **automatically, in the background, from the first startup**, in
+registry order. The first load can take a long while on a modest host (about an hour on a small
+one); the prompt is usable meanwhile and `onto.status` shows the progress. The boot load runs in
+named phases, each guarded by its own sentinel so nothing double-loads on a subsequent start:
+**load** (atoms) → **relations** → **canon** → **reconcile** → **curations**. Sentinels are keyed by
+each file's content, so a pack whose content is unchanged is skipped.
 
 To re-trigger loading after modifying ontology files (LIBRARIAN role required):
 
@@ -1448,7 +1464,7 @@ akasha/user $ onto.reload
 To load a single pack script file manually:
 
 ```
-akasha/admin $ run ontology/base2/philosophy.ak
+akasha/admin $ run app/ontology/base2/philosophy.ak
 Job submitted: job_id=jcl-9011
 ```
 
@@ -2016,6 +2032,270 @@ Health: OK
 ### Let the System Dream
 
 After an intensive research session, trigger a manual `dream` cycle or simply leave the system idle. The Jataka engine will consolidate your graph, reinforcing meaningful pathways and pruning noise — so that when you return, your knowledge space is cleaner and more navigable.
+
+---
+
+## 16. The Station — Watching Something Run By Itself
+
+Everything in this manual so far has been *you* typing and Akasha answering. This chapter is about
+the other half: the parts of your cell that run **on their own**, on a schedule, and what you type
+to see what they have been doing.
+
+You do not need to have set any of this up. On a thesaurus or service cell several of these are
+running already; on a plain `seeds` cell there may be none, and every command below will simply
+tell you that, which is a perfectly good answer.
+
+### What a workload is
+
+A **workload** is one unit of scheduled work. That is the whole idea, and the same word covers all
+of these:
+
+- a daily reading programme that airs three voices into a public feed;
+- a research pass over a corpus that nobody watches;
+- a job that posts a summary to an account outside Akasha.
+
+They differ in values, not in kind. Each workload declares — in one file, not in code — which
+**bench** it runs on, which **society** it acts as, when it is **triggered**, what its **effect**
+is, how many model calls it expects (its **appetite**), and what it may spend in a day (its
+**budget**).
+
+Three words are used precisely and are worth holding onto:
+
+| word | what it means here |
+|---|---|
+| **bench** | the workspace a workload runs on, and where its record of what happened is kept. Several workloads can share one bench. |
+| **society** | the space a workload speaks into: a roster of named speakers and a timeline of what was said. |
+| **turn** | one thing said by one speaker. A programme's episode is a sequence of turns. |
+
+A workload's **key** is `<bench>/<workflow>` — for example `studio_ai/news_show`. That key is how
+it is named everywhere: in its record, in its budget, in the commands below. You never invent it;
+it comes from the declaration.
+
+### Is anything running? — `society.ls`
+
+Start here. `society.ls` lists the societies of **one group**, so it takes a `group=`:
+
+```
+akasha/user $ society.ls group=studio_ai
+count: 5
+  studio_ai/art_explorer      The Art Explorer — one work, its world, and why it holds the eye
+  studio_ai/news_show         AI technology news
+  studio_ai/news_show_x       news_show_x
+  studio_ai/plant_geek        The Plant Geek — species, habit and the field note
+  studio_ai/thinkers_shelf    The Thinker's Shelf — reading the classics, the rare and the forgotten
+```
+
+The group is the first half of a society id, before the `/`. On a cell running the station that
+group is `studio_ai`; on your own cell it is whatever group you made. `count: 0` means that group
+has no societies, which is the normal state of a fresh personal cell and is not an error.
+
+Notice that one of those has a topic that is just its own name. `news_show_x` is a workload that
+posts the news show's turns to an account outside Akasha — it never speaks, so it never needed a
+topic. A society with nothing in it is a perfectly ordinary thing to find.
+
+### What is this one? — `society.info`
+
+```
+akasha/user $ society.info group=studio_ai space=thinkers_shelf
+society_id:    studio_ai/thinkers_shelf
+name:          thinkers_shelf
+topic:         The Thinker's Shelf — reading the classics, the rare and the forgotten
+kind:          chat
+category:      reading
+daily_budget:  2
+created_by:    llm:programme:studio_shelf
+decider:
+open_guest:    true
+public:        true
+exists:        true
+```
+
+`created_by` is the identity that owns every speaker in this society — for an automated programme
+that is the programme itself, not a person. `daily_budget` is how many times a day it may run.
+
+Two of those fields are **consent flags**, and they are worth understanding because they are the
+only thing standing between an internal conversation and the outside world:
+
+- **`public`** — may this feed be shown on the public web? Without it, the page that would render
+  this feed refuses.
+- **`open_guest`** — may this feed be sent *out* to an external language model? Without it, the
+  gateway that would send it refuses.
+
+They are separate on purpose: showing something and sending it somewhere are different decisions.
+Neither is ever set by a boot or by a declaration — a person sets them, deliberately.
+
+### What was said? — `society.feed`
+
+```
+akasha/user $ society.feed group=studio_ai space=thinkers_shelf limit=5
+[Reader]       From Dibdin, The Library Companion, I, p.iii …
+[Listener]     What does "book openeth book" actually mean?
+[Commentator]  Directly: Dibdin means that one book leads you to the next …
+```
+
+`limit=` bounds what comes back; leave it off and you get a sensible default. This is the timeline
+as it stands — the same lines a public page would show.
+
+### Whose go is it? — `society.turn`
+
+```
+akasha/user $ society.turn group=studio_ai space=thinkers_shelf
+turns:      7
+last_cast:  Listener
+roster:     Reader (participant), Listener (participant), Commentator (participant),
+            Producer (moderator), Scribe (observer)
+```
+
+`turns` is how many lines have been said, `last_cast` who said the most recent one, and the roster
+is everyone admitted, with the part each holds. Turn order is a property of the society, not of
+whoever happens to be typing.
+
+The three parts in the roster mean different things, and the distinction matters:
+
+- a **participant** speaks;
+- a **moderator** is accountable for what the society does and never takes a turn;
+- an **observer** keeps the record and never takes a turn.
+
+An automated programme must have all three before it is allowed to run on its own. That is not
+bureaucracy: running unattended is an autonomous act, and an autonomous act needs someone
+accountable and someone keeping the record.
+
+### The record — `station.air.ls`
+
+The feed is what was *said*. The **record** is what was *done*, and they are deliberately kept as
+two things that must agree:
+
+```
+akasha/user $ station.air.ls name=studio_ai program=studio_ai/thinkers_shelf limit=5
+aired=1  turn=3  Commentator  mistral/mistral-small   source=shelf:dibdin:p:iii
+aired=1  turn=2  Listener     mistral/mistral-small   source=shelf:dibdin:p:iii
+aired=0  turn=—  Reader       reason=station:reason:waiting_source
+```
+
+Two things to notice, because they are the point of the record existing at all:
+
+- **Each row carries the exact provider and model** that produced that line. If you ever need to
+  answer "was this written by a person or a machine, and which machine", the answer is here, on
+  the record, not reconstructed afterwards.
+- **A turn that did NOT air is recorded too**, as `aired=0` with a *reason*. A programme that is
+  quiet is telling you something, and a silent gap in the record would hide which of several very
+  different things happened.
+
+`name=` is the bench; `program=` narrows to one workload, which matters because several workloads
+share the station bench, and without it you are reading four programmes' work at once.
+
+### Reasons, and why they are spelled the way they are
+
+A reason looks like `station:reason:waiting_source`. It is not a sentence — it is a **defined
+atom**, which means it is exact and you can look it up like anything else in the graph:
+
+```
+akasha/user $ r station:reason:waiting_source
+```
+
+The answer is that reason's own definition, written when the reason was introduced. Every reason a
+programme can return is defined this way; a bare code with no definition behind it would be a
+defect, not a design. They are collected in the set `station:vocabulary`, so:
+
+```
+akasha/user $ s.ls station:vocabulary
+```
+
+lists every state and reason the station can report, and you can read any of them with `r`.
+
+The ones you are most likely to meet:
+
+| reason | what it means | what fixes it |
+|---|---|---|
+| `station:reason:waiting_source` | nothing left to read — every entry of the episode has aired | add to the episode, or move to the next one |
+| `station:reason:not_provisioned` | the society or its casts are not in place on this cell | a boot; not a retry |
+| `station:reason:no_consent` | the space is not flagged for what was attempted | a person sets `public` / `open_guest` |
+| `station:reason:fresh` | nothing new since last time — correct, not a failure | nothing |
+| `station:reason:breaker` | it failed repeatedly and has stopped to be looked at | a code or configuration change |
+
+The distinction between `not_provisioned` and `breaker` is the one that saves time: the first is
+cured by restarting the cell, the second never is.
+
+### What did it cost? — `llm.budget`
+
+Workloads that call a language model draw on a daily allowance held **per provider**. The three
+`llm.*` commands in this section are **librarian/admin only** — they read and set what the cell is
+permitted to spend, which is not an ordinary user's decision. Everything else in this chapter is a
+plain read that any user may run.
+
+```
+akasha/user $ llm.budget
+provider  day         calls_today  calls_per_day  calls_left  tokens_today  tokens_per_month  exhausted
+mistral   2026-09-21           34            220         186         9,100        14,000,000  false
+gemini    2026-09-21            0           1000        1000             0                 0  false
+ollama    2026-09-21            0              0           0             0                 0  false
+```
+
+Read it as two separate ceilings, because they answer different questions:
+
+- **calls** bound how *often* the cell may ask a provider anything;
+- **tokens** bound how *much*, and since cost is charged per token, this is the one that actually
+  caps a bill.
+
+`exhausted: true` on a provider means every workload using it stops for the day. That shows up in
+the record as `station:reason:budget_calls` or `budget_tokens` — which are **this cell's own**
+ceilings, deliberately spelled differently from `station:reason:llm_pool` (the shared pool had no
+room) and `station:reason:provider_429` (the provider itself refused). Reading one for another
+sends you to the provider's dashboard when the limit was yours all along.
+
+A workload's own per-day run count is a separate figure — it is `daily_budget` in `society.info`
+above, and it comes from that workload's declaration. A workload that has used it stops and says
+so in its record; it does not borrow from another's.
+
+`llm.diag` answers the narrower question "is a provider reachable from here at all":
+
+```
+akasha/user $ llm.diag
+provider: mistral   configured: false   ok: false
+message:  no key or base URL configured on this host (llm.key set mistral <key>)
+```
+
+A provider key is stored once with `llm.key set <provider> <key>`. It is written to a file only
+the owner can read and never becomes an atom in the graph — so it is never something a search, an
+export or a public page can surface.
+
+### Is it stuck? — `job.ls`, `job.stat` and `svc ls`
+
+Longer work runs as a background job:
+
+```
+akasha/user $ job.ls
+job_042  vlab.cma.compute:r1   RUNNING   step 14/29
+akasha/user $ job.stat job_042
+status: RUNNING   steps: 14/29   owner: admin
+```
+
+And the cell's own long-running phases are visible with the shell's `svc ls` (Section 5), which is
+where a corpus import or an observation pass reports its heartbeat.
+
+### What you can change, and what you cannot
+
+From the CLI you can **read** all of the above freely, and you can set the two consent flags on a
+society you own. You cannot change a workload's schedule, budget or roles from the CLI — those are
+in its declaration file, and that is deliberate: a schedule that can be changed by a command is a
+schedule nobody can reconstruct afterwards. Changing one means editing the file and restarting;
+the next boot converges the cell onto what the file now says.
+
+If you are the one writing that file, this manual is the wrong document — see the references
+below.
+
+### If nothing is running
+
+On a personal cell, most likely nothing is. `society.ls` returns an empty list, `station.air.ls`
+finds no bench, and `llm.budget` shows nothing spent. Every one of those is the honest answer for a
+cell with no workloads declared, and none of them needs fixing.
+
+### References
+
+- Writing a workload: `docs/developer/implementing-a-workload.md`
+- Worked examples: `docs/cookbook/workload-thinkers-shelf.md`, `workload-research-bench.md`,
+  `workload-no-corpus.md`, `workload-external-channel.md`
+- Societies, casts and turn order in full: `docs/for-llm/society-space-spec.md`
 
 ---
 

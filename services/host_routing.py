@@ -18,7 +18,7 @@ the whole host.
 Configuration:
   AKASHA_BASE_DOMAIN  — comma-separated apex domain(s) that serve the default
                         root and whose subdomains map to a leftmost-label dir.
-                        Default: "akashicarchives.net".
+                        Default: "localhost" — a deployment sets it (group 4, 4.8).
 
 Shared by both portals (uvicorn/ASGI in api/portals/asgi.py, httpd in
 services/http_gateway.py) so the behaviour is identical whichever engine serves.
@@ -32,7 +32,7 @@ __all__ = ["resolve_host_dir", "base_domains"]
 
 def base_domains():
     """The configured apex domain(s), lower-cased, no empties."""
-    raw = os.environ.get("AKASHA_BASE_DOMAIN", "akashicarchives.net")
+    raw = os.environ.get("AKASHA_BASE_DOMAIN", "localhost")
     return [d.strip().lower() for d in raw.split(",") if d.strip()]
 
 

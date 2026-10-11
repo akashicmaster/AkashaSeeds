@@ -6,8 +6,8 @@ a host that keeps the topic but never says "no".*
 ---
 
 > **⚠️ This chapter needs the full repository (server tier), not the public seeds bundle.**
-> The walkthrough drives two helper programs — `scripts/society_setup.py` (provisions the room and
-> avatars) and `scripts/society_gateway.py` (runs the room) — from the **`scripts/` directory**.
+> The walkthrough drives two helper programs — `app/scripts/society_setup.py` (provisions the room and
+> avatars) and `app/scripts/society_gateway.py` (runs the room) — from the **`scripts/` directory**.
 > That directory (the multi-LLM society / gateway experiment kit) ships **only with the full repo /
 > server tier**; it is **not** bundled in the public **seeds** download. If you are running from a
 > seed, these commands are not present, so you cannot copy-paste-run this chapter as-is.
@@ -95,7 +95,7 @@ One command sets up the group, the room (opened to guests), and one avatar per p
 create a **host** and **two guests**:
 
 ```
-python scripts/society_setup.py --group salon --space jam \
+python app/scripts/society_setup.py --group salon --space jam \
     --topic "cooling a city without air conditioning" --open-guest \
     --participant "llm:facil|Facil|the host|facilitator" \
     --participant "llm:gemini|Gemini|a free external guest|participant" \
@@ -120,7 +120,7 @@ command. It is idempotent: run it again and it reuses the same users and avatars
 Paste the command the setup printed. It looks like this (your `cast_id`s will differ):
 
 ```
-python scripts/society_gateway.py --group salon --space jam --rounds 2 \
+python app/scripts/society_gateway.py --group salon --space jam --rounds 2 \
     --guest "llm:facil|<facil_cast_id>|mock|-|facilitator" \
     --guest "llm:gemini|<gemini_cast_id>|mock|-|participant" \
     --guest "mcp:local|<echo_cast_id>|mock|-|participant"
@@ -203,7 +203,7 @@ You can show the room live on a public page. That is a **second, separate consen
 A public curation meeting sets **both**. Add `--public` when you provision:
 
 ```
-python scripts/society_setup.py --group salon --space jam --open-guest --public \
+python app/scripts/society_setup.py --group salon --space jam --open-guest --public \
     --participant "llm:facil|Facil|the host|facilitator" \
     --participant "llm:gemini|Gemini|a free external guest|participant"
 ```
@@ -234,7 +234,7 @@ gateway so utterances arrive at a readable cadence instead of all at once — th
 provider calls so a free tier's rate limit is respected without effort:
 
 ```
-python scripts/society_gateway.py --group salon --space jam --rounds 2 --pace 6 \
+python app/scripts/society_gateway.py --group salon --space jam --rounds 2 --pace 6 \
     --guest "llm:facil|<facil_cast>|mock|-|facilitator" \
     --guest "llm:gemini|<gemini_cast>|mock|-|participant"
 ```
@@ -260,5 +260,5 @@ space=jam open=no`.
 
 - Design and invariants: `docs/for-llm/society-guest-gateway.md`.
 - The society (space) model in general: `docs/for-llm/society-space-spec.md`.
-- Scripts: `scripts/society_setup.py` (provision), `scripts/society_gateway.py` (run the room),
-  `test/society_gateway_eval.py` (the checks behind this chapter).
+- Scripts: `app/scripts/society_setup.py` (provision), `app/scripts/society_gateway.py` (run the room),
+  `app/test/society_gateway_eval.py` (the checks behind this chapter).

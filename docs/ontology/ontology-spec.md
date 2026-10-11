@@ -273,14 +273,25 @@ The DNA includes placeholder definitions for alternative philosophical lenses. T
 
 ## 4. Layer 2 — Acquired Ontology: Startup Files
 
-**Source:** `ontology/` directory — package layout governed by `ontology/REGISTRY.json` v2  
-**Loaded:** The `lexicon`, `base1`, `base2`, `base3`, `curation`, and `recipe` packs (autoload=true in REGISTRY.json) load automatically on first startup, in REGISTRY order — base1/2/3 stream in so quick-start works at once. All other packages (art, film, tech, world, vocab, nutrition, …) have autoload=false and are not loaded automatically.  
+**Source:** three pack roots, loaded in this order — the platform's `ontology/` (its own vocabulary:
+`lexicon`, `scenario`, `whiteboard`, `workbench`; registered in `ontology/REGISTRY.json`), the
+application's `app/ontology/` (the content packs; registered in `app/ontology/REGISTRY.json`), and the
+cell operator's `ontology/user/<name>/` (no registry: a `PACK.json` makes a pack)  
+**Loaded:** the autoload packs — the platform's four, and the application's `app_lexicon`, `base1`,
+`base2`, `base3`, `curation`, `recipe` and `station` — load automatically from the first startup, in
+the background. The seeds 13 series also autoloads `world`, `philosophy` and `domain`; every other
+package is opt-in (`onto.pack.enable <name>`) on seeds, and loads automatically on the thesaurus tier.
+The first load can take a long while on a modest host; `onto.status` shows its progress.  
 **Scope:** `sys:universal` (visible to all users)  
-**Mutable:** Yes — add files to the appropriate package directory and they load on next first-boot (or after `onto.reload`)
+**Mutable:** Yes — a changed file in a pack is re-loaded at the next start (sentinels are keyed by
+content); `onto.reload` forces a full re-run
 
 The acquired ontology extends the DNA with richer vocabulary and concept hubs. It is designed to be the "shared common knowledge" that all users inherit without having to build it themselves.
 
-> **REGISTRY.json v2 package layout:** Loading is **not** a recursive directory walk of `ontology/`. `ontology/REGISTRY.json` lists every package (name + autoload flag). At startup, only packages with `"autoload": true` (currently `lexicon`, `base1`, `base2`, `base3`, `curation`, and `recipe`) are loaded into the graph. Other packages are loaded on demand or by setting their `"autoload"` flag to `true` and running `onto.reload`. The `ontology/thesaurus/` directory is loaded by the same boot sequence alongside the REGISTRY packages.
+> **Registry package layout:** Loading is **not** a recursive directory walk. Each root's
+> `REGISTRY.json` lists its packages (name + autoload flag + tier). At startup the autoload packages
+> load; the others wait for `onto.pack.enable <name>` (or the tier's `load_all`). A pack under
+> `ontology/user/` needs no registry — its `PACK.json` is enough.
 
 ### 4.1 Shell Script Files (.ak)
 
@@ -289,7 +300,7 @@ The acquired ontology extends the DNA with richer vocabulary and concept hubs. I
 **Canonical format (June 2026 and later):**
 
 ```
-# example: ontology/common/emotions.ak
+# example: a pack file, e.g. app/ontology/base1/emo.ak
 # def "namespace:name" "description" — proto-word auto-created, no al $it needed
 def "emo:admiration" "Respect and warm approval."
 def "emo:joy" "A feeling of great pleasure and happiness."
@@ -308,7 +319,7 @@ Legacy format (`w "text" + al $it "ns:name" + al $it "bare"`) still parses corre
 `.csl` files contain CSL commands and are executed via `csl.run` at startup. They are suited for more expressive ontology definitions — particularly when using concept model methods (`fact.new`, `curation.new`, etc.) or when block syntax makes a definition clearer.
 
 ```
-# example: ontology/common/setup.csl
+# example: a CSL file in a pack, e.g. ontology/user/mine/setup.csl
 
 # Define a fact collection for world geography
 $geo_facts = fact.new:
@@ -330,19 +341,19 @@ All file types are loaded **once per fresh install**. Four sentinel aliases trac
 | `ont:ak:atoms:loaded` | Phase 1 of `.ak` loading complete (all atoms written, before link phase) |
 | `ont:ak:loaded` | Full `.ak` load complete (atoms + links) |
 | `ont:csl:loaded` | All `.csl` ontology scripts loaded |
-| `ont:curation:loaded` | All `curations/*.csl` files auto-loaded |
+| `ont:curation:loaded` | All `app/curations/*.csl` files auto-loaded |
 
 On subsequent logins, sentinels are detected and loading is skipped. Use `onto.reload` or `onto.reset` (§4.4) to re-trigger loading.
 
 **Startup output (first login, illustrative — actual files are in package directories):**
 ```
   [ont] Loading acquired ontology…
-        ontology/base1/emo.ak         (74 steps)
-        ontology/base1/word_core_01.ak (142 steps)
+        app/ontology/base1/emo.ak         (74 steps)
+        app/ontology/base1/word_core_01.ak (142 steps)
         …
   [ont] Ready — N steps across M files.
   [ont] Loading CSL ontology scripts…
-        ontology/thesaurus/a_thesaurus_core.csl  (13 ops)
+        ontology/lexicon/01_relations_core.ak    (the thesaurus: relation definitions)
   [ont] CSL ready — 13 ops across 1 files.
 ```
 
@@ -376,7 +387,7 @@ akasha/user $ onto.reset confirm="RESET"
 
 Without `confirm="RESET"`, the command returns an error message describing what will be deleted.
 
-> Note: **Thesaurus data** (stored in nucleus with `scope:sys:universal`) is cleared by `onto.reset` along with all other ontology data. The thesaurus is fully rebuilt on reload from `ontology/thesaurus/a_thesaurus_core.csl` and any curations that auto-load from `curations/`.
+> Note: **Thesaurus data** (stored in nucleus with `scope:sys:universal`) is cleared by `onto.reset` along with all other ontology data. The thesaurus is fully rebuilt on reload from the `lexicon` pack (`ontology/lexicon/01_relations_core.ak`, which defines every `thesaurus:*` relation) and any curations that auto-load from `app/curations/`.
 
 ---
 
@@ -461,10 +472,12 @@ The same knowledge can be expressed as raw atoms OR as concept model instances. 
 
 ### 6.2 Auto-Discovery
 
-Concept model plugins are discovered automatically at kernel boot. Any Python file in `lib/akasha/concepts/` or `lib/harmonia/` that defines a class with `CONCEPT_PREFIX` and `CONCEPT_METHODS` attributes is registered without any changes to `kernel.py`.
+Concept models are discovered automatically at boot. Any Python file in the application's
+`app/concepts/` that defines a class with `CONCEPT_PREFIX` and `CONCEPT_METHODS` is registered with
+no change to the platform (the platform's own models live in `lib/akasha/concepts/`).
 
 ```
-lib/akasha/concepts/
+app/concepts/
     fact.py        → registers fact.*, ft.* commands
     curation.py    → registers curation.*, cur.* commands
     intelligence.py→ registers intelligence.*, intel.* commands
@@ -535,44 +548,36 @@ Harmonia also includes infrastructure plugins used transparently by the engine:
 ### 7.1 Directory Structure
 
 ```
-ontology/
-├── REGISTRY.json            ← v2 package registry (name + autoload flag per package)
-├── base1/                   autoload=true — words, feelings, the everyday table + food/ingredient foundation (~9.5k atoms, 61 files)
-│   ├── PACK.json
-│   ├── emo.ak, word_core_01.ak … word_core_04.ak
-│   ├── color.ak, allergen.ak, cuisine_region.ak, ingred*.ak, … 
-│   └── …
-├── base2/                   autoload=true — the life-world (civic, commerce, admin, …) (~1.9k atoms, 68 files)
-│   ├── PACK.json
-│   └── civic_places.ak, commerce_services.ak, admin_hierarchy.ak, … 
-├── base3/                   autoload=true — the sciences & knowledge map (~4.4k atoms, 57 files)
-│   ├── PACK.json
-│   └── academia.ak, astrophysics.ak, agriculture.ak, phil.ak, sci.ak, geo.ak, … 
-├── lexicon/, curation/, recipe/     autoload=true — relation/namespace definitions, curator runtime, recipe blocks (nutrition/ is autoload=false, tier-C)
-├── tech/                    autoload=false — technology & computing namespaces
-│   ├── PACK.json
-│   ├── ai.ak, sys.ak, prog.ak, data.ak, … (60+ files)
-│   └── …
-├── world/                   autoload=false — humanities, mythology, narrative
-│   ├── PACK.json
-│   ├── myth.ak, tale.ak, polti.ak, … (20+ files)
-│   └── …
-├── vocab/                   autoload=false — extended word vocabulary
-│   ├── PACK.json
-│   └── word_ext_01.ak … word_ext_10.ak
-├── art/, film/, biology/, geology/, law/, … (domain packs, all autoload=false)
-└── thesaurus/               loaded by boot sequence alongside REGISTRY packages
-    └── a_thesaurus_core.csl
+ontology/                        ← the PLATFORM's packs
+├── REGISTRY.json
+├── lexicon/                     autoload — relation / namespace definitions (reldef: / nsdef:)
+├── scenario/, whiteboard/, workbench/   autoload — the platform's own vocabulary
+└── user/                        ← YOUR packs: ontology/user/<name>/PACK.json + *.ak (no registry;
+                                   never shipped, never overwritten by a seed update)
 
-curations/                   ← auto-loaded after ont:csl:loaded sentinel
-└── sky_dreamers.csl         curator exhibition scripts (Thesaurus concept model)
+app/ontology/                    ← the APPLICATION's content packs
+├── REGISTRY.json
+├── app_lexicon/                 autoload — the application's relation / namespace definitions
+├── base1/                       autoload — words, feelings, the everyday table, food/ingredient foundation
+├── base2/                       autoload — the life-world (civic, commerce, admin, …)
+├── base3/                       autoload — the sciences & knowledge map
+├── curation/, recipe/, station/ autoload
+├── world/, philosophy/, domain/ opt-in (autoloaded by the seeds 13 series)
+├── tech/, vocab/, art/, film/, biology/, geology/, law/, music/, … opt-in (tier B)
+└── nutrition/, drinks_c/, …     deep reference layers (tier C — thesaurus tier only)
+
+app/curations/                   ← curation scripts (*.csl), run by the boot sequence
 ```
 
-Package loading is driven by `ontology/REGISTRY.json` v2, not by a recursive directory walk. Only packages with `"autoload": true` are loaded at startup — currently `lexicon`, `base1`, `base2`, `base3`, `curation`, and `recipe`. To activate another package, set its `"autoload"` to `true` in REGISTRY.json and run `onto.reload confirm="RELOAD"`.
+Package loading is driven by the registries, not by a recursive directory walk. Only
+`"autoload": true` packages load at startup unless the series or the cell enables more. To switch
+another package on: `onto.pack.enable name=<pack>` (it loads in the background and stays on).
 
-**`curations/`** is at the project root (outside `ontology/`). After the `ont:csl:loaded` sentinel is set, the boot sequence automatically loads all `.csl` files from `curations/`. This triggers on every boot where the `ont:curation:loaded` sentinel is absent — i.e., on first install and after `onto.reload` / `onto.reset`.
+**`app/curations/`** belongs to the application, outside the pack roots. After the ontology load,
+the boot sequence runs the `.csl` files there — on a first install and after `onto.reload` /
+`onto.reset`.
 
-### 7.2 Base Packages (`ontology/base1–3/`)
+### 7.2 Base Packages (`app/ontology/base1–3/`)
 
 The `base1`/`base2`/`base3` packs load automatically at startup (progressively, in order), alongside `lexicon`, `curation`, and `recipe`. Together the base packs hold the core vocabulary, everyday life-world, and specialist/knowledge canopy — roughly 16k atoms across ~186 `.ak` files (base1 ≈ words, feelings and the everyday table; base2 ≈ the life-world; base3 ≈ the sciences and the knowledge map). Representative files:
 
@@ -589,18 +594,21 @@ Core concept hubs for philosophy, science, geography, history, linguistics, and 
 
 ### 7.3 Optional Packages
 
-Optional packages must be activated by setting `"autoload": true` in `ontology/REGISTRY.json` and running `onto.reload` (or enabled one-time via the appropriate load command).
+Optional packages are switched on with `onto.pack.enable name=<pack>` (an owner action); they load in
+the background and stay on across restarts. `onto.pack.list` shows each package and its state.
 
 | Package | Content |
 |---|---|
 | `tech` | Technology and computing namespaces (AI, programming, data, networking, cloud, IoT, OS, robotics, …) — 60+ `.ak` files |
-| `world` | Humanities, mythology, narrative (myth, tale, polti, journey, narrative, writing, …) — 20+ `.ak` files |
+| `world` | Humanities, mythology, narrative (myth, tale, polti, journey, narrative, writing, …) — 20+ `.ak` files (autoloaded on seeds 13) |
 | `vocab` | Extended word vocabulary (`word_ext_01.ak` – `word_ext_10.ak`) |
 | `art`, `film` | Art movements, film movements, stage forms |
-| `biology`, `geology`, `medicine`, `nutrition`, `music`, `law`, `literature` | Domain-specific content |
-| `domain`, `archaeology`, `people`, `resources`, `space`, `war`, `weather`, `wine` | Specialised domains |
+| `biology`, `geology`, `music`, `law` | Domain-specific content |
+| `philosophy`, `domain` | Philosophy; cross-domain hubs (autoloaded on seeds 13) |
+| `ancient`, `people`, `resources`, `space`, `war`, `weather`, `wine`, `shelf` | Specialised domains |
+| `nutrition`, `drinks_c`, … | Deep reference layers (tier C; thesaurus tier only) |
 
-### 7.4 Sky Dreamers Ontology (`ontology/base2/sky.ak`)
+### 7.4 Sky Dreamers Ontology (`app/ontology/base2/sky.ak`)
 
 **`sky.ak`** — Sky Dreamers: human figures and events in flight history  
 Namespace: `sky:` with sub-namespaces `sky:myth:`, `sky:pioneer:`, `sky:event:`, `sky:enigma:`, `sky:artifact:`.
@@ -620,7 +628,7 @@ Root hub: `ont.sky_dreamers`. Defines 11 atoms tracing the human dream of flight
 
 Emotion links use `calc:has_emotion` to `emo:awe`, `emo:fear`, `emo:sadness`, `emo:anticipation`. Temporal chain expressed via `@precedes` / `@precedes_conceptually`. Bridges to existing aviation atoms via `sys:same_as` (Wright ↔ `sci:history:wright_brothers_flight`).
 
-### 7.5 Curations Directory (`curations/`)
+### 7.5 Curations Directory (`app/curations/`)
 
 Curator exhibition scripts that use the Thesaurus concept model. These files are **automatically queued by the kernel** after the `ont:csl:loaded` sentinel is set on startup. They do not need to be run manually — the boot sequence loads them automatically (and re-loads them after `onto.reload` / `onto.reset` when the `ont:curation:loaded` sentinel is absent).
 

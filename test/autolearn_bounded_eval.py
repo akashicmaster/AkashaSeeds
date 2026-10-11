@@ -41,8 +41,8 @@ def record(name, ok, detail=""):
 # the OOM is made of), cleanly separated from the cheap key-index enumeration.
 _CONTENT = {"n": 0}
 _orig_recs = SilicaBackend._all_chunk_recs
-def _counting_recs(self):
-    for item in _orig_recs(self):
+def _counting_recs(self, key_limit=None):
+    for item in _orig_recs(self, key_limit=key_limit):
         _CONTENT["n"] += 1
         yield item
 SilicaBackend._all_chunk_recs = _counting_recs

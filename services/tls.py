@@ -166,8 +166,24 @@ def start_http_responder(challenge_directory: str, https_port: int,
     bound (e.g. not root) — HTTPS on 443 still works, only auto-redirect is lost.
     """
     handler = make_http_responder_class(challenge_directory, https_port)
+
+    class _QuietRedirectServer(ThreadingHTTPServer):
+        # F60 §6 — a client that drops the connection mid-redirect (ConnectionResetError / broken
+        # pipe) is teardown, not a server fault; log it at DEBUG instead of dumping a traceback into
+        # web-portal.log (same as services/http_gateway.py's handler). Real errors still get reported.
+        _BENIGN = (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, TimeoutError)
+
+        def handle_error(self, request, client_address):
+            import sys as _sys
+            exc = _sys.exc_info()[1]
+            if isinstance(exc, self._BENIGN):
+                logger.debug("[TLS:80] client %s disconnected mid-response (%s) — ignored",
+                             client_address, type(exc).__name__)
+                return
+            super().handle_error(request, client_address)
+
     try:
-        httpd = ThreadingHTTPServer((host, http_port), handler)
+        httpd = _QuietRedirectServer((host, http_port), handler)
     except OSError as exc:
         logger.warning("[TLS] Port-%d responder not started (%s) — HTTPS still "
                        "serves, but there is no HTTP→HTTPS redirect.", http_port, exc)

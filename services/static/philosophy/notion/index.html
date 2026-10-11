@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Notion · Philosophy World</title>
+    <meta name="description" content="A notion of the French Baccalauréat and its genealogy — how philosophy has handled the concept, the thinkers who treated it, and a Wikipedia exit. From the Akasha knowledge graph.">
+    <style>
+        :root{
+            --night:#0c0803; --night-2:#160c04; --ink:#ecdcc0; --ink-soft:rgba(230,200,150,0.66);
+            --amber:#ffcf88; --amber-d:#c8873f; --line:rgba(200,130,40,0.34); --card:rgba(40,24,8,0.55);
+        }
+        *{box-sizing:border-box;margin:0;padding:0}
+        html,body{
+            background:radial-gradient(1200px 700px at 50% -8%, #2a1808 0%, var(--night-2) 46%, var(--night) 100%) fixed, var(--night);
+            color:var(--ink);font-family:'Optima','Avenir Next','Segoe UI',system-ui,-apple-system,sans-serif;
+            -webkit-font-smoothing:antialiased;line-height:1.66;min-height:100vh;min-height:100dvh;width:100%;
+            -webkit-text-size-adjust:100%;text-size-adjust:100%;}
+        .serif{font-family:'Iowan Old Style','Palatino Linotype',Palatino,Georgia,'Hoefler Text',serif}
+        .wrap{max-width:760px;margin:0 auto;
+            padding-top:max(26px,calc(env(safe-area-inset-top) + 22px));
+            padding-bottom:max(48px,calc(env(safe-area-inset-bottom) + 48px));
+            padding-left:max(18px,env(safe-area-inset-left));padding-right:max(18px,env(safe-area-inset-right));}
+        .crumbs{display:flex;gap:8px;flex-wrap:wrap}
+        .crumb{font-size:.6rem;letter-spacing:.2em;text-transform:uppercase;color:var(--amber-d);
+            background:rgba(30,18,6,.7);text-decoration:none;border:1px solid var(--line);border-radius:4px;
+            padding:6px 13px;transition:color .2s,border-color .2s}
+        .crumb:hover{color:var(--amber);border-color:rgba(255,180,60,.8)}
+        h1{margin-top:26px;font-size:clamp(2rem,6vw,3rem);font-weight:600;line-height:1.04;color:var(--ink);
+            text-shadow:0 2px 12px rgba(255,180,80,.18)}
+        h1 .fr{display:block;font-size:1.05rem;font-style:italic;color:var(--amber-d);margin-top:6px;font-weight:400}
+        .exits{margin-top:14px;display:flex;gap:8px;flex-wrap:wrap}
+        .exit{font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--amber);text-decoration:none;
+            border:1px solid var(--line);border-radius:20px;padding:7px 14px;transition:background .2s,border-color .2s}
+        .exit:hover{background:rgba(80,45,12,.5);border-color:rgba(255,180,60,.8)}
+        .lede{margin-top:26px;font-size:1.12rem;color:var(--ink);border-left:3px solid var(--amber-d);padding-left:18px}
+        .sec{margin-top:34px}
+        .sec-h{font-size:.62rem;letter-spacing:.24em;text-transform:uppercase;color:var(--amber-d);
+            border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:14px;display:flex;align-items:baseline;gap:8px}
+        .sec-h .fr{font-style:italic;letter-spacing:.03em;text-transform:none;color:var(--ink-soft)}
+        .chips{display:flex;flex-wrap:wrap;gap:8px}
+        .chip{display:inline-flex;align-items:center;gap:6px;font-size:.86rem;text-decoration:none;color:var(--ink);
+            background:var(--card);border:1px solid var(--line);border-radius:20px;padding:7px 14px;
+            transition:transform .12s,border-color .2s}
+        .chip:hover{transform:translateY(-2px);border-color:rgba(255,180,60,.8)}
+        .chip.thinker{border-left:3px solid var(--amber-d)}
+        .chip.field{border-left:3px solid #7d8a4f}
+        .note{color:var(--ink-soft);font-size:.92rem;margin-top:16px}
+        .footer-credit{margin-top:44px;font-size:.6rem;letter-spacing:.22em;color:var(--ink-soft);text-transform:uppercase}
+        .footer-credit a{color:var(--amber-d);text-decoration:none}
+        #err{color:#e0805a}
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <div class="crumbs">
+        <a href="/hall/" class="crumb">◄ reading hall</a>
+        <a href="/philosophy/" class="crumb">philosophy world</a>
+    </div>
+    <main id="card"><p class="note" id="status" style="margin-top:26px">Opening the notion…</p></main>
+    <div class="footer-credit">powered by <a href="https://github.com/henrigrohmann/AkashicTree" target="_blank" rel="noopener">AKASHA</a> · after the French Baccalauréat de philosophie</div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+    function rpc(method, params) {
+        return fetch('/rpc', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jsonrpc: '2.0', method: method, params: params, id: method }) })
+            .then(function (r) { return r.json(); })
+            .then(function (j) { if (j.error) throw new Error(j.error.message || 'rpc error'); return j.result; });
+    }
+    var _tok = null, _exp = 0, _p = null, KEY = 'akasha_guest_token', SKEW = 30000;
+    // A guest binding token (gbk:) has a FIXED lifetime (<=30 min) and is NOT renewed by
+    // activity, so a token cached in localStorage goes stale. Reusing a stale token made every
+    // read return -32001 and the page render empty on each reload — the real cause of the
+    // "references appear/disappear" intermittency. So: remember the token's expiry, never reuse
+    // a (near-)expired one, and mint a fresh token before the old one dies.
+    function _readTokCache() {
+        try {
+            var raw = localStorage.getItem(KEY); if (!raw) return null;
+            if (raw.charAt(0) === '{') { var o = JSON.parse(raw); return (o && o.key) ? o : null; }
+            return { key: raw, exp: 0 };                 // legacy plain-string token: expiry unknown
+        } catch (e) { return null; }
+    }
+    function _mintTok() {
+        _p = rpc('session.guest.create', {}).then(function (g) {
+            _p = null; _tok = g.binding_key;
+            _exp = (g && g.expires_at) ? g.expires_at * 1000 : (Date.now() + 25 * 60000);
+            try { localStorage.setItem(KEY, JSON.stringify({ key: _tok, exp: _exp })); } catch (e) {}
+            return _tok;
+        }).catch(function (e) { _p = null; throw e; });
+        return _p;
+    }
+    function getToken() {
+        var now = Date.now();
+        if (_tok && _exp - now > SKEW) return Promise.resolve(_tok);
+        if (_p) return _p;
+        if (!_tok) { var c = _readTokCache(); if (c && c.exp - now > SKEW) { _tok = c.key; _exp = c.exp; return Promise.resolve(_tok); } }
+        return _mintTok();                             // no token, or (near-)expired → mint fresh
+    }
+    function freshToken() { _tok = null; _exp = 0; _p = null; try { localStorage.removeItem(KEY); } catch (e) {} return getToken(); }
+    function isSessionErr(m) { m = (m || '').toLowerCase();
+        return m.indexOf('session') >= 0 || m.indexOf('token') >= 0 || m.indexOf('expired') >= 0
+            || m.indexOf('denied') >= 0 || m.indexOf('binding') >= 0 || m.indexOf('signature') >= 0
+            || m.indexOf('mismatch') >= 0 || m.indexOf('identity') >= 0 || m.indexOf('unauthor') >= 0; }
+    function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+    function pretty(t) { return String(t || '').replace(/_/g, ' '); }
+    function title(t) { return pretty(t).replace(/\b\w/g, function (c) { return c.toUpperCase(); }); }
+    function tail(ref) { ref = String(ref || ''); return ref.indexOf(':') >= 0 ? ref.split(':').pop() : ref; }
+    function wordHref(name) { return '/word/?name=' + encodeURIComponent(name); }
+    function pulse(concept, surface) {                 // fire-and-forget access beacon (server records)
+        try {
+            if (!concept || !navigator.sendBeacon) return;
+            var prev = ''; try { prev = sessionStorage.getItem('pulse_prev') || ''; } catch (e) {}
+            var body = JSON.stringify({ concept: concept, surface: surface || '', prev: prev, page_referrer: document.referrer || '' });
+            navigator.sendBeacon('/pulse', new Blob([body], { type: 'application/json' }));
+            try { sessionStorage.setItem('pulse_prev', concept); } catch (e) {}
+        } catch (e) {}
+    }
+
+    var FIELD_FR = { metaphysics:'métaphysique', epistemology:'épistémologie', ethics:'morale',
+        logic:'logique', aesthetics:'esthétique', political_philosophy:'philosophie politique',
+        philosophy_of_mind:'philosophie de l’esprit', philosophy_of_science:'philosophie des sciences',
+        phenomenology:'phénoménologie' };
+
+    var q = new URLSearchParams(location.search);
+    var id = q.get('id') || q.get('name') || '';
+    if (id && id.indexOf(':') < 0) id = 'phil:notion:' + id;      // accept a bare slug
+    var status = document.getElementById('status');
+    if (!id) { status.id = 'err'; status.textContent = 'No notion chosen. Return to Philosophy World.'; return; }
+
+    function outLinks(sp) {
+        var c = (sp && sp.concept) || {};
+        var al = c.all_links || {};
+        return (al.outgoing || []).concat(c.related || []);
+    }
+    function wikipediaOf(sp) {
+        var refs = ((sp && sp.concept) || {}).external_refs || [];
+        for (var i = 0; i < refs.length; i++)
+            if ((refs[i].source === 'wikipedia' || /wikipedia\.org/.test(refs[i].url || '')) && refs[i].url) return refs[i].url;
+        return null;
+    }
+    function render(sp) {
+        var atom = ((sp && sp.concept) || {}).atom || {};
+        var raw = (atom.description || '').replace(/^\s*\[[^\]]*\]\s*/, '').trim();
+        // "Art (l'art) — human creation…"  →  head "Art (l'art)"  +  body genealogy
+        var m = raw.match(/^(.*?)\s+[—-]\s+([\s\S]*)$/);
+        var head = m ? m[1].trim() : (title(tail(id)));
+        var body = m ? m[2].trim() : raw;
+        var hm = head.match(/^(.*?)\s*\(([^)]*)\)\s*$/);
+        var en = hm ? hm[1].trim() : head, fr = hm ? hm[2].trim() : '';
+
+        var links = outLinks(sp);
+        var thinkers = [], fields = [], concepts = [];
+        var seen = {};
+        links.forEach(function (l) {
+            var nm = l.name || l.ref; if (!nm || seen[nm]) return; seen[nm] = 1;
+            if (nm.indexOf('phil:thinker:') === 0) thinkers.push(nm);
+            else if (nm.indexOf('phil:field:') === 0) fields.push(nm);
+            else if (nm.indexOf('phil:') === 0 && nm.indexOf('phil:notion:') !== 0 && nm.indexOf('phil:philosophy') !== 0) concepts.push(nm);
+        });
+
+        var wiki = wikipediaOf(sp);
+        var html = '<h1 class="serif">' + esc(en) + (fr ? '<span class="fr">' + esc(fr) + '</span>' : '') + '</h1>';
+        html += '<div class="exits">';
+        if (wiki) html += '<a class="exit" href="' + esc(wiki) + '" target="_blank" rel="noopener">Wikipedia ↗</a>';
+        html += '<a class="exit" href="' + wordHref(id) + '">Concept space ▸</a></div>';
+        if (body) html += '<p class="lede serif">' + esc(body) + '</p>';
+
+        if (thinkers.length) {
+            html += '<div class="sec"><div class="sec-h">Its genealogy <span class="fr">les penseurs</span></div><div class="chips">' +
+                thinkers.map(function (t) { return '<a class="chip thinker" href="' + wordHref(t) + '">' + esc(title(tail(t))) + '</a>'; }).join('') + '</div></div>';
+        }
+        var facet = fields.map(function (f) {
+            var s = tail(f);
+            return '<a class="chip field" href="' + wordHref(f) + '">' + esc(title(s)) + (FIELD_FR[s] ? ' · ' + esc(FIELD_FR[s]) : '') + '</a>';
+        }).concat(concepts.map(function (cp) {
+            return '<a class="chip" href="' + wordHref(cp) + '">' + esc(title(tail(cp))) + '</a>';
+        })).join('');
+        if (facet) html += '<div class="sec"><div class="sec-h">Fields &amp; ideas <span class="fr">champs &amp; idées</span></div><div class="chips">' + facet + '</div></div>';
+
+        html += '<p class="note">Genealogy after the notions of the French Baccalauréat de philosophie — our own summary; follow Wikipedia for the fuller account.</p>';
+        document.getElementById('card').innerHTML = html;
+        try { document.title = en + ' · Philosophy World'; } catch (e) {}
+        pulse(id, 'notion');
+    }
+    function load(isRetry) {
+        getToken()
+            .then(function (tok) { return rpc('archives.space', { session_token: tok, name: id }); })
+            .then(function (sp) { render(sp); })
+            .catch(function (err) {
+                var msg = err && err.message ? err.message : '';
+                if (!isRetry && isSessionErr(msg)) { freshToken().then(function () { load(true); }).catch(function () {}); return; }
+                status.id = 'err'; status.textContent = 'Could not open ' + tail(id) + '. ' + msg;
+            });
+    }
+    load(false);
+}());
+</script>
+</body>
+</html>

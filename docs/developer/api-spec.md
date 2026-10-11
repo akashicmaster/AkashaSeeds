@@ -335,7 +335,7 @@ Any parameter named `id` (atom key) in a method's `data` block supports **contex
 | `@2026` | Year-era anchor (`chrono:year:2026`) |
 | `alias.child` | All atoms linked outward from the resolved alias |
 | `alias.parent` | All atoms linked inward to the resolved alias |
-| `~emo:sadness` | Closest-match tensor search (semantic gravity; planned) |
+| `~emo:sadness` | Closest-match tensor search (semantic gravity; not implemented in this release) |
 | 64-char hex | Direct key lookup; bypasses the resolver |
 
 Context references are resolved by `lib/akasha/resolver.py:ContextResolver`. They respect the caller's IAM scopes: atoms out of scope are silently excluded from list results.
@@ -438,7 +438,7 @@ DNA atoms are tagged `scope:sys:dna` in addition to `scope:sys:universal`. Only 
 
 ### 8.2 Acquired Ontology Files (Tier 2)
 
-Ontology ships as `.ak` files organised into per-namespace **package directories** under `ontology/<ns>/` (e.g. `ontology/base1–3/` (the base packs), `ontology/art/`, `ontology/film/`), each with a `PACK.json` manifest. `ontology/REGISTRY.json` (version 2) lists every package and its `autoload` flag (`base1`, `base2`, `base3`, `nutrition`, `recipe`, and `curation` autoload at startup). The obsolete flat JSON `.ak` format loaded by `bootstrap_ontology()` is no longer used.
+Ontology ships as `.ak` files organised into per-namespace **package directories** under `app/ontology/<ns>/` (e.g. `app/ontology/base1–3/` (the base packs), `app/ontology/art/`, `app/ontology/film/`), each with a `PACK.json` manifest. `ontology/REGISTRY.json` (version 2) lists every package and its `autoload` flag (`base1`, `base2`, `base3`, `nutrition`, `recipe`, and `curation` autoload at startup). The obsolete flat JSON `.ak` format loaded by `bootstrap_ontology()` is no longer used.
 
 An `.ak` file is a flat sequence of loader commands, not JSON. The full command vocabulary is:
 
@@ -2360,6 +2360,18 @@ associate note.chunk1 axis=story
 
 ### 10.16 Scope State
 
+> **F53 — the normalized semantic session.** Every client (admin / resident / guest / LLM) holds ONE
+> session shaped as three parts — **identity / granted / self-directed** — surfaced by
+> **`sys.session.state`** (a guest-callable READ, identically shaped for all kinds). The self-directed
+> part is the **horizon** (`horizon.add/rm/clear/mode/ls`, an ordered list of `{set, mode: soft|lens}`,
+> cap 8) plus `focus` / `radius` / `axis`; it is client-writable, world-ignorable, and dies with the
+> session, and it can never widen the IAM grant (an unreadable entry is retained but flagged
+> `ungranted`). `radius` is the preferred spelling of `active_scope` below (both are written; reads
+> prefer `radius`; `active_scope` is unchanged). The horizon re-ranks (soft) or clips (lens) dive
+> associations behind an empty-horizon guard (no horizon ⇒ unchanged); `horizon.enclose` persists a
+> lens intersection as a set. Whiteboards (§10.18) are the naming layer over this one horizon. Full
+> reference: `docs/for-llm/semantic-session.md`.
+
 `sys.scope.*` manages the **session-level scope state** — persistent context keys a UI (e.g. the Cosmos Viewer sliders) can stash on the session and read back without resending them per call. They are stored via `sys.scope.set` and returned by `sys.scope.get`; `dive.look` surfaces `active_time` in its response metadata.
 
 #### Session context keys
@@ -2367,13 +2379,16 @@ associate note.chunk1 axis=story
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `active_axis` | string \| null | `null` | Preferred semantic axis (UI hint; stored session state) |
-| `active_scope` | integer \| null | `null` | Preferred traversal depth (UI hint; stored session state) |
+| `radius` | integer \| null | `null` | Preferred traversal depth (UI hint; stored session state). **The write key** as of F54. |
+| `active_scope` | integer \| null | `null` | **F54 — RETIRED as a written key.** Writers write `radius`; `sys.scope.get` still falls back to a pre-F54 `active_scope` for one more series. Read-only compatibility. |
 | `active_time` | string \| null | `null` | Temporal filter tag returned in `dive.look` response metadata |
 
-> **Note:** These keys are session-stored UI preferences read back through `sys.scope.get`; the
-> current `explore` (filter search: `ns`/`set`/`type`/`pat`) and `kernel.associate`
-> (gap detection: `id`/`axis`/`fill`) handlers do **not** silently inject them as parameter
-> fallbacks. Pass the parameters explicitly on each call.
+> **Note (F54):** `sys.scope.set` accepts `radius` (preferred) or the `scope` alias and writes **only**
+> `radius`; `sys.scope.get` returns both `radius` and `active_scope` (the effective depth). The
+> whiteboard-local scope keys (`wb:<name>:scope_*`) are retired — a board's axis/radius/time ride
+> `wb:<name>:state` and are restored into these global keys by `wb.focus` (§10.18). `explore` does not
+> inject these as fallbacks; `kernel.associate` (assoc) inherits the session `axis` only when the call
+> omits it (F53). Pass parameters explicitly otherwise.
 
 ---
 
@@ -2611,9 +2626,26 @@ Delete the active Log and clear session context keys.
 
 ### 10.18 Whiteboard
 
-A Whiteboard is a **named meaning session** — a surface onto which Concept Models are pinned to define their intersection. When active, scope state and traversal context are scoped to that board.
+A Whiteboard is a **named bundle of the session's self-directed state** — the naming layer over the ONE
+normalized session **horizon** (F53/F54; see §10.16 and `docs/for-llm/semantic-session.md`). It is NOT
+a separate scope space: a board's contents ARE the session horizon + focus + axis/radius/time while it
+is active.
 
-Implemented in `lib/akasha/concepts/whiteboard.py`. **No cortex atoms are created** — all state lives in session context keys.
+- **`wb.pin <concept>` / `wb.unpin <concept>`** — add / remove a **soft** horizon entry (i.e.
+  `horizon.add mode=soft` / `horizon.rm`). Pins and `horizon.*` read and write the same session horizon.
+- **`wb.new <name>`** — create + activate a board with a fresh (empty) horizon and scope. On an
+  **existing** name this is **focus** semantics — it never erases the board's horizon (the old
+  pins-wipe bug is fixed).
+- **`wb.focus <name>`** — save the outgoing board's self-directed tuple into `wb:<name>:state`
+  (`{horizon, focus, axis, radius, time}`) and restore the incoming board's tuple into the
+  **session-global** keys. F54: axis/radius/time ride the board state (the old whiteboard-local
+  `wb:<name>:scope_*` branch in the `sys.scope.*` handlers is retired). A legacy board migrates once —
+  pre-F53 `wb:<name>:pinned` → soft horizon entries, pre-F54 `wb:<name>:scope_*` → the board state.
+- **`wb.ls` / `wb.show` / `wb.rm`** — list boards (with per-board horizon size), show the active
+  board's state, remove a board (clearing the live horizon if it was active).
+
+Implemented in `lib/akasha/concepts/whiteboard.py`. **No cortex atoms are created** — all state lives in
+session context keys.
 
 #### Session context keys
 
@@ -2760,7 +2792,16 @@ The Cosmos Viewer uses `whiteboard_context.pinned` to apply the correct node col
 
 ### 10.19 Cross-Concept Intersection
 
-`sys.cross.*` computes the **set intersection** of atoms across multiple active Concept Models. `WhiteboardConcept` uses `sys.cross.query` internally; direct use is available for scripting and JCL jobs.
+`sys.cross.*` computes the **set intersection** of atoms across multiple active Concept Models. Direct
+use is available for scripting and JCL jobs.
+
+**Horizon default + mode (F53; see §10.16 / `docs/for-llm/semantic-session.md`).** When `concepts` is
+omitted, `sys.cross.query` defaults to the session **horizon** (its entries are the concepts the client
+is attending to) and marks the result `source: "horizon"`; with `concepts` omitted AND an empty
+horizon it errors as before. `mode=coverage|strict` selects the fold: **coverage** (default) is the
+union weighted by coverage (an atom in *k* of *n* concept sets gets weight *k/n*); **strict** is the
+true intersection (only atoms present in EVERY named concept). An explicit `concepts` list overrides
+the horizon default and is otherwise unchanged.
 
 Concept names are resolved to their active collection set names via session context:
 - `"note"` → `set:note:<active_note_root>`
@@ -2826,7 +2867,7 @@ Return the semantic axes available across the specified concept sets, with a rec
 
 > **Full API reference:** [`docs/concept-model/concept-model-spec.md §10.1`](../concept-model/concept-model-spec.md#101-cockpit)
 
-The Cockpit concept model (`lib/akasha/concepts/cockpit.py`) is registered automatically
+The Cockpit concept model (`app/concepts/cockpit.py`) is registered automatically
 via the Concept Model Plugin Registry — no manual kernel dispatch is required.
 
 | Method | Required params | Description |
@@ -2849,7 +2890,7 @@ via the Concept Model Plugin Registry — no manual kernel dispatch is required.
 
 > **Full API reference:** [`docs/concept-model/concept-model-spec.md §10.3`](../concept-model/concept-model-spec.md#103-survey)
 
-The Survey concept model (`lib/akasha/concepts/survey.py`) is registered automatically
+The Survey concept model (`app/concepts/survey.py`) is registered automatically
 via the Concept Model Plugin Registry — no manual kernel dispatch is required.
 
 | Method | Required params | Description |

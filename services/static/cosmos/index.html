@@ -87,6 +87,58 @@
         /* ── Views ─────────────────────────────────────────────── */
         .view-pane { flex: 1; position: relative; display: none; min-height: 0; background: transparent; }
         .view-pane.active { display: flex; flex-direction: column; }
+
+        /* ── View-mode toggle (LOCAL ⇄ ROUTE) ─────────────────────────── */
+        #view-mode-toggle { position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+            z-index: 20; display: flex; gap: 0; border: 1px solid var(--border); border-radius: 4px;
+            overflow: hidden; background: rgba(4,8,10,0.8); backdrop-filter: blur(3px); }
+        .mode-btn { background: none; border: none; color: #567; font-family: inherit; font-size: 0.72rem;
+            letter-spacing: 2px; padding: 7px 16px; cursor: pointer; transition: 0.15s; }
+        .mode-btn:hover { color: #9cf; }
+        .mode-btn.active { background: rgba(0,255,204,0.14); color: var(--accent); text-shadow: 0 0 8px var(--accent); }
+        /* ── Route overlay ────────────────────────────────────────────── */
+        #route-overlay { position: absolute; inset: 0; display: none; z-index: 6;
+            background: radial-gradient(1100px 700px at 42% 52%, rgba(0,40,40,0.35), transparent 66%), #010304; }
+        /* anchored bottom-right so it clears the course, which runs lower-left → upper-right */
+        #route-plotter { position: absolute; right: 22px; bottom: 22px; left: auto; top: auto; z-index: 8;
+            display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; max-width: min(420px, 88vw);
+            background: rgba(6,12,16,0.82); border: 1px solid var(--border); border-radius: 5px; padding: 8px 14px; }
+        #route-plotter .rp-label { font-size: 0.62rem; letter-spacing: 2px; color: #567; }
+        #route-plotter .rp-from { color: var(--accent); font-family: monospace; font-size: 0.8rem; max-width: 180px;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #route-plotter .rp-arrow { color: var(--accent3); }
+        #route-plotter #route-dest { width: min(240px, 40vw); padding: 6px 9px; font-size: 0.8rem; }
+        #route-plotter .rp-plot { width: auto; padding: 6px 14px; font-size: 0.7rem; letter-spacing: 1px; }
+        #route-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+        #route-svg text { user-select: none; }
+        #route-msg { position: absolute; bottom: 54px; left: 50%; transform: translateX(-50%); z-index: 8;
+            color: var(--accent3); font-size: 0.8rem; text-shadow: 0 0 6px rgba(255,153,0,0.5); text-align: center; }
+        #route-legend { position: absolute; bottom: 14px; left: 14px; z-index: 8; font-size: 0.68rem;
+            color: #89a; line-height: 1.7; background: rgba(6,12,16,0.7); border: 1px solid var(--border);
+            border-radius: 4px; padding: 8px 12px; max-width: 46ch; }
+        #route-legend .rl-line { display: flex; align-items: baseline; gap: 7px; }
+        #route-legend .rl-swatch { width: 10px; height: 3px; border-radius: 2px; flex: none; align-self: center; }
+        .rnode:hover circle:last-of-type { stroke-width: 3; }
+        .rnode:hover text { fill: #fff !important; }
+        /* ── Semantic-network (plexus) overlay ─────────────────────────── */
+        #web-overlay { position: absolute; inset: 0; display: none; z-index: 6;
+            background: radial-gradient(1200px 820px at 50% 42%, rgba(0,42,46,0.30), transparent 70%), #010304; }
+        #web-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+        #web-canvas.grabbing { cursor: grabbing; }
+        #web-hud { position: absolute; top: 54px; left: 50%; transform: translateX(-50%); z-index: 8;
+            display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: center; pointer-events: none;
+            background: rgba(6,12,16,0.82); border: 1px solid var(--border); border-radius: 5px; padding: 7px 14px; }
+        #web-hud .wh-label { font-size: 0.62rem; letter-spacing: 2px; color: #567; }
+        #web-hud .wh-focus { color: var(--accent); font-family: monospace; font-size: 0.8rem; max-width: 220px;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #web-hud .wh-hint { font-size: 0.58rem; color: #456; letter-spacing: 1px; }
+        #web-msg { position: absolute; bottom: 54px; left: 50%; transform: translateX(-50%); z-index: 8;
+            color: var(--accent3); font-size: 0.8rem; text-shadow: 0 0 6px rgba(255,153,0,0.5); }
+        #web-legend { position: absolute; bottom: 14px; left: 14px; z-index: 8; font-size: 0.66rem; pointer-events: none;
+            color: #89a; line-height: 1.65; background: rgba(6,12,16,0.7); border: 1px solid var(--border);
+            border-radius: 4px; padding: 8px 11px; max-width: 44ch; }
+        #web-legend .wl-line { display: flex; align-items: center; gap: 7px; }
+        #web-legend .wl-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
         #graph-3d { width: 100%; height: 100%; position: absolute; inset: 0; }
 
         /* ── Cockpit HUD ───────────────────────────────────────── */
@@ -267,6 +319,40 @@
     <div id="view-cosmos" class="view-pane active">
         <div id="graph-3d"></div>
         <div id="node-labels-overlay" style="position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:5;"></div>
+
+        <!-- View-mode toggle: local neighbourhood ⇄ star-route chart -->
+        <div id="view-mode-toggle">
+            <button id="mode-local" class="mode-btn active" onclick="setViewMode('local')">◎ LOCAL</button>
+            <button id="mode-route" class="mode-btn" onclick="setViewMode('route')">⇄ ROUTE</button>
+            <button id="mode-network" class="mode-btn" onclick="setViewMode('network')">⬡ NETWORK</button>
+        </div>
+
+        <!-- Star-route chart overlay -->
+        <div id="route-overlay">
+            <div id="route-plotter">
+                <span class="rp-label">COURSE FROM</span>
+                <span id="route-from" class="rp-from">—</span>
+                <span class="rp-arrow">▸</span>
+                <input type="text" id="route-dest" class="cyber-input" placeholder="destination atom / alias"
+                       onkeydown="if(event.key==='Enter') plotRoute()">
+                <button class="cyber-btn rp-plot" onclick="plotRoute()">PLOT COURSE</button>
+            </div>
+            <svg id="route-svg"></svg>
+            <div id="route-msg"></div>
+            <div id="route-legend"></div>
+        </div>
+
+        <!-- Semantic-network (plexus) overlay -->
+        <div id="web-overlay">
+            <canvas id="web-canvas"></canvas>
+            <div id="web-hud">
+                <span class="wh-label">SEMANTIC NETWORK</span>
+                <span id="web-focus" class="wh-focus">—</span>
+                <span class="wh-hint">drag / scroll to roam · ⌘/ctrl-scroll to zoom · click a node to re-centre</span>
+            </div>
+            <div id="web-msg"></div>
+            <div id="web-legend"></div>
+        </div>
 
         <div class="cockpit-panel" id="hud-telemetry">
             <div class="panel-title">Telemetry Sensor</div>
@@ -651,6 +737,380 @@
             if (aliases.length > 0) resolvedId = aliases[0].key;
         } catch(e) { /* use target as-is; server will attempt to resolve */ }
         await scanEnvironment(resolvedId);
+    }
+
+    // ── Star-route chart view ──────────────────────────────────────────────
+    var SVGNS = 'http://www.w3.org/2000/svg';
+    var routeViewMode = 'local';
+    function _sv(t, a) { var e = document.createElementNS(SVGNS, t); for (var k in a) if (a[k] != null) e.setAttribute(k, a[k]); return e; }
+    function setRouteMsg(t) { var m = document.getElementById('route-msg'); if (m) m.textContent = t || ''; }
+
+    function setViewMode(m) {
+        routeViewMode = m;
+        document.getElementById('mode-local').classList.toggle('active', m === 'local');
+        document.getElementById('mode-route').classList.toggle('active', m === 'route');
+        var mn = document.getElementById('mode-network'); if (mn) mn.classList.toggle('active', m === 'network');
+        document.getElementById('route-overlay').style.display = (m === 'route') ? 'block' : 'none';
+        var wo = document.getElementById('web-overlay'); if (wo) wo.style.display = (m === 'network') ? 'block' : 'none';
+        if (m === 'route') {
+            var f = (document.getElementById('tel-focus').textContent || '').replace(/^@/, '');
+            document.getElementById('route-from').textContent = f || '(warp to an origin first)';
+            var d = document.getElementById('route-dest'); if (d) setTimeout(function () { d.focus(); }, 30);
+        } else if (m === 'network') {
+            initWeb(); _webResize();
+            if (currentFocalId && currentFocalId !== webFocalId) loadWeb(currentFocalId);
+            else if (webLoaded) renderWeb();
+            else loadWeb(currentFocalId);
+        } else if (webSim) { webSim.stop(); }
+    }
+
+    async function plotRoute() {
+        var dstIn = (document.getElementById('route-dest').value || '').trim();
+        if (!dstIn) return;
+        if (!currentFocalId) { setRouteMsg('No origin locked — switch to LOCAL and warp to an atom first.'); return; }
+        setRouteMsg('Plotting course to ' + (dstIn.length > 20 ? dstIn.slice(0, 18) + '…' : dstIn) + '…');
+        var dst = dstIn;
+        try { var f = await rpc('kernel.identity.alias.find', { pattern: dstIn }); if (f && f.aliases && f.aliases.length) dst = f.aliases[0].key; } catch (e) {}
+        try {
+            var res = await rpc('cosmos.route', { src: currentFocalId, dst: dst, k: 3 });
+            renderRouteChart(res);
+        } catch (e) { setRouteMsg('Route error: ' + ((e.message || '') + '').slice(0, 70)); }
+    }
+
+    function _routeNodeEl(x, y, node, color, big, isDest) {
+        var r = big ? 7 : 4.5;
+        var g = _sv('g', { 'class': 'rnode' }); g.style.cursor = 'pointer';
+        g.appendChild(_sv('circle', { cx: x, cy: y, r: r + 4, fill: color, opacity: 0.16 }));
+        g.appendChild(_sv('circle', { cx: x, cy: y, r: r, fill: big ? color : '#050a0c', stroke: color, 'stroke-width': big ? 0 : 2, filter: 'url(#rglow)' }));
+        var lbl = (node.label || node.alias || node.id || '').slice(0, 22);
+        var t = _sv('text', { x: x + r + 5, y: y + 4, fill: color, 'font-size': big ? 12 : 10, 'font-family': 'monospace' });
+        t.textContent = (isDest ? '▸ ' : '') + lbl; g.appendChild(t);
+        g.addEventListener('click', function () {
+            document.getElementById('helm-target').value = node.alias || node.id;
+            setViewMode('local'); scanEnvironment(node.id);
+        });
+        return g;
+    }
+
+    function renderRouteChart(res) {
+        var svg = document.getElementById('route-svg'); svg.innerHTML = '';
+        var rect = svg.getBoundingClientRect();
+        var W = Math.max(640, rect.width || 900), H = Math.max(460, rect.height || 600);
+        svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+        var defs = _sv('defs', {});
+        var fl = _sv('filter', { id: 'rglow', x: '-60%', y: '-60%', width: '220%', height: '220%' });
+        fl.appendChild(_sv('feGaussianBlur', { 'in': 'SourceGraphic', stdDeviation: 2.4 })); defs.appendChild(fl); svg.appendChild(defs);
+        // Origin anchored at the lower-left, destination at the upper-right: the course is
+        // seen from diagonally above, travelling "into" the scene across a tilted floor.
+        var O = { x: W * 0.12, y: H * 0.70 };
+        var D = { x: W * 0.85, y: H * 0.30 };
+        var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (!res || !res.found) {
+            setRouteMsg((res && res.reason ? ('No route — ' + res.reason) : 'No route found') + '. Try a nearer destination.');
+            svg.appendChild(_routeNodeEl(O.x, O.y, (res && res.src) || { label: 'origin' }, '#ffffff', true));
+            if (res && res.dst) svg.appendChild(_routeNodeEl(D.x, D.y, res.dst, '#ff5555', true, true));
+            renderRouteLegend(res, [], []); return;
+        }
+        setRouteMsg('');
+        var routes = res.routes || [];
+        var dirx = D.x - O.x, diry = D.y - O.y, DR = Math.hypot(dirx, diry) || 1;
+        var KY = 0.42;                                   // vertical foreshortening of the floor plane
+        var px = -diry / DR, py = (dirx / DR) * KY;      // perpendicular-on-floor (flattened) for lateral spread
+        var pl = Math.hypot(px, py) || 1; px /= pl; py /= pl;
+        // ── tilted polar floor grid centred on the origin (the "looking-down" ground) ──
+        var grid = _sv('g', {}); var baseAng = Math.atan2(diry, dirx);
+        for (var s = -4; s <= 4; s++) {                  // spokes fanning toward the destination
+            var a = baseAng + s * 0.19;
+            grid.appendChild(_sv('line', { x1: O.x, y1: O.y,
+                x2: O.x + Math.cos(a) * DR * 1.08, y2: O.y + Math.sin(a) * DR * KY * 1.08,
+                stroke: 'rgba(0,255,204,0.06)', 'stroke-width': 1 }));
+        }
+        [0.3, 0.54, 0.78, 1.02, 1.24].forEach(function (fr) {   // foreshortened distance rings
+            var rr = DR * fr;
+            grid.appendChild(_sv('ellipse', { cx: O.x, cy: O.y, rx: rr, ry: rr * KY,
+                fill: 'none', stroke: 'rgba(0,255,204,0.09)', 'stroke-width': 1 }));
+        });
+        svg.appendChild(grid);
+        // origin & destination floor shadows (under everything)
+        svg.appendChild(_sv('ellipse', { cx: O.x, cy: O.y + 4, rx: 13, ry: 13 * KY, fill: 'rgba(0,0,0,0.5)' }));
+        svg.appendChild(_sv('ellipse', { cx: D.x, cy: D.y + 4, rx: 11, ry: 11 * KY, fill: 'rgba(0,0,0,0.5)' }));
+        var COLORS = ['#00ffcc', '#ff9900', '#ff00ff'];
+        // draw lowest-lifted (alt) courses first so higher ones overlay them — depth order
+        for (var jj = routes.length - 1; jj >= 0; jj--) {
+            (function (rt, j) {
+                var col = COLORS[j % 3];
+                var off = (j - (routes.length - 1) / 2) * (DR * 0.30);
+                var lift = DR * (0.34 - 0.055 * j);            // primary rides highest off the floor
+                var mx = (O.x + D.x) / 2 + px * off, my = (O.y + D.y) / 2 + py * off;
+                var cfx = mx, cfy = my;                        // control point on the floor (shadow)
+                var clx = mx, cly = my - lift;                 // control point lifted (flight arc)
+                var pdFloor = 'M' + O.x + ',' + O.y + ' Q' + cfx + ',' + cfy + ' ' + D.x + ',' + D.y;
+                var pd = 'M' + O.x + ',' + O.y + ' Q' + clx + ',' + cly + ' ' + D.x + ',' + D.y, pid = 'rpath' + j;
+                var dur = (2.4 + rt.length * 0.6).toFixed(1) + 's';
+                // course shadow cast on the floor
+                svg.appendChild(_sv('path', { d: pdFloor, fill: 'none', stroke: 'rgba(0,0,0,0.5)',
+                    'stroke-width': 3, 'stroke-linecap': 'round', opacity: 0.45 }));
+                // base course (dim), then bright energy flowing toward the destination (the "航行" feel)
+                svg.appendChild(_sv('path', { id: pid, d: pd, fill: 'none', stroke: col,
+                    'stroke-width': j === 0 ? 2.2 : 1.5, opacity: j === 0 ? 0.5 : 0.35, 'stroke-linecap': 'round' }));
+                var flow = _sv('path', { d: pd, fill: 'none', stroke: col, 'stroke-width': j === 0 ? 3.2 : 2.2,
+                    'stroke-linecap': 'round', 'stroke-dasharray': '1.5 21', opacity: 0.95, filter: 'url(#rglow)' });
+                if (!reduce) flow.appendChild(_sv('animate', { attributeName: 'stroke-dashoffset', values: '45;0', dur: dur, repeatCount: 'indefinite' }));
+                svg.appendChild(flow);
+                if (!reduce) {   // a comet head riding the course
+                    var comet = _sv('circle', { r: j === 0 ? 3.4 : 2.6, fill: '#ffffff', filter: 'url(#rglow)' });
+                    var am = _sv('animateMotion', { dur: dur, repeatCount: 'indefinite', rotate: 'auto', calcMode: 'linear' });
+                    var mp = _sv('mpath', {}); mp.setAttributeNS('http://www.w3.org/1999/xlink', 'href', '#' + pid); mp.setAttribute('href', '#' + pid);
+                    am.appendChild(mp); comet.appendChild(am); svg.appendChild(comet);
+                }
+                // waypoints: floor shadow + vertical stem + node lifted above the plane (height = 3D)
+                var pts = rt.path, len = Math.max(1, pts.length - 1);
+                pts.forEach(function (node, i) {
+                    if (i === 0 || i === len) return;
+                    var t = i / len, u = 1 - t;
+                    var fx = u * u * O.x + 2 * u * t * cfx + t * t * D.x;   // floor position
+                    var fy = u * u * O.y + 2 * u * t * cfy + t * t * D.y;
+                    var vx = u * u * O.x + 2 * u * t * clx + t * t * D.x;   // lifted position
+                    var vy = u * u * O.y + 2 * u * t * cly + t * t * D.y;
+                    svg.appendChild(_sv('ellipse', { cx: fx, cy: fy, rx: 5, ry: 5 * KY, fill: 'rgba(0,0,0,0.45)' }));
+                    svg.appendChild(_sv('line', { x1: fx, y1: fy, x2: vx, y2: vy, stroke: col,
+                        'stroke-width': 1, opacity: 0.3, 'stroke-dasharray': '2 3' }));
+                    svg.appendChild(_routeNodeEl(vx, vy, node, col, false));
+                });
+            })(routes[jj], jj);
+        }
+        if (!reduce) {   // arrival beacon at the destination + slow breathing at the origin
+            var dp = _sv('circle', { cx: D.x, cy: D.y, r: 8, fill: 'none', stroke: '#00ffcc', 'stroke-width': 1.4 });
+            dp.appendChild(_sv('animate', { attributeName: 'r', values: '7;20;7', dur: '2.6s', repeatCount: 'indefinite' }));
+            dp.appendChild(_sv('animate', { attributeName: 'opacity', values: '0.85;0;0.85', dur: '2.6s', repeatCount: 'indefinite' }));
+            svg.appendChild(dp);
+            var op = _sv('circle', { cx: O.x, cy: O.y, r: 9, fill: 'none', stroke: '#ffffff', 'stroke-width': 1 });
+            op.appendChild(_sv('animate', { attributeName: 'r', values: '9;15;9', dur: '3.4s', repeatCount: 'indefinite' }));
+            op.appendChild(_sv('animate', { attributeName: 'opacity', values: '0.45;0.05;0.45', dur: '3.4s', repeatCount: 'indefinite' }));
+            svg.appendChild(op);
+        }
+        svg.appendChild(_routeNodeEl(O.x, O.y, res.src, '#ffffff', true));       // origin (sun)
+        svg.appendChild(_routeNodeEl(D.x, D.y, res.dst, '#00ffcc', true, true)); // destination
+        renderRouteLegend(res, routes, COLORS);
+    }
+
+    function renderRouteLegend(res, routes, COLORS) {
+        var el = document.getElementById('route-legend');
+        if (!res || !res.found || !routes.length) { el.innerHTML = ''; return; }
+        var head = '<div style="color:var(--accent);letter-spacing:1px;margin-bottom:4px;">◎ ' +
+            ((res.src && res.src.label) || 'origin') + ' &rarr; ' + ((res.dst && res.dst.label) || 'dest') + '</div>';
+        el.innerHTML = head + routes.map(function (rt, j) {
+            var rels = (rt.relations || []).map(function (r) { return (r + '').split(':').pop(); });
+            var uniq = rels.filter(function (v, i) { return rels.indexOf(v) === i; }).slice(0, 4).join(' · ');
+            return '<div class="rl-line"><span class="rl-swatch" style="background:' + COLORS[j % 3] + '"></span>' +
+                '<span>' + (j === 0 ? 'primary' : 'alt ' + j) + ': <b style="color:#cde">' + rt.length + ' hops</b>' +
+                (uniq ? ' <span style="color:#678">via ' + uniq + '</span>' : '') + '</span></div>';
+        }).join('');
+    }
+
+    // ── Semantic-network (plexus) view ─────────────────────────────────────
+    var webCanvas = null, webCtx = null, webDPR = 1, webGlow = null;
+    var webNodes = [], webLinks = [], webSim = null;
+    var webTf = { x: 0, y: 0, k: 1 };                 // world→screen: sx = x*k + tx
+    var webHover = null, webFocalId = null, webLoaded = false;
+    var webDrag = { on: false, moved: false, x: 0, y: 0 };
+    function setWebMsg(t) { var m = document.getElementById('web-msg'); if (m) m.textContent = t || ''; }
+    function _nsColor(ns) {
+        var P = { emo: '#ff6699', word: '#66ccff', concept: '#00ffcc', sys: '#ffcc44', role: '#ffcc44',
+            thesaurus: '#00ffcc', set: '#77aabb', calc: '#cc99ff', components: '#88aacc', weave: '#557799',
+            med: '#66eebb', ingred: '#99dd77', recipe: '#ffbb77', meal: '#ffcc88', drink: '#66ddee',
+            tradition: '#dda0ff', ayurveda: '#dda0ff' };
+        return P[ns] || '#00e6c0';
+    }
+    function _webVW() { return webCanvas.width / webDPR; }
+    function _webVH() { return webCanvas.height / webDPR; }
+    function _webResize() {
+        var o = document.getElementById('web-overlay');
+        var w = o.clientWidth || 900, h = o.clientHeight || 600;
+        webDPR = Math.min(window.devicePixelRatio || 1, 2);
+        webCanvas.width = w * webDPR; webCanvas.height = h * webDPR;
+        webCanvas.style.width = w + 'px'; webCanvas.style.height = h + 'px';
+    }
+    function _webGlowSprite() {
+        var c = document.createElement('canvas'); c.width = c.height = 64;
+        var g = c.getContext('2d'); var rg = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+        rg.addColorStop(0, 'rgba(190,255,246,0.92)'); rg.addColorStop(0.34, 'rgba(80,232,212,0.34)');
+        rg.addColorStop(1, 'rgba(0,255,204,0)');
+        g.fillStyle = rg; g.fillRect(0, 0, 64, 64); webGlow = c;
+    }
+    function initWeb() {
+        if (webCanvas) return;
+        webCanvas = document.getElementById('web-canvas');
+        if (!webCanvas) return;
+        webCtx = webCanvas.getContext('2d');
+        _webGlowSprite(); _webResize();
+        window.addEventListener('resize', function () { if (routeViewMode === 'network') { _webResize(); renderWeb(); } });
+        webCanvas.addEventListener('mousedown', _webDown);
+        window.addEventListener('mousemove', _webMove);
+        window.addEventListener('mouseup', _webUp);
+        webCanvas.addEventListener('mousemove', _webHoverMove);
+        webCanvas.addEventListener('wheel', _webWheel, { passive: false });
+        webCanvas.addEventListener('touchstart', _webTouchStart, { passive: false });
+        webCanvas.addEventListener('touchmove', _webTouchMove, { passive: false });
+        webCanvas.addEventListener('touchend', function () { webDrag.on = false; });
+    }
+    async function loadWeb(focalId) {
+        if (!focalId) { setWebMsg('Warp to an atom in LOCAL first, then open NETWORK.'); return; }
+        setWebMsg('Mapping the semantic network…');
+        try {
+            var res = await rpc('cosmos.web', { id: focalId, depth: 2, limit: 180 });
+            if (!res || !res.found || !res.nodes || !res.nodes.length) { setWebMsg('No network around this atom.'); return; }
+            buildWeb(res, focalId); setWebMsg('');
+        } catch (e) { setWebMsg('Network error: ' + ((e.message || '') + '').slice(0, 70)); }
+    }
+    function buildWeb(res, focalId) {
+        webFocalId = focalId; webLoaded = true; webHover = null;
+        var SCALE = 155;
+        webNodes = res.nodes.map(function (n, i) {
+            var isF = (n.id === res.focal.id);
+            return { i: i, id: n.id, alias: n.alias, ns: n.ns, label: n.label, val: n.val || 4,
+                color: n.color, deg: n.deg || 0, focal: isF,
+                sx: (n.x || 0) * SCALE, sy: (n.y || 0) * SCALE,
+                x: (n.x || 0) * SCALE + Math.cos(i * 1.7) * 9, y: (n.y || 0) * SCALE + Math.sin(i * 1.7) * 9,
+                r: 2.4 + Math.sqrt(n.val || 4) };
+        });
+        webLinks = res.edges.map(function (e) { return { source: webNodes[e.s], target: webNodes[e.t], rel: e.rel }; })
+            .filter(function (l) { return l.source && l.target; });
+        webNodes.forEach(function (n) { if (n.focal) { n.fx = n.sx; n.fy = n.sy; } });
+        var haveD3 = (typeof d3 !== 'undefined' && d3.forceSimulation);
+        var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (webSim) { webSim.stop(); webSim = null; }
+        if (haveD3) {
+            webSim = d3.forceSimulation(webNodes)
+                .force('charge', d3.forceManyBody().strength(-72).distanceMax(340))
+                .force('link', d3.forceLink(webLinks).id(function (d) { return d.i; }).distance(46).strength(0.22))
+                .force('x', d3.forceX(function (d) { return d.sx; }).strength(0.05))
+                .force('y', d3.forceY(function (d) { return d.sy; }).strength(0.05))
+                .force('collide', d3.forceCollide(function (d) { return d.r + 3; }))
+                .alpha(0.9).alphaDecay(0.03);
+            fitWeb();
+            if (reduce) { for (var t = 0; t < 240; t++) webSim.tick(); webSim.stop(); renderWeb(); }
+            else { webSim.on('tick', renderWeb); }
+        } else {                                          // no d3 → static semantic layout
+            webNodes.forEach(function (n) { n.x = n.sx; n.y = n.sy; });
+            fitWeb(); renderWeb();
+        }
+        var fe = document.getElementById('web-focus');
+        if (fe) fe.textContent = (res.focal.alias || res.focal.label || focalId);
+        renderWebLegend(res);
+    }
+    function fitWeb() {
+        var f = null; for (var i = 0; i < webNodes.length; i++) if (webNodes[i].focal) { f = webNodes[i]; break; }
+        f = f || webNodes[0]; if (!f) return;
+        webTf.k = 1;
+        webTf.x = _webVW() / 2 - (f.fx != null ? f.fx : f.x) * webTf.k;
+        webTf.y = _webVH() / 2 - (f.fy != null ? f.fy : f.y) * webTf.k;
+    }
+    function renderWeb() {
+        if (!webCtx) return;
+        var ctx = webCtx, W = _webVW(), H = _webVH(), k = webTf.k, tx = webTf.x, ty = webTf.y;
+        ctx.setTransform(webDPR, 0, 0, webDPR, 0, 0);
+        ctx.clearRect(0, 0, W, H);
+        var mrg = 90;
+        var wx0 = (-mrg - tx) / k, wy0 = (-mrg - ty) / k, wx1 = (W + mrg - tx) / k, wy1 = (H + mrg - ty) / k;
+        // edges
+        for (var e = 0; e < webLinks.length; e++) {
+            var s = webLinks[e].source, t = webLinks[e].target;
+            if (Math.max(s.x, t.x) < wx0 || Math.min(s.x, t.x) > wx1 ||
+                Math.max(s.y, t.y) < wy0 || Math.min(s.y, t.y) > wy1) continue;
+            var hot = webHover && (s === webHover || t === webHover);
+            ctx.strokeStyle = hot ? 'rgba(130,255,238,0.85)' : 'rgba(0,255,204,0.16)';
+            ctx.lineWidth = hot ? 1.5 : 0.8;
+            ctx.beginPath(); ctx.moveTo(s.x * k + tx, s.y * k + ty); ctx.lineTo(t.x * k + tx, t.y * k + ty); ctx.stroke();
+        }
+        // node glow + core
+        var zk = Math.max(0.6, Math.min(k, 1.7));
+        for (var i = 0; i < webNodes.length; i++) {
+            var n = webNodes[i];
+            if (n.x < wx0 || n.x > wx1 || n.y < wy0 || n.y > wy1) continue;
+            var X = n.x * k + tx, Y = n.y * k + ty, r = n.r * zk;
+            var gs = (r + 6) * 2.3;
+            ctx.globalAlpha = n.focal ? 0.98 : (webHover === n ? 0.92 : 0.58);
+            ctx.drawImage(webGlow, X - gs / 2, Y - gs / 2, gs, gs);
+            ctx.globalAlpha = 1;
+            ctx.beginPath(); ctx.arc(X, Y, Math.max(1.4, r * 0.55), 0, 6.2832);
+            ctx.fillStyle = n.color || _nsColor(n.ns); ctx.fill();
+            if (n.focal) { ctx.lineWidth = 1.6; ctx.strokeStyle = '#ffffff'; ctx.stroke(); }
+        }
+        // labels (sparse when zoomed out; all when zoomed in)
+        var showAll = k > 1.25;
+        ctx.textBaseline = 'alphabetic';
+        for (var j = 0; j < webNodes.length; j++) {
+            var m = webNodes[j];
+            if (m.x < wx0 || m.x > wx1 || m.y < wy0 || m.y > wy1) continue;
+            if (!(m.focal || webHover === m || showAll || m.val > 9)) continue;
+            var Xx = m.x * k + tx, Yy = m.y * k + ty, rr = m.r * zk;
+            var lbl = (m.label || m.alias || '') + '';
+            ctx.font = (m.focal ? '12px' : '10px') + ' monospace';
+            var tw = ctx.measureText(lbl).width;
+            ctx.fillStyle = 'rgba(3,9,11,0.72)'; ctx.fillRect(Xx + rr + 3, Yy - 7, tw + 6, 13);
+            ctx.fillStyle = m.focal ? '#ffffff' : (webHover === m ? '#c4fdf2' : '#9fead6');
+            ctx.fillText(lbl, Xx + rr + 6, Yy + 3);
+        }
+    }
+    function renderWebLegend(res) {
+        var el = document.getElementById('web-legend'); if (!el) return;
+        var nss = {}; webNodes.forEach(function (n) { nss[n.ns || '—'] = (nss[n.ns || '—'] || 0) + 1; });
+        var top = Object.keys(nss).sort(function (a, b) { return nss[b] - nss[a]; }).slice(0, 5);
+        el.innerHTML = '<div style="color:var(--accent);letter-spacing:1px;margin-bottom:4px;">⬡ ' +
+            webNodes.length + ' atoms · ' + webLinks.length + ' links' + (res.truncated ? ' · partial (scroll)' : '') + '</div>' +
+            top.map(function (ns) { return '<div class="wl-line"><span class="wl-dot" style="background:' + _nsColor(ns) +
+                '"></span><span>' + ns + ' · ' + nss[ns] + '</span></div>'; }).join('');
+    }
+    function _webHit(ev) {
+        var rect = webCanvas.getBoundingClientRect();
+        var mx = ev.clientX - rect.left, my = ev.clientY - rect.top, best = null, bd = 1e9, zk = Math.max(0.6, Math.min(webTf.k, 1.7));
+        for (var i = 0; i < webNodes.length; i++) {
+            var n = webNodes[i];
+            var X = n.x * webTf.k + webTf.x, Y = n.y * webTf.k + webTf.y, rad = n.r * zk + 7;
+            var d = (X - mx) * (X - mx) + (Y - my) * (Y - my);
+            if (d < rad * rad && d < bd) { bd = d; best = n; }
+        }
+        return best;
+    }
+    function _webDown(ev) { webDrag.on = true; webDrag.moved = false; webDrag.x = ev.clientX; webDrag.y = ev.clientY; webCanvas.classList.add('grabbing'); }
+    function _webMove(ev) {
+        if (!webDrag.on) return;
+        var dx = ev.clientX - webDrag.x, dy = ev.clientY - webDrag.y;
+        if (Math.abs(dx) + Math.abs(dy) > 3) webDrag.moved = true;
+        webTf.x += dx; webTf.y += dy; webDrag.x = ev.clientX; webDrag.y = ev.clientY; renderWeb();
+    }
+    function _webUp(ev) {
+        if (webDrag.on && !webDrag.moved) _webClick(ev);
+        webDrag.on = false; if (webCanvas) webCanvas.classList.remove('grabbing');
+    }
+    function _webHoverMove(ev) {
+        if (webDrag.on) return;
+        var n = _webHit(ev);
+        if (n !== webHover) { webHover = n; webCanvas.style.cursor = n ? 'pointer' : 'grab'; renderWeb(); }
+    }
+    function _webWheel(ev) {
+        ev.preventDefault();
+        if (ev.ctrlKey || ev.metaKey) {                 // zoom around the cursor
+            var rect = webCanvas.getBoundingClientRect(), mx = ev.clientX - rect.left, my = ev.clientY - rect.top;
+            var nk = Math.max(0.15, Math.min(webTf.k * Math.exp(-ev.deltaY * 0.0016), 4));
+            webTf.x = mx - (mx - webTf.x) * (nk / webTf.k); webTf.y = my - (my - webTf.y) * (nk / webTf.k); webTf.k = nk;
+        } else {                                         // scroll = pan in any direction
+            webTf.x -= ev.deltaX; webTf.y -= ev.deltaY;
+        }
+        renderWeb();
+    }
+    function _webTouchStart(ev) { if (ev.touches.length === 1) { webDrag.on = true; webDrag.moved = false; webDrag.x = ev.touches[0].clientX; webDrag.y = ev.touches[0].clientY; } }
+    function _webTouchMove(ev) {
+        if (!webDrag.on || ev.touches.length !== 1) return; ev.preventDefault();
+        var t = ev.touches[0]; webTf.x += t.clientX - webDrag.x; webTf.y += t.clientY - webDrag.y; webDrag.x = t.clientX; webDrag.y = t.clientY; renderWeb();
+    }
+    function _webClick(ev) {
+        var n = _webHit(ev); if (!n) return;
+        currentFocalId = n.id;
+        var tf = document.getElementById('tel-focus'); if (tf) tf.textContent = '@' + ((n.alias || n.id) + '').slice(0, 20);
+        var ht = document.getElementById('helm-target'); if (ht) ht.value = n.alias || n.id;
+        loadWeb(n.id);                                   // re-centre the network on the clicked atom
     }
 
     async function tuneLens() {

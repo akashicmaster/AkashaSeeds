@@ -230,7 +230,7 @@ A new concept model is a single file in `lib/akasha/concepts/`. It imports `Base
 ### 2.2 The Skeleton
 
 ```python
-from lib.akasha.concepts.base import BaseConcept
+from lib.akasha.api.concepts import BaseConcept
 from typing import Dict, Any, Optional
 import time
 
@@ -499,22 +499,11 @@ The `seen` set guards against accidental cycles (should not occur, but is cheap 
 
 ### 2.10 Registering with the Kernel — Plugin Registry
 
-The Concept Model Plugin Registry (`lib/akasha/concepts/registry.py`) scans
-`lib/akasha/concepts/` at kernel startup and auto-discovers every class that defines both
-`CONCEPT_PREFIX` and `CONCEPT_METHODS`. For a **new** concept model, no import, no dispatch
-block, and no handler methods are needed in `kernel.py`.
-
-> **Important — NoteConcept is the exception, not the example.**
->
-> `NoteConcept` predates the plugin registry. In the production code, `kernel.py` dispatches
-> every `note.*` and `loom.note.*` call through explicit `_handle_note_*` methods — the
-> same manual pattern used before auto-discovery existed. If you open `lib/akasha/kernel.py`
-> you will find these entries (`if method == "note.new": return self._handle_note_new(...)`,
-> and so on for every note method).
->
-> The `CONCEPT_PREFIX` / `CONCEPT_METHODS` attributes below show the **target pattern for new
-> concept models**. Follow this pattern when you build a new concept class; do not model your
-> kernel wiring on what NoteConcept does internally.
+The platform's Concept Model registry (`lib/akasha/concepts/registry.py`) scans the
+application's `app/concepts/` at startup and discovers every class that defines both
+`CONCEPT_PREFIX` and `CONCEPT_METHODS`. A concept model needs **no change to the platform** —
+no import, no dispatch block, no handler in the kernel. `NoteConcept` (`app/concepts/note.py`)
+is registered exactly this way.
 
 For a new concept model, add class-level attributes:
 
@@ -537,7 +526,7 @@ class MyConcept(BaseConcept):
 ```
 
 The `coerce` lambda normalises alternate parameter names so CLI callers can use either form.
-Full details in `docs/concept-model-spec.md §7.1`.
+Full details in `docs/concept-model/concept-model-spec.md §7.1`.
 
 **Error mapping (handled by the registry automatically):**
 
@@ -550,45 +539,53 @@ Full details in `docs/concept-model-spec.md §7.1`.
 
 > **Note:** There is no explicit `PermissionError` branch in the registry dispatcher — it falls through to the final `except Exception` handler, which returns `-32603`. If you want callers to receive a distinct permission-denied code (`-32003`), wrap the permission check in the kernel handler or raise a custom exception class that your outer error handler recognises.
 
-**What still requires a manual edit:**
+**What you may still declare** (both are optional overrides, written in `CONCEPT_METHODS`
+itself — never in a platform file):
 
-- **IAM routing** — add each method to `_METHOD_TO_ACTION` in `kernel.py` so
-  permission enforcement works (see §2.11 below).
-- **CLI aliases** — add short aliases to `api/router.py` (see §2.12 below).
+- **IAM action** — derived from the verb; pin it when the guess would be wrong (§2.11).
+- **CLI aliases** — a short alias for a command (§2.12).
 
 ---
 
 ### 2.11 IAM Routing
 
-Add each method to `_METHOD_TO_ACTION` in `lib/akasha/kernel.py` so the IAM layer
-knows whether a call requires read, write, or drop permission:
+Each method's IAM action (read, write or drop) is **derived** by the registry: a curated set of
+non-mutating verbs (`ls`, `toc`, `read`, …) → `read`, everything else → `write`. Pin it in
+`CONCEPT_METHODS` only where the convention would guess wrong:
 
 ```python
-# Input layer
-"note.new":       "write",
-"note.add":       "write",
-"note.section":   "write",
-"note.paragraph": "write",
-"note.toc":       "read",
-"note.read":      "read",
-"note.rm":        "drop",
-# Edit layer (M1)
-"note.list":      "read",
-"note.edit":      "write",
-"note.move":      "write",
-"note.undo":      "write",
-"note.redo":      "write",
-"note.restore":   "write",
-"note.rename":    "write",
+CONCEPT_METHODS = {
+    "new":  "op_new",                                  # → write (derived)
+    "toc":  "op_toc",                                  # → read  (derived)
+    "rm":   {"op": "op_delete", "action": "drop"},     # pinned: drop
+}
 ```
 
-For a new concept model using `CONCEPT_PREFIX` / `CONCEPT_METHODS`, this is the only `kernel.py` edit needed — the registry handles dispatch automatically.
+An application may instead declare the action beside the op in its manifest,
+`app/config/MANIFEST.json` — this is how `note.*` is declared:
+
+```json
+"note.new": {"access": "record", "router": "concept_registry", "cli": {"n.new": {"args": ["title"]}}}
+```
+
+There is no hand-written method table to edit: the application's access table
+(`app/config/MANIFEST.access.json`) is generated from its manifest by
+`python scripts/gen_kernel_methods.py`, and the registry supplies the derived actions at boot.
 
 ---
 
 ### 2.12 Wiring the CLI Router
 
-Add entries to `COMMAND_SPECS` in `api/router.py`:
+The canonical (`note.new`), one-shot (`note new`) and subcommand forms are registered
+automatically. For a short alias, set `cli` in the `CONCEPT_METHODS` entry — no router edit:
+
+```python
+"new": {"op": "op_new", "cli": "n.new", "args": ["title"], "desc": "Create a new note"},
+```
+
+or declare it under the op's `cli` in `app/config/MANIFEST.json` (as `note.*` does) and run
+`python scripts/gen_cli_table.py`, which writes `app/config/MANIFEST.cli.json`. NoteConcept's
+aliases, in that table's shape:
 
 ```python
 # Input layer
@@ -978,9 +975,9 @@ Suppose you want to add a `"sidebar"` container (like a chapter, but parallel to
 1. **Design**: sidebar is a container in the vertical hierarchy; it also belongs in the timeline. Same dual-axis pattern as section.
 2. **Implement**: copy `op_section`, rename to `op_sidebar`, pass `role="sidebar"` to `_register_to_package`.
 3. **Vocabulary**: `_get_or_create_concept_word("sidebar")` creates the shared vocabulary atom automatically.
-4. **CLI**: add `"n.side"` to `COMMAND_SPECS` in `router.py`.
-5. **Kernel**: add `"note.sidebar": "write"` to `_METHOD_TO_ACTION` in `kernel.py` (§2.11). No handler method needed — the Plugin Registry dispatches automatically.
-6. **Spec**: add entry to §10.9 in `docs/api-spec.md`.
+4. **CLI**: declare the `n.side` alias — in `CONCEPT_METHODS` or under the op's `cli` in `app/config/MANIFEST.json` (§2.12).
+5. **IAM**: nothing to do — `sidebar` derives `write` (§2.11). No handler method needed; the registry dispatches automatically.
+6. **Spec**: add entry to §10.9 in `docs/developer/api-spec.md`.
 
 ### Pattern: Adding a Query Operator
 

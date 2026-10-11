@@ -1,0 +1,1079 @@
+{
+  "package": "heart",
+  "version": 1,
+  "depends_on": [],
+  "_comment": "The heart's own manifest (Part II §A21). Every op the server answers is ONE entry here or in a package manifest; the dispatcher builds its table from them. `stage` is where in the request path the op runs (api/ops.py). Ops still implemented on the kernel class are the S1 transitional state; the package moves relocate their entries.",
+  "api": [
+    "lib.akasha.api.rpc",
+    "lib.akasha.api.trust",
+    "lib.akasha.api.ops",
+    "lib.akasha.api.schedule",
+    "lib.akasha.api.provision",
+    "lib.akasha.api.manifest"
+  ],
+  "ops": {
+    "sys.ping": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_ping",
+      "stage": "pre_identity",
+      "access": null,
+      "cli": {
+        "ping": {
+          "args": [],
+          "desc": "Consciousness liveness check"
+        }
+      }
+    },
+    "sys.status": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_status",
+      "stage": "pre_identity",
+      "access": "read"
+    },
+    "kernel.genesis_rite": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_genesis_rite_rpc",
+      "stage": "pre_identity",
+      "access": null
+    },
+    "kernel.auth.status": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_auth_status",
+      "stage": "pre_identity",
+      "access": null
+    },
+    "auth.status": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_auth_status",
+      "stage": "pre_identity",
+      "access": null
+    },
+    "kernel.auth.local": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_auth_local_rpc",
+      "stage": "pre_identity",
+      "access": null
+    },
+    "auth.local": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_auth_local_rpc",
+      "stage": "pre_identity",
+      "access": null
+    },
+    "kernel.auth.verify": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_auth_verify",
+      "stage": "pre_identity",
+      "access": null
+    },
+    "auth.verify": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_auth_verify",
+      "stage": "pre_identity",
+      "access": null
+    },
+    "kernel.auth.register": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_auth_register",
+      "stage": "pre_identity",
+      "access": null
+    },
+    "auth.register": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_auth_register",
+      "stage": "pre_identity",
+      "access": null
+    },
+    "session.guest.create": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_guest_create",
+      "stage": "pre_identity",
+      "access": null
+    },
+    "session.guest.extend": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_guest_extend",
+      "stage": "pre_identity",
+      "access": null
+    },
+    "session.context.set": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_session_ctx_set",
+      "stage": "pre_su",
+      "access": "read"
+    },
+    "session.context.get": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_session_ctx_get",
+      "stage": "pre_su",
+      "access": "read"
+    },
+    "sys.su": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_su",
+      "stage": "pre_su",
+      "access": "admin"
+    },
+    "sys.status.full": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_status_full",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "status": {
+          "args": [],
+          "desc": "System status: memory, session, focus, JCL queue"
+        }
+      }
+    },
+    "sys.compact": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_compact",
+      "stage": "pre",
+      "access": "admin",
+      "cli": {
+        "compact": {
+          "args": [],
+          "desc": "Fold the nucleus WAL (Silica checkpoint) — admin; returns before/after bytes + seconds"
+        }
+      }
+    },
+    "sys.census": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_census",
+      "stage": "pre",
+      "access": "admin",
+      "cli": {
+        "census": {
+          "args": [],
+          "desc": "Store composition: atoms by role / provenance / namespace — admin"
+        }
+      }
+    },
+    "sys.space_probe": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_space_probe",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "space_probe": {
+          "args": [
+            "name"
+          ],
+          "desc": "Engine-side render timing + access-degree probe for one concept (bypasses admission) — admin"
+        }
+      }
+    },
+    "svc.ls": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_svc_ls",
+      "stage": "pre",
+      "access": "read"
+    },
+    "svc.start": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_svc_start",
+      "stage": "pre",
+      "access": "admin"
+    },
+    "svc.stop": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_svc_stop",
+      "stage": "pre",
+      "access": "admin"
+    },
+    "svc.restart": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_svc_restart",
+      "stage": "pre",
+      "access": "admin"
+    },
+    "iam.grant": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_iam_grant",
+      "stage": "pre",
+      "access": "admin"
+    },
+    "iam.revoke": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_iam_revoke",
+      "stage": "pre",
+      "access": "admin"
+    },
+    "iam.grants": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_iam_grants",
+      "stage": "pre",
+      "access": "read"
+    },
+    "sys.cogito": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_cogito",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "cog": {
+          "args": [],
+          "desc": "Full self-awareness pulse"
+        }
+      }
+    },
+    "cogito": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_cogito",
+      "stage": "post",
+      "access": "read"
+    },
+    "sys.history": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_history",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "hist": {
+          "args": [],
+          "desc": "Recent atom stream"
+        }
+      }
+    },
+    "sys.ls": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_sys_ls",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "ls": {
+          "args": [
+            "limit"
+          ],
+          "desc": "List last N atoms"
+        }
+      }
+    },
+    "sys.session.close": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_session_close",
+      "stage": "post",
+      "access": "read"
+    },
+    "sys.passwd": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_passwd_self",
+      "stage": "post",
+      "access": "annotate",
+      "cli": {
+        "passwd": {
+          "args": [],
+          "desc": "Change your passphrase"
+        }
+      }
+    },
+    "passwd": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_passwd_self",
+      "stage": "post",
+      "access": null
+    },
+    "user.ls": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_user_ls",
+      "stage": "post",
+      "access": "admin"
+    },
+    "user.add": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_user_add",
+      "stage": "post",
+      "access": "admin"
+    },
+    "auth.plan": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_auth_plan",
+      "stage": "post",
+      "access": "read"
+    },
+    "kernel.auth.plan": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_auth_plan",
+      "stage": "post",
+      "access": null
+    },
+    "auth.plan.set": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_auth_plan_set",
+      "stage": "post",
+      "access": "admin"
+    },
+    "kernel.auth.plan.set": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_auth_plan_set",
+      "stage": "post",
+      "access": null
+    },
+    "auth.account.delete": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_account_delete",
+      "stage": "post",
+      "access": "read"
+    },
+    "kernel.auth.account.delete": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_account_delete",
+      "stage": "post",
+      "access": null
+    },
+    "user.rm": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_user_rm",
+      "stage": "post",
+      "access": "admin"
+    },
+    "user.mod": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_user_mod",
+      "stage": "post",
+      "access": "admin"
+    },
+    "user.id": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_user_id",
+      "stage": "post",
+      "access": "admin"
+    },
+    "user.passwd": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_user_passwd",
+      "stage": "post",
+      "access": "admin"
+    },
+    "grp.ls": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_grp_ls",
+      "stage": "post",
+      "access": "read"
+    },
+    "grp.new": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_grp_new",
+      "stage": "post",
+      "access": "admin"
+    },
+    "grp.add": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_grp_add",
+      "stage": "post",
+      "access": "admin"
+    },
+    "grp.rm": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_grp_rm",
+      "stage": "post",
+      "access": "admin"
+    },
+    "grp.lib": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_grp_lib",
+      "stage": "post",
+      "access": "admin"
+    },
+    "grp.del": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_grp_del",
+      "stage": "post",
+      "access": "admin"
+    },
+    "kernel.auth.whoami": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_auth_whoami",
+      "stage": "post_identity",
+      "access": null
+    },
+    "auth.whoami": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_auth_whoami",
+      "stage": "post_identity",
+      "access": null
+    },
+    "sys.compact.run": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._handle_compact_run",
+      "stage": "pre",
+      "access": "admin"
+    },
+    "sync.push": {
+      "access": "admin"
+    },
+    "sync.pull": {
+      "access": "admin"
+    },
+    "sys.onboarding.seed": {
+      "fn": "lib.akasha.seeding:handle_onboarding_seed",
+      "stage": "post",
+      "access": "record"
+    }
+  },
+  "schedules": {
+    "gate_facts": {
+      "fn": "lib.akasha.api.facts:install",
+      "phase": "writer",
+      "order": 5,
+      "when": "every_boot"
+    },
+    "wal_maintenance": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._schedule_wal_maintenance",
+      "phase": "writer",
+      "order": 10,
+      "when": "every_boot"
+    },
+    "cache_replan": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._schedule_cache_replan",
+      "phase": "writer",
+      "order": 70,
+      "when": "every_boot"
+    },
+    "health_heartbeat": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._schedule_health_heartbeat",
+      "phase": "writer",
+      "order": 80,
+      "when": "every_boot"
+    },
+    "init_artifact_store": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._init_artifact_store",
+      "phase": "writer",
+      "order": 140,
+      "when": "new_build"
+    },
+    "hydrate_boot": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._schedule_hydrate_boot",
+      "phase": "writer",
+      "order": 150,
+      "when": "new_build"
+    },
+    "arm_boot_flood_pacing": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._arm_boot_flood_pacing",
+      "phase": "post_load",
+      "order": 10,
+      "when": "every_boot"
+    },
+    "world_genesis": {
+      "fn": "lib.akasha.kernel:KernelDispatcher._schedule_world_genesis",
+      "phase": "post_load",
+      "order": 150,
+      "when": "new_build"
+    }
+  },
+  "thread_units": [],
+  "code_paths": [
+    "lib/",
+    "api/",
+    "remote/",
+    "services/",
+    "docs/",
+    "apps/",
+    "assets/",
+    "test/",
+    "curations/",
+    "scripts/",
+    "env/",
+    "akasha.py",
+    "config/identity/idsets.json",
+    "config/tier_policy.json",
+    "config/semcache_featured.json"
+  ],
+  "data_paths": [
+    "data/",
+    "logs/",
+    "env/models/",
+    "env/deployment.env",
+    "env/secrets.env",
+    "config/tls.json",
+    "docs/user/",
+    "apps/custom/",
+    "lib/plugins/",
+    ".env",
+    "config/identity/assign.ak"
+  ],
+  "dirs": [
+    "data",
+    "data/cells",
+    "data/central",
+    "data/import",
+    "data/export",
+    "env/models",
+    "logs",
+    "assets",
+    "config/identity"
+  ],
+  "owner": "platform",
+  "evals": [
+    "test/wiring_eval.py",
+    "test/manifest_eval.py",
+    "test/kernel_ratchet_eval.py",
+    "test/authority_eval.py",
+    "test/deploy_eval.py",
+    "test/ownership_eval.py",
+    "test/boot_phase_eval.py",
+    "test/gate_eval.py",
+    "test/gate_*_eval.py",
+    "test/application_api_eval.py",
+    "test/platform_alone_eval.py",
+    "test/declared_identities_eval.py",
+    "test/data_format_eval.py",
+    "test/meta_merge_eval.py",
+    "test/pack_validation_eval.py",
+    "test/restricted_prefix_eval.py",
+    "test/lens_compare_generic_eval.py",
+    "test/owned_fields_eval.py",
+    "test/status_door_eval.py",
+    "test/env_*_eval.py",
+    "test/seed_payload_eval.py",
+    "test/check_invariants.py",
+    "test/workload_*_eval.py",
+    "test/society_eval.py",
+    "test/claim_eval.py"
+  ],
+  "_evals": "The platform's own evals — the enforcement and conformance suite and the heart's laws. With the platform packages' `evals` globs they are the test files PLATFORM_TREE.json covers (the purge order §4.3); every other test file is an application's.",
+  "env": {
+    "AKASHA_DATA_DIR": {
+      "kind": "path",
+      "default": "<root>/data",
+      "means": "the cell's data directory"
+    },
+    "AKASHA_APP_DIR": {
+      "kind": "path",
+      "default": "<root>/app",
+      "means": "the application root — everything the application provides lives under it (platform-spec v1)"
+    },
+    "AKASHA_BASE_DIR": {
+      "kind": "path",
+      "default": "data",
+      "means": "the data directory the gate binds when no kernel has bound it (a process with no launcher)"
+    },
+    "AKASHA_PROJECT_DIR": {
+      "kind": "path",
+      "default": "<root>",
+      "means": "the project root the ontology and its config are read from"
+    },
+    "AKASHA_SOURCE_PACK_DIR": {
+      "kind": "path",
+      "default": "<app root>/assets",
+      "means": "where the application's source packs (corpus bundles) are read from"
+    },
+    "AKASHA_SNAPSHOT_DIR": {
+      "kind": "path",
+      "default": "<pages root>/snapshots",
+      "means": "the portal's disk snapshot store"
+    },
+    "AKASHA_TLS_CERT": {
+      "kind": "path",
+      "default": "",
+      "means": "an operator-supplied certificate (fullchain PEM); ACME manages none when set"
+    },
+    "AKASHA_TLS_KEY": {
+      "kind": "path",
+      "default": "",
+      "means": "the private key for AKASHA_TLS_CERT"
+    },
+    "AKASHA_HOST": {
+      "kind": "network",
+      "default": "(the launcher's --host)",
+      "means": "the address the portal binds"
+    },
+    "AKASHA_PORT": {
+      "kind": "network",
+      "default": "(the launcher's --port)",
+      "means": "the port the portal binds"
+    },
+    "AKASHA_HTTPS_PORT": {
+      "kind": "network",
+      "default": "443",
+      "means": "the HTTPS port when TLS is active"
+    },
+    "AKASHA_BASE_DOMAIN": {
+      "kind": "network",
+      "default": "",
+      "means": "the public domain (host routing; the ACME fallback domain)"
+    },
+    "AKASHA_TLS_DOMAINS": {
+      "kind": "network",
+      "default": "",
+      "means": "the certificate's domains (comma-separated)"
+    },
+    "AKASHA_TLS_EMAIL": {
+      "kind": "network",
+      "default": "",
+      "means": "the ACME contact address"
+    },
+    "AKASHA_ACME_DIRECTORY": {
+      "kind": "network",
+      "default": "Let's Encrypt",
+      "means": "the ACME directory URL"
+    },
+    "AKASHA_ACME_RENEW_DAYS": {
+      "kind": "capacity",
+      "default": "30",
+      "means": "renew a managed certificate this many days before expiry"
+    },
+    "AKASHA_TRUST_XFF": {
+      "kind": "network",
+      "default": "1",
+      "means": "a trusted reverse proxy stands in front: the first X-Forwarded-For hop is the client"
+    },
+    "AKASHA_SEMCACHE_HOST": {
+      "kind": "network",
+      "default": "",
+      "means": "the canonical public host the portal warms its cache for"
+    },
+    "AKASHA_SEMCACHE_ORIGIN": {
+      "kind": "network",
+      "default": "",
+      "means": "the canonical public origin the portal warms its cache for"
+    },
+    "AKASHA_OLLAMA_URL": {
+      "kind": "network",
+      "default": "http://localhost:11434",
+      "means": "the Ollama endpoint"
+    },
+    "AKASHA_LLM_BASE_URL": {
+      "kind": "network",
+      "default": "",
+      "means": "the generic OpenAI-compatible endpoint"
+    },
+    "AKASHA_VISION_MODEL_URL": {
+      "kind": "network",
+      "default": "(the MobileNet release)",
+      "means": "where the vision model is fetched from on first use"
+    },
+    "AKASHA_SECRET": {
+      "kind": "secret",
+      "default": "(vault)",
+      "means": "the token signing key; set it, identical on every host, for any networked cell"
+    },
+    "AKASHA_ADMIN_PASS": {
+      "kind": "secret",
+      "default": "",
+      "means": "an out-of-band admin passphrase; a fresh cell self-initializes with it"
+    },
+    "AKASHA_LLM_API_KEY": {
+      "kind": "secret",
+      "default": "",
+      "means": "the key for the generic OpenAI-compatible endpoint"
+    },
+    "AKASHA_MISTRAL_KEY": {
+      "kind": "secret",
+      "default": "",
+      "means": "the Mistral key"
+    },
+    "AKASHA_OPENROUTER_KEY": {
+      "kind": "secret",
+      "default": "",
+      "means": "the OpenRouter key"
+    },
+    "AKASHA_GEMINI_KEY": {
+      "kind": "secret",
+      "default": "",
+      "means": "the Gemini key"
+    },
+    "AKASHA_X_CONSUMER_KEY": {
+      "kind": "secret",
+      "default": "",
+      "means": "the X API consumer key"
+    },
+    "AKASHA_X_CONSUMER_SECRET": {
+      "kind": "secret",
+      "default": "",
+      "means": "the X API consumer secret"
+    },
+    "AKASHA_X_ACCESS_TOKEN": {
+      "kind": "secret",
+      "default": "",
+      "means": "the X API access token"
+    },
+    "AKASHA_X_ACCESS_SECRET": {
+      "kind": "secret",
+      "default": "",
+      "means": "the X API access secret"
+    },
+    "AKASHA_ADMIN_ID": {
+      "kind": "identity",
+      "default": "admin",
+      "means": "the admin's login id at genesis"
+    },
+    "AKASHA_SYSTEM_NAME": {
+      "kind": "identity",
+      "default": "AKASHA",
+      "means": "the cell's display name at genesis"
+    },
+    "AKASHA_MCP_CLIENT": {
+      "kind": "identity",
+      "default": "mcp:local",
+      "means": "the client a local (stdio) MCP server acts as"
+    },
+    "AKASHA_BUILD_ID": {
+      "kind": "identity",
+      "default": "",
+      "means": "a display label for this build (a git SHA)"
+    },
+    "AKASHA_LLM_PROVIDER": {
+      "kind": "identity",
+      "default": "mistral",
+      "means": "the model provider this cell speaks to"
+    },
+    "AKASHA_SERIES": {
+      "kind": "series",
+      "default": "seeds",
+      "means": "the series this cell runs"
+    },
+    "AKASHA_TIER": {
+      "kind": "series",
+      "default": "(the series')",
+      "means": "the series' tier, written by the seed"
+    },
+    "AKASHA_BACKEND": {
+      "kind": "series",
+      "default": "(resolved by the launcher from the series and the data directory)",
+      "means": "the store backend"
+    },
+    "AKASHA_SILICA_VALUES": {
+      "kind": "series",
+      "default": "ram",
+      "means": "where Silica keeps values: ram or disk"
+    },
+    "AKASHA_SQLITE_JOURNAL": {
+      "kind": "series",
+      "default": "WAL",
+      "means": "the SQLite journal mode (TRUNCATE on a synced single-file host)"
+    },
+    "AKASHA_EMBED_MODEL": {
+      "kind": "series",
+      "default": "",
+      "means": "an optional sentence-transformer for the high embedding tier"
+    },
+    "AKASHA_PORTAL_GATE": {
+      "kind": "series",
+      "default": "",
+      "means": "this deployment's portal is gated (written by the seed for its tier)"
+    },
+    "AKASHA_NO_WEB": {
+      "kind": "series",
+      "default": "",
+      "means": "this host serves no web portal (CLI only)"
+    },
+    "AKASHA_SKIP_AUTOINSTALL": {
+      "kind": "series",
+      "default": "",
+      "means": "this host installs no Python package at run time (offline / managed)"
+    },
+    "AKASHA_ALLOW_SELF_REGISTER": {
+      "kind": "series",
+      "default": "",
+      "means": "this deployment admits self-registration (role forced to user)"
+    },
+    "AKASHA_MAX_LEAVES": {
+      "kind": "capacity",
+      "default": "(the series')",
+      "means": "the client limit"
+    },
+    "AKASHA_GUEST_POOL_SIZE": {
+      "kind": "capacity",
+      "default": "128",
+      "means": "guest pool slots"
+    },
+    "AKASHA_GUEST_TTL": {
+      "kind": "capacity",
+      "default": "900",
+      "means": "guest inactivity TTL, seconds"
+    },
+    "AKASHA_SESSION_TTL": {
+      "kind": "capacity",
+      "default": "1800",
+      "means": "owning-session inactivity TTL, seconds"
+    },
+    "AKASHA_CLI_TTL": {
+      "kind": "capacity",
+      "default": "86400",
+      "means": "the local console's token TTL, seconds"
+    },
+    "AKASHA_ADMIN_SESSION_RESERVE": {
+      "kind": "capacity",
+      "default": "2",
+      "means": "session slots held back for the admin"
+    },
+    "AKASHA_MEM_PRESSURE_MB": {
+      "kind": "capacity",
+      "default": "0",
+      "means": "reap idle owning sessions below this MemAvailable (0: never)"
+    },
+    "AKASHA_MEM_PRESSURE_BATCH": {
+      "kind": "capacity",
+      "default": "8",
+      "means": "sessions reaped per pressure tick"
+    },
+    "AKASHA_DIVE_ADMIT": {
+      "kind": "capacity",
+      "default": "3",
+      "means": "concurrent dives admitted"
+    },
+    "AKASHA_DIVE_QUEUE": {
+      "kind": "capacity",
+      "default": "10",
+      "means": "dives queued behind them"
+    },
+    "AKASHA_DIVE_WAIT_MS": {
+      "kind": "capacity",
+      "default": "5000",
+      "means": "how long a queued dive waits"
+    },
+    "AKASHA_DIVE_BUDGET": {
+      "kind": "capacity",
+      "default": "10",
+      "means": "seconds one dive may run (0: unbounded)"
+    },
+    "AKASHA_IPC_WORKERS": {
+      "kind": "capacity",
+      "default": "6",
+      "means": "daemon IPC worker threads"
+    },
+    "AKASHA_IPC_QUEUE": {
+      "kind": "capacity",
+      "default": "32",
+      "means": "daemon IPC queue depth"
+    },
+    "AKASHA_WQ_YIELD_MS": {
+      "kind": "capacity",
+      "default": "8",
+      "means": "WriteQueue yield to readers, ms"
+    },
+    "AKASHA_WQ_YIELD_INTERVAL_MS": {
+      "kind": "capacity",
+      "default": "15",
+      "means": "WriteQueue yield interval, ms"
+    },
+    "AKASHA_GIL_SWITCH_MS": {
+      "kind": "capacity",
+      "default": "1.0",
+      "means": "the daemon's GIL switch interval, ms"
+    },
+    "AKASHA_CKPT_THRESHOLD": {
+      "kind": "capacity",
+      "default": "1073741824",
+      "means": "WAL growth in bytes, since the last fold in this process (the first check after a boot only takes the baseline), before the nucleus folds while no job is running; 0 disables"
+    },
+    "AKASHA_SILICA_CACHE_MB": {
+      "kind": "capacity",
+      "default": "",
+      "means": "Silica's value cache, MB"
+    },
+    "AKASHA_SILICA_CACHE_FRAC": {
+      "kind": "capacity",
+      "default": "0.02",
+      "means": "Silica's value cache as a fraction of RAM"
+    },
+    "AKASHA_CENSUS_CAP": {
+      "kind": "capacity",
+      "default": "3000000",
+      "means": "atoms sys.census walks"
+    },
+    "AKASHA_MEMTOP_MB": {
+      "kind": "capacity",
+      "default": "2500",
+      "means": "RSS at which the loader logs one MemTop"
+    },
+    "AKASHA_HEARTBEAT_MEMTOP_MB": {
+      "kind": "capacity",
+      "default": "4096,6144",
+      "means": "RSS marks at which the heartbeat logs MemTop"
+    },
+    "AKASHA_THREAD_GUARD_INTERVAL": {
+      "kind": "capacity",
+      "default": "60",
+      "means": "thread-census guard interval, seconds"
+    },
+    "AKASHA_AUTOLEARN_MAX": {
+      "kind": "capacity",
+      "default": "40000",
+      "means": "atoms the boot autolearn reads"
+    },
+    "AKASHA_AUTOLEARN_LINK_MAX": {
+      "kind": "capacity",
+      "default": "200000",
+      "means": "links the structural autolearn reads"
+    },
+    "AKASHA_AUTOLEARN_PACE": {
+      "kind": "capacity",
+      "default": "100",
+      "means": "autolearn bake pace"
+    },
+    "AKASHA_SEARCH_BUDGET_S": {
+      "kind": "capacity",
+      "default": "10",
+      "means": "seconds one semantic search may run"
+    },
+    "AKASHA_SEARCH_CANDIDATES": {
+      "kind": "capacity",
+      "default": "500",
+      "means": "semantic search candidates"
+    },
+    "AKASHA_PULSE_KEEP_DAYS": {
+      "kind": "capacity",
+      "default": "2",
+      "means": "days of raw pulse kept before aggregation"
+    },
+    "AKASHA_SEMCACHE_BUDGET_MB": {
+      "kind": "capacity",
+      "default": "512",
+      "means": "the semantic cache budget"
+    },
+    "AKASHA_SEMCACHE_WARM_INTERVAL_S": {
+      "kind": "capacity",
+      "default": "900",
+      "means": "portal warm pass interval"
+    },
+    "AKASHA_SEMCACHE_WARM_PACE_S": {
+      "kind": "capacity",
+      "default": "1.0",
+      "means": "portal warm pace, seconds per page"
+    },
+    "AKASHA_SEMCACHE_STAGE_RENDERS_PER_MIN": {
+      "kind": "capacity",
+      "default": "60",
+      "means": "demand-staging renders per minute"
+    },
+    "AKASHA_SOURCE_BOOTSTRAP_MAX_S": {
+      "kind": "capacity",
+      "default": "0",
+      "means": "seconds a corpus bootstrap may run (0: unbounded)"
+    },
+    "AKASHA_LOG_LEVEL": {
+      "kind": "capacity",
+      "default": "INFO",
+      "means": "the log level"
+    },
+    "AKASHA_LOG_MAX_BYTES": {
+      "kind": "capacity",
+      "default": "52428800",
+      "means": "log file size before rotation"
+    },
+    "AKASHA_LOG_BACKUPS": {
+      "kind": "capacity",
+      "default": "5",
+      "means": "rotated log files kept"
+    },
+    "AKASHA_BOOT_WAIT": {
+      "kind": "capacity",
+      "default": "90",
+      "means": "seconds the launcher waits for the daemon"
+    },
+    "AKASHA_BOOT_GRACE": {
+      "kind": "capacity",
+      "default": "300",
+      "means": "seconds a booting unit is not health-checked"
+    },
+    "AKASHA_BOOT_HARD_CEILING": {
+      "kind": "capacity",
+      "default": "900",
+      "means": "the launcher's absolute boot wait"
+    },
+    "AKASHA_BOOT_HEARTBEAT_STALE": {
+      "kind": "capacity",
+      "default": "20",
+      "means": "seconds before a boot heartbeat is stale"
+    },
+    "AKASHA_RESPAWN_SETTLE": {
+      "kind": "capacity",
+      "default": "3",
+      "means": "seconds between a unit's death and its respawn"
+    },
+    "AKASHA_MANUAL_RESTART_TTL": {
+      "kind": "capacity",
+      "default": "120",
+      "means": "seconds a manual restart marker holds the guard off"
+    },
+    "AKASHA_WATCHDOG_INTERVAL": {
+      "kind": "capacity",
+      "default": "60",
+      "means": "daemon watchdog round, seconds"
+    },
+    "AKASHA_WATCHDOG_SILENT_K": {
+      "kind": "capacity",
+      "default": "3",
+      "means": "silent rounds before the watchdog reaps"
+    },
+    "AKASHA_WORKER_FOOTPRINT_MB": {
+      "kind": "capacity",
+      "default": "1500",
+      "means": "a portal worker's expected RSS"
+    },
+    "AKASHA_DAEMON_OOM_SCORE_ADJ": {
+      "kind": "capacity",
+      "default": "-500",
+      "means": "the writer's oom_score_adj"
+    },
+    "AKASHA_PORTAL_OOM_SCORE_ADJ": {
+      "kind": "capacity",
+      "default": "500",
+      "means": "the portal's oom_score_adj"
+    },
+    "AKASHA_PORTAL_GRACEFUL_S": {
+      "kind": "capacity",
+      "default": "3",
+      "means": "the portal's graceful shutdown, seconds"
+    },
+    "AKASHA_RPC_RATE_PER_MIN": {
+      "kind": "capacity",
+      "default": "120",
+      "means": "RPCs per minute per IP"
+    },
+    "AKASHA_A_BOT_RATE_PER_MIN": {
+      "kind": "capacity",
+      "default": "30",
+      "means": "atom pages per minute per unverified bot"
+    },
+    "AKASHA_ROBOTS_CRAWL_DELAY": {
+      "kind": "capacity",
+      "default": "10",
+      "means": "robots.txt Crawl-delay"
+    },
+    "AKASHA_RDNS_TIMEOUT": {
+      "kind": "capacity",
+      "default": "2",
+      "means": "crawler reverse-DNS timeout, seconds"
+    },
+    "AKASHA_HUMAN_TTL_S": {
+      "kind": "capacity",
+      "default": "1800",
+      "means": "how long a proven-human IP stays proven"
+    },
+    "AKASHA_CLASS_LOG_EVERY_S": {
+      "kind": "capacity",
+      "default": "60",
+      "means": "visitor-class log interval"
+    },
+    "AKASHA_REFERENCE_PAGE_TTL_S": {
+      "kind": "capacity",
+      "default": "1800",
+      "means": "portal reference-page cache TTL"
+    },
+    "AKASHA_SNAPSHOT_TTL_DAYS": {
+      "kind": "capacity",
+      "default": "7",
+      "means": "snapshot TTL, days"
+    },
+    "AKASHA_SNAPSHOT_RETRY": {
+      "kind": "capacity",
+      "default": "30",
+      "means": "Retry-After on a warming snapshot"
+    },
+    "AKASHA_SSR_MAX_CONCURRENCY": {
+      "kind": "capacity",
+      "default": "1",
+      "means": "concurrent server-side renders"
+    },
+    "AKASHA_SSR_TIMEOUT": {
+      "kind": "capacity",
+      "default": "6",
+      "means": "server-side render fetch timeout, seconds"
+    },
+    "AKASHA_LLM_CALLS_PER_DAY": {
+      "kind": "capacity",
+      "default": "(the provider's free tier)",
+      "means": "model calls per day, any provider"
+    },
+    "AKASHA_LLM_TOKENS_PER_DAY": {
+      "kind": "capacity",
+      "default": "(the provider's free tier)",
+      "means": "model tokens per day, any provider"
+    },
+    "AKASHA_LLM_TOKENS_PER_MONTH": {
+      "kind": "capacity",
+      "default": "(the provider's free tier)",
+      "means": "model tokens per month, any provider"
+    },
+    "AKASHA_LLM_*_CALLS_PER_DAY": {
+      "kind": "capacity",
+      "default": "(the provider's free tier)",
+      "means": "model calls per day for one provider (e.g. AKASHA_LLM_MISTRAL_CALLS_PER_DAY)"
+    },
+    "AKASHA_LLM_*_TOKENS_PER_DAY": {
+      "kind": "capacity",
+      "default": "(the provider's free tier)",
+      "means": "model tokens per day for one provider"
+    },
+    "AKASHA_LLM_*_TOKENS_PER_MONTH": {
+      "kind": "capacity",
+      "default": "(the provider's free tier)",
+      "means": "model tokens per month for one provider"
+    },
+    "AKASHA_SERVE_ONLY": {
+      "kind": "process",
+      "default": "",
+      "means": "set by the launcher on a portal process: it never writes"
+    },
+    "AKASHA_EMBEDDED": {
+      "kind": "process",
+      "default": "",
+      "means": "set by the launcher on an embedded (single-process) host"
+    },
+    "AKASHA_DAEMON_ARGV": {
+      "kind": "process",
+      "default": "",
+      "means": "the writer's argv, carried to the watchdog so it can revive it"
+    },
+    "AKASHA_SPAWNED_BY": {
+      "kind": "process",
+      "default": "launcher",
+      "means": "which process spawned this writer"
+    },
+    "AKASHA_HANDSHAKE_BUILD": {
+      "kind": "process",
+      "default": "",
+      "means": "the code fingerprint a launcher and daemon compare"
+    }
+  },
+  "_env": "Every environment variable the platform reads (the purge order §4.5): a deployment FACT — a path, an address, a secret, an identity, the series, a capacity — never a behaviour switch. `process` names are set by the platform on its own child processes. A package declares its own in its manifest's `env`; the launcher refuses an AKASHA_* name nobody declares. docs/deployment.md is generated from these (scripts/gen_deployment_doc.py)."
+}

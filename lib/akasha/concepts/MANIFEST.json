@@ -1,0 +1,2157 @@
+{
+  "package": "concepts",
+  "version": 1,
+  "_comment": "The PLATFORM's half of lib/akasha/concepts/ (the purge order §4.2): the mechanism modules a platform-alone cell needs — the concept registry, society, source, workflow, workbench, lens, cronon and the rest named in platform_modules — declared here, in a platform-owned file, so removing every application-owned file (lib/akasha/concepts/MANIFEST.json included) leaves a cell that boots and serves them. An entry also present in the application's manifest is the platform's: the aggregator keeps this one and reports the other as shadowed until the application removes it.",
+  "owner": "platform",
+  "depends_on": [
+    "source",
+    "ontology"
+  ],
+  "ops": {
+    "kernel.memory.write": {
+      "fn": "lib.akasha.concepts._universal:handle_write",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "w": {
+          "args": [
+            "text"
+          ],
+          "desc": "Write an atom into memory"
+        }
+      }
+    },
+    "write": {
+      "fn": "lib.akasha.concepts._universal:handle_write",
+      "stage": "pre",
+      "access": "record"
+    },
+    "w": {
+      "fn": "lib.akasha.concepts._universal:handle_write",
+      "stage": "pre",
+      "access": "record"
+    },
+    "kernel.memory.define": {
+      "fn": "lib.akasha.concepts._universal:handle_define",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "def": {
+          "args": [
+            "name",
+            "description"
+          ],
+          "desc": "Define a conceptual hub: def \"name\" \"description\""
+        }
+      }
+    },
+    "define": {
+      "fn": "lib.akasha.concepts._universal:handle_define",
+      "stage": "pre",
+      "access": "record"
+    },
+    "def": {
+      "fn": "lib.akasha.concepts._universal:handle_define",
+      "stage": "pre",
+      "access": "record"
+    },
+    "kernel.memory.read": {
+      "fn": "lib.akasha.concepts._universal:handle_read",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "r": {
+          "args": [
+            "id"
+          ],
+          "desc": "Remember — recall an atom by ID / alias / $ref"
+        }
+      }
+    },
+    "read": {
+      "fn": "lib.akasha.concepts._universal:handle_read",
+      "stage": "pre",
+      "access": "read"
+    },
+    "r": {
+      "fn": "lib.akasha.concepts._universal:handle_read",
+      "stage": "pre",
+      "access": "read"
+    },
+    "kernel.memory.drop": {
+      "fn": "lib.akasha.concepts._universal:handle_drop",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "rm": {
+          "args": [
+            "id"
+          ],
+          "desc": "Drop an atom from memory"
+        }
+      }
+    },
+    "drop": {
+      "fn": "lib.akasha.concepts._universal:handle_drop",
+      "stage": "pre",
+      "access": "record"
+    },
+    "rm": {
+      "fn": "lib.akasha.concepts._universal:handle_drop",
+      "stage": "pre",
+      "access": "record"
+    },
+    "kernel.memory.link": {
+      "fn": "lib.akasha.concepts._universal:handle_link",
+      "stage": "pre",
+      "access": "annotate",
+      "cli": {
+        "ln": {
+          "args": [
+            "src",
+            "dst",
+            "rel"
+          ],
+          "desc": "Link two nodes with a typed relation (quote multi-word names)"
+        }
+      }
+    },
+    "link.create": {
+      "fn": "lib.akasha.concepts._universal:handle_link",
+      "stage": "pre",
+      "access": "annotate"
+    },
+    "ln": {
+      "fn": "lib.akasha.concepts._universal:handle_link",
+      "stage": "pre",
+      "access": "annotate"
+    },
+    "link.list": {
+      "fn": "lib.akasha.concepts._universal:handle_link_list",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "ln.ls": {
+          "args": [
+            "id"
+          ],
+          "desc": "List links on an atom"
+        }
+      }
+    },
+    "link.reinforce": {
+      "fn": "lib.akasha.concepts._universal:handle_link_reinforce",
+      "stage": "pre",
+      "access": "annotate",
+      "cli": {
+        "ln.+": {
+          "args": [
+            "src",
+            "dst",
+            "rel"
+          ],
+          "desc": "Reinforce a link weight"
+        }
+      }
+    },
+    "link.rm": {
+      "fn": "lib.akasha.concepts._universal:handle_link_rm",
+      "stage": "pre",
+      "access": null
+    },
+    "ln.rm": {
+      "fn": "lib.akasha.concepts._universal:handle_link_rm",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "ln.rm": {
+          "args": [
+            "src",
+            "dst",
+            "rel"
+          ],
+          "desc": "Remove a typed link between two atoms"
+        }
+      }
+    },
+    "meta.set": {
+      "fn": "lib.akasha.concepts._universal:handle_meta_set",
+      "stage": "pre",
+      "access": "annotate",
+      "cli": {
+        "meta": {
+          "args": [
+            "id",
+            "key",
+            "value"
+          ],
+          "desc": "Set metadata key on atom"
+        }
+      }
+    },
+    "kernel.identity.alias": {
+      "fn": "lib.akasha.concepts._universal:handle_alias",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "al": {
+          "args": [
+            "id",
+            "name"
+          ],
+          "desc": "Name an atom (multi-word: al $it first kiss)"
+        }
+      }
+    },
+    "alias": {
+      "fn": "lib.akasha.concepts._universal:handle_alias",
+      "stage": "pre",
+      "access": "record"
+    },
+    "al": {
+      "fn": "lib.akasha.concepts._universal:handle_alias",
+      "stage": "pre",
+      "access": "record"
+    },
+    "alias.rm": {
+      "fn": "lib.akasha.concepts._universal:handle_alias_rm",
+      "stage": "pre",
+      "access": null
+    },
+    "al.rm": {
+      "fn": "lib.akasha.concepts._universal:handle_alias_rm",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "al.rm": {
+          "args": [
+            "name"
+          ],
+          "desc": "Remove an alias binding (atom is not deleted)"
+        }
+      }
+    },
+    "kernel.identity.alias.list": {
+      "fn": "lib.akasha.concepts._universal:handle_alias_list",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "al.ls": {
+          "args": [],
+          "desc": "List all named atoms"
+        }
+      }
+    },
+    "alias.list": {
+      "fn": "lib.akasha.concepts._universal:handle_alias_list",
+      "stage": "pre",
+      "access": "read"
+    },
+    "al.ls": {
+      "fn": "lib.akasha.concepts._universal:handle_alias_list",
+      "stage": "pre",
+      "access": "read"
+    },
+    "kernel.identity.alias.find": {
+      "fn": "lib.akasha.concepts._universal:handle_alias_find",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "al.find": {
+          "args": [
+            "pattern"
+          ],
+          "desc": "Find names matching a pattern (e.g. city%)"
+        }
+      }
+    },
+    "alias.find": {
+      "fn": "lib.akasha.concepts._universal:handle_alias_find",
+      "stage": "pre",
+      "access": "read"
+    },
+    "al.find": {
+      "fn": "lib.akasha.concepts._universal:handle_alias_find",
+      "stage": "pre",
+      "access": "read"
+    },
+    "set.add": {
+      "fn": "lib.akasha.concepts._universal:handle_set_add",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "s.add": {
+          "args": [
+            "name",
+            "id"
+          ],
+          "desc": "Add atom to set"
+        }
+      }
+    },
+    "set.rm": {
+      "fn": "lib.akasha.concepts._universal:handle_set_rm",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "s.rm": {
+          "args": [
+            "name",
+            "id"
+          ],
+          "desc": "Remove atom from set"
+        }
+      }
+    },
+    "set.ls": {
+      "fn": "lib.akasha.concepts._universal:handle_set_ls",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "s.ls": {
+          "args": [
+            "name"
+          ],
+          "desc": "List set members"
+        }
+      }
+    },
+    "set.clear": {
+      "fn": "lib.akasha.concepts._universal:handle_set_clear",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "s.clear": {
+          "args": [
+            "name"
+          ],
+          "desc": "Clear a set"
+        }
+      }
+    },
+    "set.op": {
+      "fn": "lib.akasha.concepts._universal:handle_set_op",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "s.op": {
+          "args": [
+            "op",
+            "result",
+            "a",
+            "b"
+          ],
+          "desc": "Set operation (union|isect|diff)"
+        }
+      }
+    },
+    "semantic.search": {
+      "fn": "lib.akasha.concepts.semantic_ops:handle_semantic_search",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "sim": {
+          "args": [
+            "id",
+            "limit",
+            "meta"
+          ],
+          "desc": "Atoms semantically like THIS atom (anchored on its own meaning; meta=1 to include lexicon defs)"
+        },
+        "similar": {
+          "args": [
+            "id",
+            "limit",
+            "meta"
+          ],
+          "desc": "Semantic neighbours (alias of sim)"
+        },
+        "search": {
+          "args": [
+            "query",
+            "limit",
+            "meta"
+          ],
+          "desc": "Semantic text search: search query=<text> (meta=1 to include lexicon defs)"
+        }
+      }
+    },
+    "search": {
+      "fn": "lib.akasha.concepts.semantic_ops:handle_semantic_search",
+      "stage": "pre",
+      "access": "read"
+    },
+    "sim": {
+      "fn": "lib.akasha.concepts.semantic_ops:handle_semantic_search",
+      "stage": "pre",
+      "access": "read"
+    },
+    "similar": {
+      "fn": "lib.akasha.concepts.semantic_ops:handle_semantic_search",
+      "stage": "pre",
+      "access": "read"
+    },
+    "semantic.learn": {
+      "fn": "lib.akasha.concepts.semantic_ops:handle_semantic_learn",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "semantic.learn": {
+          "args": [
+            "limit"
+          ],
+          "desc": "Learn the content (meaning) model behind sim/search from the whole corpus (admin, numpy)"
+        }
+      }
+    },
+    "gap.scan": {
+      "fn": "lib.akasha.concepts.semantic_ops:handle_gap_scan",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "gap.scan": {
+          "args": [
+            "limit"
+          ],
+          "desc": "Important-but-thin concepts (self-expanding-ontology loop)"
+        }
+      }
+    },
+    "gaps": {
+      "fn": "lib.akasha.concepts.semantic_ops:handle_gap_scan",
+      "stage": "pre",
+      "access": "read"
+    },
+    "gap.fetch": {
+      "fn": "lib.akasha.concepts.semantic_ops:handle_gap_fetch",
+      "stage": "pre",
+      "access": "record"
+    },
+    "gap.enrich": {
+      "fn": "lib.akasha.concepts.semantic_ops:handle_gap_fetch",
+      "stage": "pre",
+      "access": "record"
+    },
+    "node.learn": {
+      "fn": "lib.akasha.concepts.semantic_ops:handle_node_learn",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "node.learn": {
+          "args": [],
+          "desc": "Learn structural (node-walk) embeddings from the link graph (admin, numpy)"
+        }
+      }
+    },
+    "node.sim": {
+      "fn": "lib.akasha.concepts.semantic_ops:handle_node_sim",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "node.sim": {
+          "args": [
+            "id",
+            "limit",
+            "meta"
+          ],
+          "desc": "Atoms structurally similar to THIS atom (connected the same way; meta=1 for lexicon defs)"
+        },
+        "node.similar": {
+          "args": [
+            "id",
+            "limit",
+            "meta"
+          ],
+          "desc": "Structural neighbours (alias of node.sim)"
+        }
+      }
+    },
+    "node.similar": {
+      "fn": "lib.akasha.concepts.semantic_ops:handle_node_sim",
+      "stage": "pre",
+      "access": "read"
+    },
+    "explore": {
+      "fn": "lib.akasha.concepts.explore_ops:handle_explore",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "exp": {
+          "args": [
+            "ns",
+            "set",
+            "type",
+            "pat",
+            "limit"
+          ],
+          "desc": "Explore ontology by filter: ns=, set=, type=, pat= (positional = pat)"
+        }
+      }
+    },
+    "network.tree": {
+      "fn": "lib.akasha.concepts.explore_ops:handle_explore",
+      "stage": "pre",
+      "access": "read"
+    },
+    "graph.tree": {
+      "fn": "lib.akasha.concepts.explore_ops:handle_graph_tree",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "tree": {
+          "args": [
+            "target",
+            "depth",
+            "follow",
+            "format",
+            "concept",
+            "limit",
+            "leaves"
+          ],
+          "desc": "Link-traversal tree: tree <alias|key|set:*|ns:*> [depth=2] [follow=<rel>] [format=rich|ascii] [concept=yes → taxonomic concept (sys:is_a) tree; leaves=yes → show instances]"
+        }
+      }
+    },
+    "dive.look": {
+      "fn": "lib.akasha.concepts.explore_ops:handle_dive_look",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "dive": {
+          "args": [
+            "id"
+          ],
+          "desc": "Dive into an atom — see its meaning space and signposts"
+        },
+        "look": {
+          "args": [
+            "id"
+          ],
+          "desc": "Dive (legacy alias)"
+        },
+        "d": {
+          "args": [
+            "id"
+          ],
+          "desc": "Dive (short alias)"
+        }
+      }
+    },
+    "look": {
+      "fn": "lib.akasha.concepts.explore_ops:handle_dive_look",
+      "stage": "pre",
+      "access": "read"
+    },
+    "cosmos.route": {
+      "fn": "lib.akasha.concepts.explore_ops:handle_cosmos_route",
+      "stage": "pre",
+      "access": "read"
+    },
+    "route": {
+      "fn": "lib.akasha.concepts.explore_ops:handle_cosmos_route",
+      "stage": "pre",
+      "access": "read"
+    },
+    "cosmos.web": {
+      "fn": "lib.akasha.concepts.explore_ops:handle_cosmos_web",
+      "stage": "pre",
+      "access": "read"
+    },
+    "network.web": {
+      "fn": "lib.akasha.concepts.explore_ops:handle_cosmos_web",
+      "stage": "pre",
+      "access": "read"
+    },
+    "dive.out": {
+      "fn": "lib.akasha.concepts.explore_ops:handle_dive_out",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "out": {
+          "args": [
+            "id"
+          ],
+          "desc": "Zoom out to the macro view"
+        }
+      }
+    },
+    "out": {
+      "fn": "lib.akasha.concepts.explore_ops:handle_dive_out",
+      "stage": "pre",
+      "access": "read"
+    },
+    "view": {
+      "fn": "lib.akasha.concepts.explore_ops:handle_view",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "view": {
+          "args": [
+            "id"
+          ],
+          "desc": "Consciousness view of an atom: signposts, resonance, cosmos position + aura (read-only, no dive)"
+        }
+      },
+      "dive_bearing": true
+    },
+    "cosmos": {
+      "fn": "lib.akasha.concepts.explore_ops:handle_view",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "cosmos": {
+          "args": [
+            "id"
+          ],
+          "desc": "Consciousness view (alias of view)"
+        }
+      },
+      "dive_bearing": true
+    },
+    "log.new": {
+      "fn": "lib.akasha.concepts.horizon_ops:handle_log_new",
+      "stage": "post",
+      "access": "record",
+      "cli": {
+        "log.new": {
+          "args": [
+            "name"
+          ],
+          "desc": "Create a new exploration Log",
+          "group": "log"
+        }
+      }
+    },
+    "log.ls": {
+      "fn": "lib.akasha.concepts.horizon_ops:handle_log_ls",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "log.ls": {
+          "args": [],
+          "desc": "List all exploration Logs",
+          "group": "log"
+        }
+      }
+    },
+    "log.checkpoint": {
+      "fn": "lib.akasha.concepts.horizon_ops:handle_log_checkpoint",
+      "stage": "post",
+      "access": "record",
+      "cli": {
+        "log.cp": {
+          "args": [
+            "note"
+          ],
+          "desc": "Record a session checkpoint",
+          "group": "log"
+        }
+      }
+    },
+    "log.annotate": {
+      "fn": "lib.akasha.concepts.horizon_ops:handle_log_annotate",
+      "stage": "post",
+      "access": "record",
+      "cli": {
+        "log.ann": {
+          "args": [
+            "text"
+          ],
+          "desc": "Annotate the last checkpoint",
+          "group": "log"
+        }
+      }
+    },
+    "log.replay": {
+      "fn": "lib.akasha.concepts.horizon_ops:handle_log_replay",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "log.replay": {
+          "args": [],
+          "desc": "Replay all checkpoints",
+          "group": "log"
+        }
+      }
+    },
+    "log.read": {
+      "fn": "lib.akasha.concepts.horizon_ops:handle_log_read",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "log.read": {
+          "args": [],
+          "desc": "Read the active log",
+          "group": "log"
+        }
+      }
+    },
+    "log.rm": {
+      "fn": "lib.akasha.concepts.horizon_ops:handle_log_rm",
+      "stage": "post",
+      "access": "record",
+      "cli": {
+        "log.rm": {
+          "args": [],
+          "desc": "Delete the active log",
+          "group": "log"
+        }
+      }
+    },
+    "wb.new": {
+      "fn": "lib.akasha.concepts.horizon_ops:handle_wb_new",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "wb.new": {
+          "args": [
+            "name"
+          ],
+          "desc": "Create a new Whiteboard",
+          "group": "whiteboard"
+        }
+      }
+    },
+    "wb.pin": {
+      "fn": "lib.akasha.concepts.horizon_ops:handle_wb_pin",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "wb.pin": {
+          "args": [
+            "concept"
+          ],
+          "desc": "Pin a concept to active Whiteboard",
+          "group": "whiteboard"
+        }
+      }
+    },
+    "wb.unpin": {
+      "fn": "lib.akasha.concepts.horizon_ops:handle_wb_unpin",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "wb.unpin": {
+          "args": [
+            "concept"
+          ],
+          "desc": "Unpin a concept",
+          "group": "whiteboard"
+        }
+      }
+    },
+    "wb.focus": {
+      "fn": "lib.akasha.concepts.horizon_ops:handle_wb_focus",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "wb.focus": {
+          "args": [
+            "name"
+          ],
+          "desc": "Switch active Whiteboard",
+          "group": "whiteboard"
+        }
+      }
+    },
+    "wb.ls": {
+      "fn": "lib.akasha.concepts.horizon_ops:handle_wb_ls",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "wb.ls": {
+          "args": [],
+          "desc": "List all Whiteboards",
+          "group": "whiteboard"
+        }
+      }
+    },
+    "wb.show": {
+      "fn": "lib.akasha.concepts.horizon_ops:handle_wb_show",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "wb.show": {
+          "args": [],
+          "desc": "Show active Whiteboard state",
+          "group": "whiteboard"
+        }
+      }
+    },
+    "wb.rm": {
+      "fn": "lib.akasha.concepts.horizon_ops:handle_wb_rm",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "wb.rm": {
+          "args": [
+            "name"
+          ],
+          "desc": "Remove a Whiteboard",
+          "group": "whiteboard"
+        }
+      }
+    },
+    "session.focus": {
+      "fn": "lib.akasha.concepts.horizon_ops:handle_focus",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "focus": {
+          "args": [],
+          "desc": "Set display focus (@me @group:name @ns:prefix | @all)"
+        }
+      }
+    },
+    "sys.scope.set": {
+      "fn": "lib.akasha.concepts.horizon_ops:handle_scope_set",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "scope": {
+          "args": [],
+          "desc": "Get/set session scope state (scope [get|reset|key=val ...])"
+        }
+      }
+    },
+    "sys.scope.get": {
+      "fn": "lib.akasha.concepts.horizon_ops:handle_scope_get",
+      "stage": "post",
+      "access": "read"
+    },
+    "sys.scope.reset": {
+      "fn": "lib.akasha.concepts.horizon_ops:handle_scope_reset",
+      "stage": "post",
+      "access": "read"
+    },
+    "horizon.add": {
+      "fn": "lib.akasha.concepts.horizon_ops:handle_horizon_add",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "horizon.add": {
+          "args": [
+            "set",
+            "mode"
+          ],
+          "desc": "Add a set/concept to the session horizon (self-directed attention): horizon.add set=<name-or-concept> [mode=soft|lens]"
+        }
+      }
+    },
+    "horizon.rm": {
+      "fn": "lib.akasha.concepts.horizon_ops:handle_horizon_rm",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "horizon.rm": {
+          "args": [
+            "set"
+          ],
+          "desc": "Remove a set from the session horizon: horizon.rm set=<name>"
+        }
+      }
+    },
+    "horizon.clear": {
+      "fn": "lib.akasha.concepts.horizon_ops:handle_horizon_clear",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "horizon.clear": {
+          "args": [],
+          "desc": "Clear the whole session horizon"
+        }
+      }
+    },
+    "horizon.mode": {
+      "fn": "lib.akasha.concepts.horizon_ops:handle_horizon_mode",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "horizon.mode": {
+          "args": [
+            "set",
+            "mode"
+          ],
+          "desc": "Change a horizon entry's mode: horizon.mode set=<name> mode=soft|lens"
+        }
+      }
+    },
+    "horizon.ls": {
+      "fn": "lib.akasha.concepts.horizon_ops:handle_horizon_ls",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "horizon.ls": {
+          "args": [],
+          "desc": "List the session horizon ({set, mode, granted})"
+        }
+      }
+    },
+    "sys.session.state": {
+      "fn": "lib.akasha.concepts.horizon_ops:handle_session_state",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "sess.state": {
+          "args": [],
+          "desc": "The normalized semantic session: identity / granted / self_directed (all client kinds, one shape)"
+        }
+      }
+    },
+    "macro.def": {
+      "fn": "lib.akasha.concepts.macro_ops:handle_macro_def",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "macro.def": {
+          "args": [
+            "name",
+            "params",
+            "script"
+          ],
+          "desc": "Define a saved parameterized CSL macro: macro.def name= params=\"a=1,b=\" script=…"
+        }
+      }
+    },
+    "macro.run": {
+      "fn": "lib.akasha.concepts.macro_ops:handle_macro_run",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "macro.run": {
+          "args": [
+            "name"
+          ],
+          "desc": "Run a macro (extra key=vals bind its params): macro.run <name> [param=…] [as=inline]"
+        }
+      }
+    },
+    "macro.ls": {
+      "fn": "lib.akasha.concepts.macro_ops:handle_macro_ls",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "macro.ls": {
+          "args": [],
+          "desc": "List saved macros"
+        }
+      }
+    },
+    "macro.get": {
+      "fn": "lib.akasha.concepts.macro_ops:handle_macro_get",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "macro.get": {
+          "args": [
+            "name"
+          ],
+          "desc": "Show a macro's script + params"
+        }
+      }
+    },
+    "macro.rm": {
+      "fn": "lib.akasha.concepts.macro_ops:handle_macro_rm",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "macro.rm": {
+          "args": [
+            "name"
+          ],
+          "desc": "Remove a macro"
+        }
+      }
+    },
+    "locale.get": {
+      "fn": "lib.akasha.concepts.csl_ops:handle_locale_get",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "locale": {
+          "args": [],
+          "desc": "Show / set priority locale  (locale  |  locale set <primary> [<l1>,<l2>,...])"
+        }
+      }
+    },
+    "locale.set": {
+      "fn": "lib.akasha.concepts.csl_ops:handle_locale_set",
+      "stage": "pre",
+      "access": "read"
+    },
+    "csl": {
+      "fn": "lib.akasha.concepts.csl_ops:handle_csl_run",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "csl": {
+          "args": [
+            "script"
+          ],
+          "desc": "Check + transpile + execute CSL (inline text or .csl file path)"
+        }
+      }
+    },
+    "csl.check": {
+      "fn": "lib.akasha.concepts.csl_ops:handle_csl_check",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "csl.check": {
+          "args": [
+            "script"
+          ],
+          "desc": "Validate CSL syntax and semantics"
+        }
+      }
+    },
+    "csl.build": {
+      "fn": "lib.akasha.concepts.csl_ops:handle_csl_build",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "csl.build": {
+          "args": [
+            "script"
+          ],
+          "desc": "Transpile CSL to .ak (optional: out=<path>)"
+        }
+      }
+    },
+    "csl.run": {
+      "fn": "lib.akasha.concepts.csl_ops:handle_csl_run",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "csl.run": {
+          "args": [
+            "script"
+          ],
+          "desc": "Check, transpile and execute CSL as Harmonia job"
+        }
+      }
+    },
+    "sys.cross.query": {
+      "fn": "lib.akasha.concepts.cross_ops:handle_cross_query",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "cross": {
+          "args": [],
+          "desc": "Cross-concept atom intersection (Space-aware)"
+        }
+      }
+    },
+    "sys.cross.axes": {
+      "fn": "lib.akasha.concepts.cross_ops:handle_cross_axes",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "cross.axes": {
+          "args": [],
+          "desc": "Axes available across concepts"
+        }
+      }
+    },
+    "sys.cross.atom": {
+      "fn": "lib.akasha.concepts.cross_ops:handle_cross_atom",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "cross.atom": {
+          "args": [
+            "atom"
+          ],
+          "desc": "Find concept atoms referencing an ontology atom"
+        }
+      }
+    },
+    "jataka.dream": {
+      "fn": "lib.akasha.concepts.dream_ops:handle_dream",
+      "stage": "post",
+      "access": "record",
+      "cli": {
+        "dream": {
+          "args": [
+            "id",
+            "boldness",
+            "reach",
+            "again"
+          ],
+          "desc": "Incubate hidden affinity bridges (async 'sleep on it'). dream id=<atom> → dreaming; call again → ready + candidates. boldness=/reach= tune; again=yes re-dreams."
+        }
+      }
+    },
+    "dream": {
+      "fn": "lib.akasha.concepts.dream_ops:handle_dream",
+      "stage": "post",
+      "access": "record"
+    },
+    "dream.confirm": {
+      "fn": "lib.akasha.concepts.dream_ops:handle_dream_confirm",
+      "stage": "post",
+      "access": "record",
+      "cli": {
+        "dream.confirm": {
+          "args": [
+            "dst",
+            "src"
+          ],
+          "desc": "Approve a staged dream bridge into a real link: dream.confirm dst=<atom> [src=<focus>]"
+        }
+      }
+    },
+    "dream.approve": {
+      "fn": "lib.akasha.concepts.dream_ops:handle_dream_confirm",
+      "stage": "post",
+      "access": "record"
+    },
+    "dream.forget": {
+      "fn": "lib.akasha.concepts.dream_ops:handle_dream_forget",
+      "stage": "post",
+      "access": "record",
+      "cli": {
+        "dream.forget": {
+          "args": [
+            "dst",
+            "src"
+          ],
+          "desc": "Drop staged dream bridges: dream.forget [dst=<atom>] [all=yes]"
+        }
+      }
+    },
+    "dream.reject": {
+      "fn": "lib.akasha.concepts.dream_ops:handle_dream_forget",
+      "stage": "post",
+      "access": "record"
+    },
+    "nebula": {
+      "fn": "lib.akasha.concepts.nebula_ops:handle_nebula",
+      "stage": "post",
+      "access": "record",
+      "cli": {
+        "nebula": {
+          "args": [
+            "ns",
+            "limit",
+            "min_size",
+            "threshold",
+            "again"
+          ],
+          "desc": "Survey accumulated atoms for regions becoming a concept model (async). nebula → surveying; call again → ready + candidate regions with proposed salient-rels. again=yes re-surveys."
+        }
+      }
+    },
+    "nebula.confirm": {
+      "fn": "lib.akasha.concepts.nebula_ops:handle_nebula_confirm",
+      "stage": "post",
+      "access": "record",
+      "cli": {
+        "nebula.confirm": {
+          "args": [
+            "id",
+            "name"
+          ],
+          "desc": "Approve a proposed region → plant its set + salient-rels and emit a concept-model skeleton: nebula.confirm id=<neb:…> name=<concept>"
+        }
+      }
+    },
+    "nebula.approve": {
+      "fn": "lib.akasha.concepts.nebula_ops:handle_nebula_confirm",
+      "stage": "post",
+      "access": "record"
+    },
+    "nebula.forget": {
+      "fn": "lib.akasha.concepts.nebula_ops:handle_nebula_forget",
+      "stage": "post",
+      "access": "record",
+      "cli": {
+        "nebula.forget": {
+          "args": [
+            "id"
+          ],
+          "desc": "Drop a proposed region (or all): nebula.forget [id=<neb:…>] [all=yes]"
+        }
+      }
+    },
+    "nebula.reject": {
+      "fn": "lib.akasha.concepts.nebula_ops:handle_nebula_forget",
+      "stage": "post",
+      "access": "record"
+    },
+    "contexa.fetch": {
+      "fn": "lib.akasha.concepts.pipeline_ops:handle_contexa_fetch",
+      "stage": "post",
+      "access": "record",
+      "cli": {
+        "fetch": {
+          "args": [
+            "query"
+          ],
+          "desc": "Fetch from web / Wikipedia"
+        }
+      }
+    },
+    "fetch": {
+      "fn": "lib.akasha.concepts.pipeline_ops:handle_contexa_fetch",
+      "stage": "post",
+      "access": "record"
+    },
+    "contexa.ingest": {
+      "fn": "lib.akasha.concepts.pipeline_ops:handle_contexa_ingest",
+      "stage": "post",
+      "access": "record"
+    },
+    "survey.ingest": {
+      "fn": "lib.akasha.concepts.pipeline_ops:handle_contexa_ingest",
+      "stage": "post",
+      "access": "record"
+    },
+    "jataka.present": {
+      "fn": "lib.akasha.concepts.pipeline_ops:handle_jataka_present",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "present": {
+          "args": [
+            "focus",
+            "as"
+          ],
+          "desc": "Narrate/report a selection: present (focus=|survey=|set=) as=table|scatter|narrative"
+        }
+      },
+      "dive_bearing": true
+    },
+    "present": {
+      "fn": "lib.akasha.concepts.pipeline_ops:handle_jataka_present",
+      "stage": "post",
+      "access": "read"
+    },
+    "curation.project": {
+      "fn": "lib.akasha.concepts.pipeline_ops:handle_curation_project",
+      "stage": "post",
+      "access": "record",
+      "cli": {
+        "cur.project": {
+          "args": [
+            "id",
+            "as"
+          ],
+          "desc": "Project a curation into a private presentation deck: cur.project id=<cur> as=presentation [title=]"
+        }
+      }
+    },
+    "cur.project": {
+      "fn": "lib.akasha.concepts.pipeline_ops:handle_curation_project",
+      "stage": "post",
+      "access": "record"
+    },
+    "pres.export": {
+      "fn": "lib.akasha.concepts.pipeline_ops:handle_pres_export",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "pr.export": {
+          "args": [
+            "id",
+            "as"
+          ],
+          "desc": "Export a presentation as a self-contained artifact: pr.export id=<pres> as=scroll|kamishibai [inline=true|publish=<slug>]",
+          "group": "presentation"
+        }
+      }
+    },
+    "presentation.export": {
+      "fn": "lib.akasha.concepts.pipeline_ops:handle_pres_export",
+      "stage": "post",
+      "access": "read"
+    },
+    "image.profile": {
+      "fn": "lib.akasha.concepts.pipeline_ops:handle_image_profile",
+      "stage": "post",
+      "access": "record"
+    },
+    "img.profile": {
+      "fn": "lib.akasha.concepts.pipeline_ops:handle_image_profile",
+      "stage": "post",
+      "access": "record"
+    },
+    "vision.classify": {
+      "fn": "lib.akasha.concepts.pipeline_ops:handle_image_profile",
+      "stage": "post",
+      "access": "record"
+    },
+    "io.import": {
+      "fn": "lib.akasha.concepts.pipeline_ops:handle_io_import",
+      "stage": "post",
+      "access": "record",
+      "cli": {
+        "io.import": {
+          "args": [
+            "path"
+          ],
+          "desc": "Import a file/upload into the graph: io.import path= | text= [format=] [table=]"
+        }
+      }
+    },
+    "file.import": {
+      "fn": "lib.akasha.concepts.pipeline_ops:handle_io_import",
+      "stage": "post",
+      "access": "record"
+    },
+    "io.export": {
+      "fn": "lib.akasha.concepts.pipeline_ops:handle_io_export",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "io.export": {
+          "args": [
+            "table"
+          ],
+          "desc": "Export a table/set to a file or inline: io.export (table=|set=) path= | inline=true"
+        }
+      }
+    },
+    "file.export": {
+      "fn": "lib.akasha.concepts.pipeline_ops:handle_io_export",
+      "stage": "post",
+      "access": "read"
+    },
+    "io.index": {
+      "fn": "lib.akasha.concepts.pipeline_ops:handle_io_index",
+      "stage": "post",
+      "access": "record",
+      "cli": {
+        "io.index": {
+          "args": [
+            "dir"
+          ],
+          "desc": "Index every supported file under a permitted dir: io.index dir= [exts=] [limit=]"
+        }
+      }
+    },
+    "dir.index": {
+      "fn": "lib.akasha.concepts.pipeline_ops:handle_io_index",
+      "stage": "post",
+      "access": "record"
+    },
+    "io.project": {
+      "fn": "lib.akasha.concepts.pipeline_ops:handle_io_project",
+      "stage": "post",
+      "access": "record",
+      "cli": {
+        "io.project": {
+          "args": [
+            "src"
+          ],
+          "desc": "Project an in-graph source into a concept model (lens): io.project src= [model=] [into=]"
+        }
+      }
+    },
+    "io.cast": {
+      "fn": "lib.akasha.concepts.pipeline_ops:handle_io_project",
+      "stage": "post",
+      "access": "record"
+    },
+    "io.ingest": {
+      "fn": "lib.akasha.concepts.pipeline_ops:handle_io_ingest",
+      "stage": "post",
+      "access": "record",
+      "cli": {
+        "io.ingest": {
+          "args": [
+            "model"
+          ],
+          "desc": "General raw-records import into ANY model: io.ingest model=<concept> (path=|text=|records=) [into=] [map=]"
+        }
+      }
+    },
+    "io.allow": {
+      "fn": "lib.akasha.concepts.pipeline_ops:handle_io_allow",
+      "stage": "post",
+      "access": "record",
+      "cli": {
+        "io.allow": {
+          "args": [
+            "dir"
+          ],
+          "desc": "Permit a local directory for io.import/index/export/ingest"
+        }
+      }
+    },
+    "io.permit": {
+      "fn": "lib.akasha.concepts.pipeline_ops:handle_io_allow",
+      "stage": "post",
+      "access": "record"
+    },
+    "web.search": {
+      "fn": "lib.akasha.concepts.pipeline_ops:handle_web_search",
+      "stage": "post",
+      "access": "read"
+    },
+    "kernel.associate": {
+      "fn": "lib.akasha.concepts.associate_ops:handle_associate",
+      "stage": "post",
+      "access": "record",
+      "cli": {
+        "associate": {
+          "args": [
+            "id",
+            "axis",
+            "fill"
+          ],
+          "desc": "Gap detection: find missing semantic links for an atom (one level, no inference)"
+        },
+        "assoc": {
+          "args": [
+            "id",
+            "axis",
+            "fill"
+          ],
+          "desc": "Gap detection (alias: associate)"
+        }
+      }
+    },
+    "associate.unwritten": {
+      "fn": "lib.akasha.concepts.associate_ops:handle_associate_unwritten",
+      "stage": "post",
+      "access": "read"
+    },
+    "emotion.profile": {
+      "fn": "lib.akasha.concepts.associate_ops:handle_emotion_profile",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "emotion.profile": {
+          "args": [
+            "id"
+          ],
+          "desc": "Emotion vector of an atom (the emotions it links to)"
+        },
+        "emo.prof": {
+          "args": [
+            "id"
+          ],
+          "desc": "Emotion vector of an atom (alias of emotion.profile)"
+        }
+      }
+    },
+    "emo.vector": {
+      "fn": "lib.akasha.concepts.associate_ops:handle_emotion_profile",
+      "stage": "post",
+      "access": "read"
+    },
+    "emo.profile": {
+      "fn": "lib.akasha.concepts.associate_ops:handle_emotion_profile",
+      "stage": "post",
+      "access": "read"
+    },
+    "emotion.find": {
+      "fn": "lib.akasha.concepts.associate_ops:handle_emotion_find",
+      "stage": "post",
+      "access": "read",
+      "cli": {
+        "emotion.find": {
+          "args": [
+            "emo",
+            "limit"
+          ],
+          "desc": "Atoms that FEEL an emotion: emotion.find emo=awe (reverse of emotion.profile)"
+        },
+        "emo.find": {
+          "args": [
+            "emo",
+            "limit"
+          ],
+          "desc": "Find atoms by emotion (alias of emotion.find)"
+        }
+      }
+    },
+    "emo.find": {
+      "fn": "lib.akasha.concepts.associate_ops:handle_emotion_find",
+      "stage": "post",
+      "access": "read"
+    },
+    "dont.create": {
+      "fn": "lib.akasha.concepts.dont_ops:handle_dont_create",
+      "stage": "post",
+      "access": "record"
+    },
+    "dont.add": {
+      "fn": "lib.akasha.concepts.dont_ops:handle_dont_add",
+      "stage": "post",
+      "access": "record"
+    },
+    "dont.send": {
+      "fn": "lib.akasha.concepts.dont_ops:handle_dont_send",
+      "stage": "post",
+      "access": "record"
+    },
+    "dont.ls": {
+      "fn": "lib.akasha.concepts.dont_ops:handle_dont_ls",
+      "stage": "post",
+      "access": "read"
+    },
+    "dont.open": {
+      "fn": "lib.akasha.concepts.dont_ops:handle_dont_open",
+      "stage": "post",
+      "access": "read"
+    },
+    "ref.set": {
+      "fn": "lib.akasha.concepts._universal:handle_ref_set",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "ref.set": {
+          "args": [
+            "dim",
+            "target"
+          ],
+          "desc": "Set typed context variable: ref.set who <atom>"
+        }
+      }
+    },
+    "ref.get": {
+      "fn": "lib.akasha.concepts._universal:handle_ref_get",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "ref.get": {
+          "args": [
+            "dim"
+          ],
+          "desc": "Get typed context variable(s): ref.get [dim]"
+        }
+      }
+    },
+    "dream.run": {
+      "fn": "lib.akasha.concepts.dream_ops:handle_dream_run",
+      "stage": "post",
+      "access": "record"
+    },
+    "nebula.run": {
+      "fn": "lib.akasha.concepts.nebula_ops:handle_nebula_run",
+      "stage": "post",
+      "access": "record"
+    },
+    "horizon.enclose": {
+      "fn": "lib.akasha.concepts.horizon_ops:handle_horizon_enclose",
+      "stage": "post",
+      "access": "record",
+      "cli": {
+        "horizon.enclose": {
+          "args": [
+            "name"
+          ],
+          "desc": "Persist the intersection of the current lens horizon entries (>=2) as a named set with provenance (write-gated): horizon.enclose name=<set>"
+        }
+      }
+    },
+    "cast.diagnose": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "cs.dx": {
+          "args": [],
+          "desc": "Diagnose pressure and arc-readiness of active Cast"
+        }
+      }
+    },
+    "cast.feed": {
+      "access": "read",
+      "router": "concept_registry"
+    },
+    "cast.map": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "cs.map": {
+          "args": [],
+          "desc": "Show full structure of active Cast"
+        }
+      }
+    },
+    "cast.open": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "cs.open": {
+          "args": [
+            "cast_id"
+          ],
+          "desc": "Open an existing Cast"
+        }
+      }
+    },
+    "cast.react": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "cs.react": {
+          "args": [
+            "event"
+          ],
+          "desc": "Simulate Cast's reaction to an event"
+        }
+      }
+    },
+    "cast.rm": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cs.rm": {
+          "args": [],
+          "desc": "Delete the active Cast"
+        }
+      }
+    },
+    "cast.soc": {
+      "access": "read",
+      "router": "concept_registry"
+    },
+    "society.broadcast": {
+      "access": "read",
+      "router": "concept_registry",
+      "fn": null
+    },
+    "society.broadcast.live": {
+      "access": "read",
+      "router": "concept_registry",
+      "fn": null
+    },
+    "society.feed": {
+      "access": "read",
+      "router": "concept_registry"
+    },
+    "society.open": {
+      "access": "read",
+      "router": "concept_registry"
+    },
+    "society.rm": {
+      "access": "record",
+      "router": "concept_registry"
+    },
+    "society.roster": {
+      "access": "read",
+      "router": "concept_registry"
+    },
+    "society.turn": {
+      "access": "read",
+      "router": "concept_registry"
+    },
+    "cast.ability.set": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cs.able": {
+          "args": [
+            "vector"
+          ],
+          "desc": "Set ability vector"
+        }
+      }
+    },
+    "cast.adorn.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cs.adorn": {
+          "args": [
+            "item"
+          ],
+          "desc": "Add an adornment item"
+        }
+      }
+    },
+    "cast.appear.set": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cs.look": {
+          "args": [
+            "vector"
+          ],
+          "desc": "Set appearance vector"
+        }
+      }
+    },
+    "cast.arc.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cs.arc": {
+          "args": [
+            "arc_type",
+            "initial_state",
+            "conflict_state"
+          ],
+          "desc": "Define a character arc (growth/fall/flat/corruption/healing)"
+        }
+      }
+    },
+    "cast.bond.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cs.bond": {
+          "args": [
+            "target_id",
+            "types",
+            "trust"
+          ],
+          "desc": "Create a relational bond to another cast atom"
+        }
+      }
+    },
+    "cast.bond.update": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cs.bond.up": {
+          "args": [
+            "bond_id",
+            "delta"
+          ],
+          "desc": "Append a delta event to an existing bond"
+        }
+      }
+    },
+    "cast.calling.set": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cs.calling": {
+          "args": [
+            "mission"
+          ],
+          "desc": "Record the character's calling/mission"
+        }
+      }
+    },
+    "cast.clone": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cs.clone": {
+          "args": [
+            "name"
+          ],
+          "desc": "Clone active Cast to a new named cast"
+        }
+      }
+    },
+    "cast.conflict.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cs.conflict": {
+          "args": [
+            "a",
+            "b",
+            "tension"
+          ],
+          "desc": "Record a tension between two values/drives"
+        }
+      }
+    },
+    "cast.emotion.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cs.feel": {
+          "args": [
+            "verb",
+            "obj",
+            "intensity"
+          ],
+          "desc": "Add an emotion (verb + object + intensity)"
+        }
+      }
+    },
+    "cast.fate.set": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cs.fate": {
+          "args": [
+            "event",
+            "certainty"
+          ],
+          "desc": "Record a destined event"
+        }
+      }
+    },
+    "cast.identity.set": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cs.id": {
+          "args": [
+            "text"
+          ],
+          "desc": "Set identity text on active Cast"
+        }
+      }
+    },
+    "cast.ls": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "cs.ls": {
+          "args": [],
+          "desc": "List all Cast records"
+        }
+      }
+    },
+    "cast.mask.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cs.mask": {
+          "args": [
+            "presentation",
+            "hides"
+          ],
+          "desc": "Add a social mask"
+        }
+      }
+    },
+    "cast.myth.set": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cs.myth": {
+          "args": [
+            "archetype",
+            "symbol"
+          ],
+          "desc": "Attach a mythic archetype and symbol"
+        }
+      }
+    },
+    "cast.new": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cs.new": {
+          "args": [
+            "name",
+            "identity"
+          ],
+          "desc": "Create a new Cast character"
+        }
+      }
+    },
+    "cast.output.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cs.output": {
+          "args": [
+            "modality",
+            "content"
+          ],
+          "desc": "Record an observable output"
+        }
+      }
+    },
+    "cast.policy.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cs.policy": {
+          "args": [
+            "logic"
+          ],
+          "desc": "Add a behavioural policy"
+        }
+      }
+    },
+    "cast.pos.set": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cs.pos": {
+          "args": [
+            "position"
+          ],
+          "desc": "Set social position"
+        }
+      }
+    },
+    "cast.possess.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cs.own": {
+          "args": [
+            "item"
+          ],
+          "desc": "Add a possession"
+        }
+      }
+    },
+    "cast.publish": {
+      "access": "record",
+      "router": "concept_registry"
+    },
+    "cast.role.set": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cs.role": {
+          "args": [
+            "role"
+          ],
+          "desc": "Assign a narrative role (e.g. Proppian function)"
+        }
+      }
+    },
+    "cast.rule.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cs.rule": {
+          "args": [
+            "text",
+            "strength"
+          ],
+          "desc": "Add a hard behavioural rule"
+        }
+      }
+    },
+    "cast.say": {
+      "access": "say",
+      "router": "concept_registry"
+    },
+    "cast.secret.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cs.secret": {
+          "args": [
+            "content",
+            "protection"
+          ],
+          "desc": "Add a secret with protection score"
+        }
+      }
+    },
+    "cast.shadow.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cs.shadow": {
+          "args": [
+            "kind",
+            "content"
+          ],
+          "desc": "Add a shadow (suppressed/projected/disowned) element"
+        }
+      }
+    },
+    "cast.skill.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cs.skill": {
+          "args": [
+            "name",
+            "level"
+          ],
+          "desc": "Add a skill with level (0–1)"
+        }
+      }
+    },
+    "cast.state.set": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cs.state": {
+          "args": [
+            "state"
+          ],
+          "desc": "Record current runtime state"
+        }
+      }
+    },
+    "cast.trait.set": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cs.trait": {
+          "args": [
+            "trait"
+          ],
+          "desc": "Set trait vector (energy/process/response/trust/flexibility)"
+        }
+      }
+    },
+    "cast.wound.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cs.wound": {
+          "args": [
+            "event",
+            "depth"
+          ],
+          "desc": "Record a formative wound event"
+        }
+      }
+    },
+    "lens.cast": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "lens.cast": {
+          "args": [
+            "signpost",
+            "into",
+            "model"
+          ],
+          "desc": "Project scanned nodes into chosen concept model: lens.cast signpost=1 [into=<name>]"
+        }
+      }
+    },
+    "lens.scan": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "lens": {
+          "args": [
+            "src",
+            "follow",
+            "depth",
+            "within"
+          ],
+          "desc": "Scan a set/tree and list compatible concept model targets: lens src=<set|key> [follow=<rel>] [depth=2] [within=<set>]"
+        }
+      }
+    },
+    "operator.clash": {
+      "access": "record",
+      "router": "concept_registry"
+    },
+    "society.broadcast.relay": {
+      "access": "publish",
+      "router": "concept_registry"
+    },
+    "society.decider": {
+      "access": "record",
+      "router": "concept_registry"
+    },
+    "society.guest": {
+      "access": "provision",
+      "router": "concept_registry"
+    },
+    "society.info": {
+      "access": "read",
+      "router": "concept_registry"
+    },
+    "society.join": {
+      "access": "record",
+      "router": "concept_registry"
+    },
+    "society.ls": {
+      "access": "read",
+      "router": "concept_registry"
+    },
+    "society.new": {
+      "access": "provision",
+      "router": "concept_registry"
+    },
+    "society.public": {
+      "access": "provision",
+      "router": "concept_registry"
+    },
+    "society.say": {
+      "access": "say",
+      "router": "concept_registry"
+    },
+    "society.world": {
+      "access": "record",
+      "router": "concept_registry"
+    },
+    "society.feed.read": {
+      "access": "read",
+      "router": "concept_registry",
+      "fn": null
+    },
+    "lens.compare": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "lens.compare": {
+          "args": [
+            "a",
+            "b",
+            "key",
+            "field",
+            "truth",
+            "result"
+          ],
+          "desc": "Join two observation sets by item, compare labels (before/after): lens.compare a=<set> b=<set> [key=item] [field=label] [truth=<field>] [result=<atom>]"
+        }
+      }
+    }
+  },
+  "schedules": {
+    "semantic_learn": {
+      "fn": "lib.akasha.concepts.semantic_ops:schedule_semantic_learn",
+      "phase": "post_load",
+      "order": 20,
+      "when": "every_boot"
+    },
+    "node_learn": {
+      "fn": "lib.akasha.concepts.semantic_ops:schedule_node_learn",
+      "phase": "post_load",
+      "order": 30,
+      "when": "every_boot"
+    },
+    "macro_load": {
+      "fn": "lib.akasha.concepts.macro_ops:schedule_macro_load",
+      "phase": "writer",
+      "order": 100,
+      "when": "new_build"
+    },
+    "pulse_compact": {
+      "fn": "lib.akasha.concepts.schedules:schedule_pulse_compact",
+      "phase": "writer",
+      "order": 20,
+      "when": "every_boot"
+    },
+    "validity_expiry": {
+      "fn": "lib.akasha.concepts.schedules:schedule_validity_expiry",
+      "phase": "writer",
+      "order": 60,
+      "when": "every_boot"
+    },
+    "semcache_featured": {
+      "fn": "lib.akasha.concepts.schedules:schedule_semcache_featured",
+      "phase": "post_load",
+      "order": 160,
+      "when": "new_build"
+    }
+  },
+  "hooks": {
+    "cache_replan_error": "lib.akasha.concepts.cache:record_replan_error",
+    "semcache_counters": "lib.akasha.concepts.cache:semcache_counters",
+    "pulse_counters": "lib.akasha.concepts.pulse:emit_counters",
+    "pulse_note_dispatch": "lib.akasha.concepts.pulse:note_dispatch"
+  },
+  "routers": {
+    "concept_registry": "lib.akasha.concepts.registry:build_active"
+  },
+  "binds": [
+    "lib.akasha.concepts.workflow:set_active_kernel",
+    "lib.akasha.concepts.hydrate:set_active_kernel"
+  ],
+  "cli_groups": {
+    "log": "Exploration log — checkpoints, annotations, and replay",
+    "whiteboard": "Concept pinboard for ideas under active exploration"
+  },
+  "code_paths": [
+    "lib/akasha/concepts/"
+  ]
+}

@@ -1,0 +1,41 @@
+{
+ "title": "Telemetry feed",
+ "admits": {
+  "guest": "read"
+ },
+ "space": {
+  "public": true,
+  "open_guest": false
+ },
+ "duty": "wb:duty:best_effort",
+ "trigger": {
+  "boot": true,
+  "then": "every:300s"
+ },
+ "budget": {
+  "per_day": 300
+ },
+ "moderator": {
+  "chairman": "Chairman",
+  "scribe": "Scribe",
+  "on_failure": {
+   "retries": 1,
+   "breaker": 10
+  }
+ },
+ "effect": "record",
+ "gate_facts": [],
+ "roles_min": 0,
+ "output": {
+  "feed": false,
+  "room": true
+ },
+ "retention": {
+  "feed": "0 messages",
+  "observations": "72 hours"
+ },
+ "lock": [
+  "effect",
+  "admits"
+ ]
+}

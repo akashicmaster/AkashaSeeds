@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Oriental Archives</title>
+<meta name="description" content="The Oriental Archives — a special reading room in the Akashic Archives gathering the wisdom of the East. First hall: the lineage of Eastern medicine, opening with Ayurveda, drawn from the Akasha knowledge graph.">
+<style>
+    /* A deliberate dark-lacquer aesthetic — a special room with its own identity. Colours painted
+       explicitly (not theme-dependent): ink & indigo ground, gold hairlines, vermilion seals. */
+    :root{
+        --ink:#0b0910; --lacquer:#141019; --panel:#1c1626; --panel-2:#241c30;
+        --paper:#efe7d3; --gold:#c9a24a; --gold-2:#e3c878; --gold-soft:rgba(201,162,74,.30);
+        --vermilion:#c0402f; --vermilion-2:#d9614c; --jade:#4e8f6e; --indigo:#3b4a86;
+        --text:#ece3d0; --muted:#a99e86; --faint:#7d745f; --line:rgba(201,162,74,.26);
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    html,body{min-height:100%}
+    body{
+        background:
+          radial-gradient(1200px 620px at 50% -8%, rgba(201,162,74,.10), transparent 60%),
+          radial-gradient(900px 500px at 50% 108%, rgba(192,64,47,.08), transparent 60%),
+          var(--ink);
+        color:var(--text);font-family:'Songti SC','Noto Serif JP','Yu Mincho',Georgia,'Times New Roman',serif;
+        min-height:100vh;min-height:100dvh;-webkit-text-size-adjust:100%;line-height:1.6;overflow-x:hidden;
+    }
+    a{color:inherit;text-decoration:none}
+    .mono{font-family:'Courier New',ui-monospace,monospace}
+    /* faint woven-cloud texture */
+    body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.05;z-index:0;
+        background-image:repeating-linear-gradient(45deg,rgba(201,162,74,.5) 0 1px,transparent 1px 22px),
+                         repeating-linear-gradient(-45deg,rgba(201,162,74,.5) 0 1px,transparent 1px 22px);}
+    .wrap{position:relative;z-index:1;max-width:1000px;margin:0 auto;padding:20px max(18px,env(safe-area-inset-left)) 60px}
+
+    .top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:6px 0 16px}
+    .crumb{font-family:'Courier New',monospace;font-size:.58rem;letter-spacing:2.5px;text-transform:uppercase;
+        color:var(--muted);border:1px solid var(--line);padding:6px 13px;border-radius:2px;transition:.2s}
+    .crumb:hover{color:var(--gold-2);border-color:var(--gold)}
+
+    /* ── masthead: an ensō + a red seal ── */
+    .mast{display:flex;align-items:center;gap:22px;padding:14px 0 8px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+    .enso{flex:0 0 auto}
+    .mast .t h1{font-size:clamp(1.5rem,4vw,2.3rem);font-weight:600;letter-spacing:.06em;color:var(--paper)}
+    .mast .t .jp{display:block;font-size:.9rem;color:var(--gold-2);letter-spacing:.35em;margin-top:2px}
+    .mast .t .sub{font-size:.72rem;color:var(--muted);letter-spacing:.06em;margin-top:8px;max-width:52ch}
+    .seal{margin-left:auto;flex:0 0 auto;width:58px;height:58px;border:2px solid var(--vermilion);border-radius:6px;
+        display:flex;align-items:center;justify-content:center;color:var(--vermilion-2);font-size:1.5rem;
+        transform:rotate(-4deg);box-shadow:0 0 0 3px rgba(192,64,47,.10)}
+    @media (max-width:620px){.seal{display:none}}
+
+    .lead{font-size:.96rem;color:var(--text);margin:22px 2px 6px;max-width:60ch}
+    .lead .em{color:var(--gold-2)}
+    .rule{height:1px;background:linear-gradient(90deg,transparent,var(--gold-soft) 20%,var(--gold-soft) 80%,transparent);margin:20px 0}
+
+    .sect-h{display:flex;align-items:baseline;gap:14px;margin:26px 2px 14px}
+    .sect-h .cn{font-size:1.25rem;color:var(--paper);letter-spacing:.14em}
+    .sect-h .en{font-size:.66rem;letter-spacing:2.5px;text-transform:uppercase;color:var(--gold)}
+    .sect-h .en::before{content:"";display:inline-block;width:26px;height:1px;background:var(--gold);vertical-align:middle;margin-right:8px;opacity:.7}
+
+    /* ── category cards (entrance) ── */
+    .cats{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-top:6px}
+    .cat{position:relative;display:block;border:1px solid var(--line);border-radius:3px;background:
+        linear-gradient(180deg,var(--panel-2),var(--panel));padding:20px 18px 18px;overflow:hidden;transition:.22s;min-height:150px}
+    .cat .k{font-size:.56rem;letter-spacing:2px;text-transform:uppercase;color:var(--gold);opacity:.8}
+    .cat .cn{font-size:1.32rem;color:var(--paper);letter-spacing:.1em;margin:8px 0 3px}
+    .cat .en{font-size:.72rem;color:var(--muted)}
+    .cat .go{position:absolute;right:14px;bottom:12px;font-size:.6rem;letter-spacing:1.5px;text-transform:uppercase;color:var(--gold-2)}
+    .cat .glyph{position:absolute;right:-10px;top:-14px;font-size:5rem;color:var(--gold);opacity:.06;line-height:1}
+    .cat.on{cursor:pointer;border-color:var(--gold-soft)}
+    .cat.on:hover{transform:translateY(-4px);border-color:var(--gold);box-shadow:0 14px 34px rgba(0,0,0,.5),0 0 0 1px var(--gold-soft) inset}
+    .cat.soon{opacity:.62}
+    .cat.soon .go{color:var(--faint)}
+    .cat.soon::after{content:"COMING SOON";position:absolute;right:12px;bottom:11px;font-size:.52rem;letter-spacing:1.5px;color:var(--faint)}
+    .cat.soon .go{display:none}
+
+    /* ── medicine lineage (three traditions) ── */
+    .lineage{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:18px;margin-top:8px;position:relative}
+    .trad{border:1px solid var(--line);border-radius:3px;background:linear-gradient(180deg,var(--panel-2),var(--panel));
+        padding:20px 18px;position:relative;transition:.22s;min-height:200px}
+    .trad .flag{font-size:.56rem;letter-spacing:2px;text-transform:uppercase;color:var(--jade)}
+    .trad .cn{font-size:1.5rem;color:var(--paper);letter-spacing:.08em;margin:8px 0 2px}
+    .trad .en{font-size:.74rem;color:var(--gold-2);letter-spacing:.1em}
+    .trad p{font-size:.8rem;color:var(--muted);margin-top:12px}
+    .trad .go{margin-top:16px;font-size:.62rem;letter-spacing:1.5px;text-transform:uppercase;color:var(--gold-2)}
+    .trad.on{cursor:pointer}
+    .trad.on:hover{transform:translateY(-4px);border-color:var(--gold);box-shadow:0 14px 34px rgba(0,0,0,.5)}
+    .trad.soon{opacity:.6}
+    .trad.soon .go{color:var(--faint)}
+
+    /* ── Ayurveda: live intro + concept groups ── */
+    .intro-card{border-left:3px solid var(--vermilion);background:var(--panel);border-radius:0 4px 4px 0;
+        padding:16px 20px;margin-top:8px}
+    .intro-card .lbl{font-size:.56rem;letter-spacing:2px;text-transform:uppercase;color:var(--vermilion-2)}
+    .intro-card p{font-size:.92rem;color:var(--text);margin-top:6px}
+    .grp{margin-top:24px}
+    .chips{display:flex;flex-wrap:wrap;gap:9px;margin-top:4px}
+    .chip{display:flex;align-items:baseline;gap:7px;border:1px solid var(--line);border-radius:2px;background:var(--panel);
+        padding:8px 12px;transition:.18s;cursor:pointer}
+    .chip:hover{border-color:var(--gold);background:var(--panel-2);transform:translateY(-2px)}
+    .chip .term{font-size:.88rem;color:var(--gold-2)}
+    .chip .dev{font-size:.8rem;color:var(--muted);letter-spacing:normal;
+        font-family:'Noto Sans Devanagari','Noto Serif Devanagari','Nirmala UI','Kohinoor Devanagari',serif}
+    .chip .ar{color:var(--faint);font-size:.7rem;margin-left:2px}
+    .sect-h .dev-h{font-size:.98rem;color:var(--gold);opacity:.72;letter-spacing:normal;
+        font-family:'Noto Sans Devanagari','Noto Serif Devanagari','Nirmala UI','Kohinoor Devanagari',serif}
+
+    .back{display:inline-flex;align-items:center;gap:7px;margin:20px 2px 0;font-size:.62rem;letter-spacing:1.5px;
+        text-transform:uppercase;color:var(--muted);border:1px solid var(--line);padding:7px 13px;border-radius:2px;cursor:pointer;transition:.2s}
+    .back:hover{color:var(--gold-2);border-color:var(--gold)}
+
+    .foot{margin-top:44px;padding-top:16px;border-top:1px solid var(--line);font-family:'Courier New',monospace;
+        font-size:.55rem;letter-spacing:1.5px;text-transform:uppercase;color:var(--faint);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+    .foot a{color:var(--muted)} .foot a:hover{color:var(--gold-2)}
+    .note{font-size:.62rem;color:var(--faint);margin-top:10px;font-family:'Courier New',monospace;letter-spacing:.04em}
+</style>
+</head>
+<body>
+<div class="wrap">
+    <div class="top">
+        <a href="/hall/" class="crumb">◄ reading hall</a>
+        <a href="/" class="crumb">world tree</a>
+    </div>
+
+    <div class="mast">
+        <svg class="enso" width="86" height="86" viewBox="0 0 86 86" aria-label="ensō">
+            <path d="M60,16 A34 34 0 1 0 71,44" fill="none" stroke="var(--gold)" stroke-width="4.5"
+                  stroke-linecap="round" opacity="0.92"/>
+            <path d="M60,16 A34 34 0 1 0 71,44" fill="none" stroke="var(--vermilion)" stroke-width="1.4"
+                  stroke-linecap="round" opacity="0.5" transform="translate(1.5,1.5)"/>
+        </svg>
+        <div class="t">
+            <h1>Oriental Archives<span class="jp">the gathered wisdom of the East</span></h1>
+            <div class="sub">A special reading room of the Akashic Archives.</div>
+        </div>
+        <div class="seal">◉</div>
+    </div>
+
+    <div id="view"></div>
+
+    <div class="foot">
+        <span id="foot-meta">oriental archives · read-only</span>
+        <span>the wisdom of the East · <a href="https://github.com/henrigrohmann/AkashicTree" target="_blank" rel="noopener">AKASHA</a></span>
+    </div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+    /* ── rpc + expiry-aware guest token (same contract as the other archives rooms) ── */
+    function rpc(method, params) {
+        return fetch('/rpc', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jsonrpc: '2.0', method: method, params: params, id: method }) })
+            .then(function (r) { return r.json(); })
+            .then(function (j) { if (j.error) throw new Error(j.error.message || 'rpc error'); return j.result; });
+    }
+    var _tok = null, _exp = 0, _p = null, KEY = 'akasha_guest_token', SKEW = 30000;
+    function _readTokCache() { try { var raw = localStorage.getItem(KEY); if (!raw) return null;
+        if (raw.charAt(0) === '{') { var o = JSON.parse(raw); return (o && o.key) ? o : null; } return { key: raw, exp: 0 }; } catch (e) { return null; } }
+    function _mintTok() { _p = rpc('session.guest.create', {}).then(function (g) { _p = null; _tok = g.binding_key;
+        _exp = (g && g.expires_at) ? g.expires_at * 1000 : (Date.now() + 25 * 60000);
+        try { localStorage.setItem(KEY, JSON.stringify({ key: _tok, exp: _exp })); } catch (e) {} return _tok;
+    }).catch(function (e) { _p = null; throw e; }); return _p; }
+    function getToken() { var now = Date.now(); if (_tok && _exp - now > SKEW) return Promise.resolve(_tok);
+        if (_p) return _p; if (!_tok) { var c = _readTokCache(); if (c && c.exp - now > SKEW) { _tok = c.key; _exp = c.exp; return Promise.resolve(_tok); } } return _mintTok(); }
+    function freshToken() { _tok = null; _exp = 0; _p = null; try { localStorage.removeItem(KEY); } catch (e) {} return getToken(); }
+    function isSessionErr(m) { m = (m || '').toLowerCase(); return ['session','token','expired','denied','binding','signature','identity','unauthor'].some(function (w) { return m.indexOf(w) >= 0; }); }
+    function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+    function wordHref(name) { return '/word/?name=' + encodeURIComponent(name); }
+
+    /* ── the Ayurveda concept map (every entry opens the graph explorer) ── */
+    /* group = [English title, romaji subtitle, Devanāgarī title, items];
+       item  = [atom, English, Devanāgarī] */
+    var AYUR = [
+        ['Three Doshas','the functional energies (dosha)','त्रिदोष', [
+            ['ayurveda:dosha:vata','Vata','वात'],['ayurveda:dosha:pitta','Pitta','पित्त'],['ayurveda:dosha:kapha','Kapha','कफ']]],
+        ['Five Great Elements','pañca-mahābhūta','पञ्चमहाभूत', [
+            ['samkhya:bhuta:ether','Ether','आकाश'],['samkhya:bhuta:air','Air','वायु'],['samkhya:bhuta:fire','Fire','अग्नि'],
+            ['samkhya:bhuta:water','Water','जल'],['samkhya:bhuta:earth','Earth','पृथ्वी']]],
+        ['Taste · Potency · Post-digestion','rasa · vīrya · vipāka','रस · वीर्य · विपाक', [
+            ['ayurveda:rasa:sweet','Sweet','मधुर'],['ayurveda:rasa:sour','Sour','अम्ल'],['ayurveda:rasa:salty','Salty','लवण'],
+            ['ayurveda:rasa:pungent','Pungent','कटु'],['ayurveda:rasa:bitter','Bitter','तिक्त'],['ayurveda:rasa:astringent','Astringent','कषाय'],
+            ['ayurveda:virya','Vīrya','वीर्य'],['ayurveda:vipaka','Vipāka','विपाक']]],
+        ['Constitution','prakṛti · vikṛti','प्रकृति · विकृति', [
+            ['ayurveda:prakriti','Prakṛti','प्रकृति'],['ayurveda:prakriti:vata','Vata type','वात प्रकृति'],['ayurveda:prakriti:pitta','Pitta type','पित्त प्रकृति'],
+            ['ayurveda:prakriti:kapha','Kapha type','कफ प्रकृति'],['ayurveda:prakriti:tridoshic','Tridoshic','त्रिदोषज'],['ayurveda:vikriti','Vikṛti','विकृति']]],
+        ['Herbs','dravya','द्रव्य', [
+            ['ayurveda:herb:ashwagandha','Ashwagandha','अश्वगंधा'],['ayurveda:herb:amalaki','Amalaki','आमलकी'],['ayurveda:herb:brahmi','Brahmi','ब्राह्मी'],
+            ['ayurveda:herb:shatavari','Shatavari','शतावरी'],['ayurveda:herb:tulsi','Tulsi','तुलसी'],['ayurveda:herb:neem','Neem','नीम'],
+            ['ayurveda:herb:guduchi','Guduchi','गुडूची'],['ayurveda:herb:haridra','Haridra','हरिद्रा']]],
+        ['Classical Formulas','rasāyana preparations','रसायन', [
+            ['ayurveda:formula:triphala','Triphala','त्रिफला'],['ayurveda:formula:trikatu','Trikatu','त्रिकटु'],['ayurveda:formula:chyawanprash','Chyawanprash','च्यवनप्राश'],
+            ['ayurveda:rasayana','Rasāyana','रसायन']]],
+        ['Physiology & Channels','dhātu · srotas · agni','धातु · स्रोतस् · अग्नि', [
+            ['ayurveda:agni','Agni','अग्नि'],['ayurveda:dhatu','Dhātu','धातु'],['ayurveda:srotas','Srotas','स्रोतस्'],['ayurveda:ama','Āma','आम']]],
+        ['Seasonal Regimen','ritucharyā','ऋतुचर्या', [
+            ['ayurveda:ritucharya','Ritucharyā','ऋतुचर्या'],['ayurveda:ritu:vasanta','Vasanta','वसन्त'],['ayurveda:ritu:grishma','Grīṣma','ग्रीष्म'],
+            ['ayurveda:ritu:varsha','Varṣā','वर्षा'],['ayurveda:ritu:sharad','Śarad','शरद्']]],
+        ['Philosophical Roots','darśana','दर्शन', [
+            ['phil:school:samkhya','Sāṃkhya','सांख्य'],['phil:school:yoga','Yoga darśana','योग दर्शन'],['yoga:yoga','Yoga','योग'],
+            ['guna:triguna','Three Guṇas','त्रिगुण'],['samkhya:prakriti','Prakṛti','प्रकृति']]]
+    ];
+
+    var MODES = { home:1, medicine:1, ayurveda:1 };
+    var ANCHOR = { home:['site:oriental_home','oriental'], medicine:['site:oriental_medicine','oriental_medicine'], ayurveda:['site:oriental_ayurveda','oriental_ayurveda'] };
+    var host = document.getElementById('view');
+
+    function chip(a) { return '<a class="chip" href="' + wordHref(a[0]) + '"><span class="term">' + esc(a[1]) + '</span>' +
+        (a[2] ? '<span class="dev">' + esc(a[2]) + '</span>' : '') + '<span class="ar">▸</span></a>'; }
+
+    function renderHome() {
+        var cats = [
+            { on:1, mode:'medicine', k:'I', cn:'Eastern Medicine', en:'the lineage of healing', glyph:'⚕' },
+            { on:0, k:'II', cn:'Eastern Philosophy', en:'the schools of thought', glyph:'☯' },
+            { on:0, k:'III', cn:'Arts & Nourishing Life', en:'the arts of the way', glyph:'✦' },
+            { on:0, k:'IV', cn:'Sky & Calendar', en:'heaven and the seasons', glyph:'✷' }
+        ];
+        host.innerHTML =
+            '<p class="lead">This room gathers the <span class="em">wisdom of the East</span>. Choose a hall below. ' +
+            'The first — the <span class="em">lineage of Eastern medicine</span> — opens today with Ayurveda; ' +
+            'Chinese medicine and Kampō will join it in time.</p>' +
+            '<div class="rule"></div>' +
+            '<div class="sect-h"><span class="cn">Choose a Hall</span><span class="en">the halls of the East</span></div>' +
+            '<div class="cats">' + cats.map(function (c) {
+                return '<' + (c.on ? 'div' : 'div') + ' class="cat ' + (c.on ? 'on' : 'soon') + '"' +
+                    (c.on ? ' data-mode="' + c.mode + '"' : '') + '>' +
+                    '<span class="glyph">' + c.glyph + '</span>' +
+                    '<span class="k">' + esc(c.k) + '</span>' +
+                    '<div class="cn">' + esc(c.cn) + '</div><div class="en">' + esc(c.en) + '</div>' +
+                    (c.on ? '<span class="go">enter ▸</span>' : '') + '</div>';
+            }).join('') + '</div>';
+        bindCats();
+    }
+
+    function renderMedicine() {
+        var trads = [
+            { on:1, mode:'ayurveda', flag:'India', cn:'Ayurveda', en:'आयुर्वेद · Āyurveda · the science of life',
+              p:'The science of life (āyus + veda). Balance of the three doshas, grounded in Sāṃkhya and sister to Yoga.' },
+            { on:0, flag:'Persia · South Asia', cn:'Unani', en:'Yūnānī ṭibb · Greco-Arabic medicine',
+              p:'The Greco-Arabic humoral tradition — Hippocrates and Galen carried through Ibn Sīnā, still practised across Persia and South Asia. Coming to this hall.' },
+            { on:0, flag:'China', cn:'Chinese Medicine', en:'Traditional Chinese Medicine',
+              p:'Yin-yang, the five phases, qi, and the meridians. Coming to this hall.' },
+            { on:0, flag:'Japan', cn:'Kampō', en:'Japanese herbal medicine',
+              p:'The Japanese adaptation of Chinese medicine — strict formulas, read by constitution. Coming to this hall.' }
+        ];
+        host.innerHTML =
+            '<span class="back" data-mode="home">◄ entrance</span>' +
+            '<div class="sect-h"><span class="cn">Lineage of Eastern Medicine</span><span class="en">the great streams</span></div>' +
+            '<p class="lead">The great streams of Eastern medicine, each reading the body as a living balance rather than a set of parts. ' +
+            'We begin at the source that most shaped the others.</p>' +
+            '<div class="lineage">' + trads.map(function (t) {
+                return '<div class="trad ' + (t.on ? 'on' : 'soon') + '"' + (t.on ? ' data-mode="' + t.mode + '"' : '') + '>' +
+                    '<div class="flag">' + esc(t.flag) + '</div><div class="cn">' + esc(t.cn) + '</div>' +
+                    '<div class="en">' + esc(t.en) + '</div><p>' + esc(t.p) + '</p>' +
+                    '<div class="go">' + (t.on ? 'open ▸' : 'coming soon') + '</div></div>';
+            }).join('') + '</div>';
+        bindCats();
+    }
+
+    function renderAyurveda() {
+        host.innerHTML =
+            '<span class="back" data-mode="medicine">◄ Eastern Medicine</span>' +
+            '<div class="sect-h"><span class="cn">Ayurveda</span><span class="en">Āyurveda · the science of life</span>' +
+            '<span class="dev-h">आयुर्वेद</span></div>' +
+            '<div class="intro-card"><div class="lbl">from the graph</div><p id="ayur-intro">Opening the scrolls…</p></div>' +
+            '<p class="note">Every term below opens its place in the Akasha knowledge graph — with its links to food, element, taste, and constitution.</p>' +
+            AYUR.map(function (g) {
+                return '<div class="grp"><div class="sect-h"><span class="cn">' + esc(g[0]) + '</span><span class="en">' + esc(g[1]) + '</span>' +
+                    '<span class="dev-h">' + esc(g[2]) + '</span></div>' +
+                    '<div class="chips">' + g[3].map(chip).join('') + '</div></div>';
+            }).join('');
+        greetAyurveda(false);
+    }
+
+    /* live: pull tradition:ayurveda's note from the graph (proves the packs loaded) */
+    function greetAyurveda(isRetry) {
+        getToken()
+            .then(function (tok) { return rpc('archives.space', { session_token: tok, name: 'tradition:ayurveda' }); })
+            .then(function (sp) {
+                var atom = ((sp && sp.concept) || {}).atom || {};
+                var note = (atom.description || '').replace(/^\s*\[[^\]]*\]\s*/, '').trim();
+                var el = document.getElementById('ayur-intro');
+                if (el) el.textContent = note ||
+                    'Ayurvedic dietary science — six tastes (rasa), potency (vīrya), and the balance of the three doshas.';
+            })
+            .catch(function (err) {
+                if (!isRetry && isSessionErr(err && err.message)) { freshToken().then(function () { greetAyurveda(true); }).catch(function () {}); return; }
+                var el = document.getElementById('ayur-intro');
+                if (el) el.textContent = 'Ayurvedic dietary science — six tastes (rasa), potency (vīrya), and the balance of the three doshas.';
+            });
+    }
+
+    function bindCats() {
+        Array.prototype.forEach.call(host.querySelectorAll('[data-mode]'), function (el) {
+            el.addEventListener('click', function () { setView(el.getAttribute('data-mode')); });
+        });
+    }
+
+    function beacon(mode) {
+        try {
+            if (!navigator.sendBeacon) return;
+            var a = ANCHOR[mode] || ANCHOR.home;
+            var prev = ''; try { prev = sessionStorage.getItem('pulse_prev') || ''; } catch (e) {}
+            navigator.sendBeacon('/pulse', new Blob([JSON.stringify(
+                { concept: a[0], surface: a[1], prev: prev, page_referrer: document.referrer || '' })], { type: 'application/json' }));
+            try { sessionStorage.setItem('pulse_prev', a[0]); } catch (e) {}
+        } catch (e) {}
+    }
+
+    var MODE = 'home';
+    function setView(mode) {
+        if (!MODES[mode]) mode = 'home';
+        MODE = mode;
+        try { history.replaceState(null, '', mode === 'home' ? location.pathname : '#' + mode); } catch (e) {}
+        if (mode === 'medicine') renderMedicine();
+        else if (mode === 'ayurveda') renderAyurveda();
+        else renderHome();
+        document.getElementById('foot-meta').textContent = 'oriental archives · ' + mode;
+        window.scrollTo(0, 0);
+        beacon(mode);        // each hall is its own reading surface
+    }
+    function modeFromHash() { var m = (location.hash.match(/[a-z]+/) || [])[0]; return MODES[m] ? m : 'home'; }
+    window.addEventListener('hashchange', function () { setView(modeFromHash()); });
+    setView(modeFromHash());
+}());
+</script>
+</body>
+</html>

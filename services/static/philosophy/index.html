@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Philosophy World · Akashic Archives</title>
+    <meta name="description" content="The entrance to Philosophy World — greeted by Socrates in marble. The fields of philosophy and the thinkers behind them, drawn from the Akasha knowledge graph.">
+    <style>
+        :root{
+            --night:#0c0803; --night-2:#160c04; --ink:#ecdcc0; --ink-soft:rgba(230,200,150,0.66);
+            --amber:#ffcf88; --amber-d:#c8873f; --line:rgba(200,130,40,0.34); --card:rgba(40,24,8,0.55);
+            --marble:#d8cfba;
+        }
+        *{box-sizing:border-box;margin:0;padding:0}
+        html,body{
+            background:
+                radial-gradient(1200px 700px at 50% -8%, #2a1808 0%, var(--night-2) 46%, var(--night) 100%) fixed,
+                var(--night);
+            color:var(--ink);
+            font-family:'Optima','Avenir Next','Segoe UI',system-ui,-apple-system,sans-serif;
+            -webkit-font-smoothing:antialiased;line-height:1.62;min-height:100vh;min-height:100dvh;width:100%;
+            -webkit-text-size-adjust:100%;text-size-adjust:100%;}
+        .serif{font-family:'Iowan Old Style','Palatino Linotype',Palatino,Georgia,'Hoefler Text',serif}
+        .stars{position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.5;
+            background-image:radial-gradient(1px 1px at 20% 30%,rgba(255,220,160,.7),transparent),
+                radial-gradient(1px 1px at 70% 20%,rgba(255,210,150,.6),transparent),
+                radial-gradient(1px 1px at 40% 70%,rgba(255,220,160,.5),transparent),
+                radial-gradient(1px 1px at 85% 60%,rgba(255,210,150,.5),transparent),
+                radial-gradient(1px 1px at 55% 45%,rgba(255,225,170,.6),transparent);}
+        .wrap{max-width:960px;margin:0 auto;
+            padding-top:max(26px,calc(env(safe-area-inset-top) + 22px));
+            padding-bottom:max(48px,calc(env(safe-area-inset-bottom) + 48px));
+            padding-left:max(18px,env(safe-area-inset-left));padding-right:max(18px,env(safe-area-inset-right));}
+        .crumb{font-size:.6rem;letter-spacing:.2em;text-transform:uppercase;color:var(--amber-d);
+            background:rgba(30,18,6,.7);text-decoration:none;border:1px solid var(--line);border-radius:4px;
+            padding:6px 13px;transition:color .2s,border-color .2s}
+        .crumb:hover{color:var(--amber);border-color:rgba(255,180,60,.8)}
+
+        .greet{display:flex;gap:26px;align-items:center;margin:30px 0 8px;flex-wrap:wrap}
+        .bust{flex:0 0 auto;filter:drop-shadow(0 6px 18px rgba(0,0,0,.6))}
+        .intro{flex:1;min-width:260px}
+        h1{font-size:clamp(2rem,6vw,3.2rem);font-weight:600;line-height:1.02;color:var(--ink);
+            text-shadow:0 2px 12px rgba(255,180,80,.18)}
+        h1 .jp{display:block;font-size:1rem;letter-spacing:.3em;color:var(--amber-d);margin-top:6px;font-weight:400}
+        .who{margin-top:14px;font-size:.66rem;letter-spacing:.2em;text-transform:uppercase;color:var(--amber-d)}
+        .quote{margin-top:10px;font-style:italic;font-size:1.1rem;color:var(--amber);
+            border-left:3px solid var(--amber-d);padding-left:16px}
+        .bio{margin-top:14px;color:var(--ink-soft);font-size:.98rem}
+        .enter{display:inline-block;margin-top:16px;font-size:.64rem;letter-spacing:.16em;text-transform:uppercase;
+            color:var(--amber);text-decoration:none;border:1px solid var(--line);border-radius:20px;padding:8px 16px;
+            transition:background .2s,border-color .2s}
+        .enter:hover{background:rgba(80,45,12,.5);border-color:rgba(255,180,60,.8)}
+
+        .sec{margin-top:46px}
+        .sec-h{font-size:.66rem;letter-spacing:.24em;text-transform:uppercase;color:var(--amber-d);
+            border-bottom:1px solid var(--line);padding-bottom:9px;margin-bottom:18px;display:flex;align-items:baseline;gap:10px}
+        .sec-h .fr{font-style:italic;letter-spacing:.04em;text-transform:none;color:var(--ink-soft)}
+        .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
+        .door{display:block;text-decoration:none;color:var(--ink);background:var(--card);
+            border:1px solid var(--line);border-left:3px solid var(--amber-d);border-radius:10px;padding:13px 15px;
+            transition:transform .12s,border-color .2s,background .2s}
+        .door:hover{transform:translateY(-2px);border-color:rgba(255,180,60,.8);background:rgba(60,34,12,.6)}
+        .door .en{display:block;font-size:1rem;font-weight:600}
+        .door .jp{display:block;font-size:.74rem;color:var(--ink-soft);margin-top:2px}
+        .thinker{display:flex;align-items:center;gap:10px}
+        .thinker .em{font-size:1.3rem}
+        .reperes{display:flex;flex-wrap:wrap;gap:8px}
+        .repere{font-size:.82rem;text-decoration:none;color:var(--ink);background:var(--card);
+            border:1px solid var(--line);border-radius:20px;padding:6px 13px;transition:transform .12s,border-color .2s,color .2s}
+        .repere:hover{transform:translateY(-2px);border-color:rgba(255,180,60,.8);color:var(--amber)}
+        .note{color:var(--ink-soft);font-size:.92rem;margin-top:14px}
+        .attrib{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);
+            font-size:.8rem;line-height:1.7;color:var(--ink-soft)}
+        .attrib b{color:var(--amber-d);font-weight:600}
+        .attrib a{color:var(--amber-d);text-decoration:none;border-bottom:1px solid var(--line)}
+        .attrib a:hover{color:var(--amber)}
+        .attrib .fr{font-style:italic;color:rgba(230,200,150,0.5)}
+        .footer-credit{margin-top:26px;font-size:.6rem;letter-spacing:.22em;color:var(--ink-soft);text-transform:uppercase}
+        .footer-credit a{color:var(--amber-d);text-decoration:none}
+        #err{color:#e0805a}
+        @media (max-width:560px){ .greet{gap:16px} }
+    </style>
+</head>
+<body>
+<div class="stars"></div>
+<div class="wrap">
+    <a href="/hall/" class="crumb">◄ reading hall</a>
+
+    <div class="greet">
+        <!-- Socrates in marble — the same bust that stands in the reading hall -->
+        <svg class="bust" width="150" height="200" viewBox="0 0 150 200" xmlns="http://www.w3.org/2000/svg" aria-label="Socrates, marble bust">
+            <defs>
+                <linearGradient id="m" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stop-color="#efe8d6"/><stop offset="45%" stop-color="#cbc2ad"/><stop offset="100%" stop-color="#8a8170"/>
+                </linearGradient>
+                <linearGradient id="p" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#cec5b0"/><stop offset="100%" stop-color="#6f6757"/>
+                </linearGradient>
+            </defs>
+            <ellipse cx="75" cy="188" rx="52" ry="9" fill="rgba(0,0,0,.45)"/>
+            <ellipse cx="75" cy="96" rx="60" ry="96" fill="rgba(255,190,110,.10)"/>
+            <!-- plinth -->
+            <rect x="40" y="168" width="70" height="16" rx="2" fill="url(#p)"/>
+            <rect x="49" y="108" width="52" height="60" fill="url(#p)"/>
+            <rect x="45" y="100" width="60" height="10" rx="2" fill="url(#m)"/>
+            <g stroke="rgba(90,84,68,.5)" stroke-width="1"><line x1="61" y1="114" x2="61" y2="164"/><line x1="75" y1="114" x2="75" y2="164"/><line x1="89" y1="114" x2="89" y2="164"/></g>
+            <rect x="49" y="108" width="3" height="60" fill="rgba(255,210,140,.32)"/>
+            <!-- bust -->
+            <path d="M46,100 L55,66 Q75,54 95,66 L104,100 Z" fill="url(#m)" stroke="rgba(120,112,96,.5)" stroke-width="1"/>
+            <path d="M64,70 L75,96 L86,70" fill="none" stroke="rgba(120,112,96,.5)" stroke-width="1.2"/>
+            <rect x="67" y="48" width="16" height="18" fill="url(#m)"/>
+            <ellipse cx="75" cy="24" rx="22" ry="25" fill="url(#m)" stroke="rgba(120,112,96,.4)" stroke-width="1"/>
+            <path d="M55,26 Q54,60 75,64 Q96,60 95,26 Q88,48 75,50 Q62,48 55,26 Z" fill="url(#m)" stroke="rgba(110,102,86,.5)" stroke-width="1"/>
+            <g stroke="rgba(110,102,86,.45)" stroke-width="1" fill="none"><path d="M65,32 q1,16 1,26"/><path d="M75,34 q0,16 0,26"/><path d="M85,32 q-1,16 -1,26"/></g>
+            <path d="M62,17 q13,-6 26,0" fill="none" stroke="rgba(110,102,86,.6)" stroke-width="1.3"/>
+            <ellipse cx="67" cy="21" rx="3" ry="2" fill="rgba(70,64,52,.7)"/><ellipse cx="83" cy="21" rx="3" ry="2" fill="rgba(70,64,52,.7)"/>
+            <path d="M75,21 q-3,7 -1,10 q2,2 5,0" fill="none" stroke="rgba(110,102,86,.6)" stroke-width="1.2"/>
+            <path d="M58,12 Q54,26 58,42" fill="none" stroke="rgba(255,215,150,.4)" stroke-width="2"/>
+        </svg>
+
+        <div class="intro">
+            <h1 class="serif">Philosophy World<span class="jp">le monde de la philosophie</span></h1>
+            <div class="who" id="who">Socrates · Socrate</div>
+            <p class="quote serif">“The unexamined life is not worth living.”</p>
+            <p class="bio" id="bio">The threshold of the archive’s hall of ideas — where every question opens a door.</p>
+            <a class="enter" id="enter" href="/word/?name=phil:thinker:socrates">Enter · Socrates ▸</a>
+            <a class="enter" id="wiki" href="https://en.wikipedia.org/wiki/Socrates" target="_blank" rel="noopener" style="margin-left:8px">Wikipedia ↗</a>
+        </div>
+    </div>
+
+    <section class="sec">
+        <div class="sec-h">The Concepts <span class="fr">les notions</span></div>
+        <p class="note" style="margin-top:0;margin-bottom:16px">The seventeen notions of the French Baccalauréat — and how philosophy has handled each. Open one to read its genealogy.</p>
+        <div class="grid" id="notions"></div>
+    </section>
+
+    <section class="sec">
+        <div class="sec-h">The Fields <span class="fr">les champs</span></div>
+        <div class="grid" id="fields"></div>
+    </section>
+
+    <section class="sec">
+        <div class="sec-h">The Tools of Thought <span class="fr">les repères</span></div>
+        <p class="note" style="margin-top:0;margin-bottom:14px">The conceptual distinctions — the pairs a thinker must be able to wield.</p>
+        <div class="reperes" id="reperes"></div>
+    </section>
+
+    <section class="sec">
+        <div class="sec-h">The Thinkers <span class="fr">les penseurs</span></div>
+        <div class="grid" id="thinkers"><p class="note">Waking the thinkers…</p></div>
+    </section>
+
+    <p class="note">The deeper halls of Philosophy World — the schools, the debates, the timelines — are being arranged. For now, step through any field or thinker into the archive’s concept space.</p>
+
+    <p class="attrib">The concepts and structure of this exhibit draw on the <b>notions</b> of the
+        <a href="https://en.wikipedia.org/wiki/Baccalaur%C3%A9at#Philosophy" target="_blank" rel="noopener">French
+        Baccalauréat de philosophie</a> — France’s national philosophy examination — referenced for
+        educational purposes. Concepts and thinkers are our own summaries; each links out to Wikipedia
+        for the fuller account.<br>
+        <span class="fr">D’après le programme de philosophie du Baccalauréat français</span></p>
+
+    <div class="footer-credit">powered by <a href="https://github.com/henrigrohmann/AkashicTree" target="_blank" rel="noopener">AKASHA</a></div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+    function rpc(method, params) {
+        return fetch('/rpc', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jsonrpc: '2.0', method: method, params: params, id: method }) })
+            .then(function (r) { return r.json(); })
+            .then(function (j) { if (j.error) throw new Error(j.error.message || 'rpc error'); return j.result; });
+    }
+    var _tok = null, _exp = 0, _p = null, KEY = 'akasha_guest_token', SKEW = 30000;
+    // A guest binding token (gbk:) has a FIXED lifetime (<=30 min) and is NOT renewed by
+    // activity, so a token cached in localStorage goes stale. Reusing a stale token made every
+    // read return -32001 and the page render empty on each reload — the real cause of the
+    // "references appear/disappear" intermittency. So: remember the token's expiry, never reuse
+    // a (near-)expired one, and mint a fresh token before the old one dies.
+    function _readTokCache() {
+        try {
+            var raw = localStorage.getItem(KEY); if (!raw) return null;
+            if (raw.charAt(0) === '{') { var o = JSON.parse(raw); return (o && o.key) ? o : null; }
+            return { key: raw, exp: 0 };                 // legacy plain-string token: expiry unknown
+        } catch (e) { return null; }
+    }
+    function _mintTok() {
+        _p = rpc('session.guest.create', {}).then(function (g) {
+            _p = null; _tok = g.binding_key;
+            _exp = (g && g.expires_at) ? g.expires_at * 1000 : (Date.now() + 25 * 60000);
+            try { localStorage.setItem(KEY, JSON.stringify({ key: _tok, exp: _exp })); } catch (e) {}
+            return _tok;
+        }).catch(function (e) { _p = null; throw e; });
+        return _p;
+    }
+    function getToken() {
+        var now = Date.now();
+        if (_tok && _exp - now > SKEW) return Promise.resolve(_tok);
+        if (_p) return _p;
+        if (!_tok) { var c = _readTokCache(); if (c && c.exp - now > SKEW) { _tok = c.key; _exp = c.exp; return Promise.resolve(_tok); } }
+        return _mintTok();                             // no token, or (near-)expired → mint fresh
+    }
+    function freshToken() { _tok = null; _exp = 0; _p = null; try { localStorage.removeItem(KEY); } catch (e) {} return getToken(); }
+    function isSessionErr(m) { m = (m || '').toLowerCase();
+        return m.indexOf('session') >= 0 || m.indexOf('token') >= 0 || m.indexOf('expired') >= 0
+            || m.indexOf('denied') >= 0 || m.indexOf('binding') >= 0 || m.indexOf('signature') >= 0
+            || m.indexOf('mismatch') >= 0 || m.indexOf('identity') >= 0 || m.indexOf('unauthor') >= 0; }
+    function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+    function title(t) { return String(t || '').replace(/_/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); }); }
+    function tail(ref) { ref = String(ref || ''); return ref.indexOf(':') >= 0 ? ref.split(':').pop() : ref; }
+    function wordHref(name) { return '/word/?name=' + encodeURIComponent(name); }
+
+    // The seventeen notions — the exhibit's core (Baccalauréat program). Each opens the
+    // archive's concept space, where its genealogy note + the Wikipedia exit render.
+    var NOTIONS = [
+        ['art','Art','l’art'], ['bonheur','Happiness','le bonheur'],
+        ['conscience','Consciousness','la conscience'], ['devoir','Duty','le devoir'],
+        ['etat','The State','l’État'], ['inconscient','The Unconscious','l’inconscient'],
+        ['justice','Justice','la justice'], ['langage','Language','le langage'],
+        ['liberte','Freedom','la liberté'], ['nature','Nature','la nature'],
+        ['raison','Reason','la raison'], ['religion','Religion','la religion'],
+        ['science','Science','la science'], ['technique','Technics','la technique'],
+        ['temps','Time','le temps'], ['travail','Work','le travail'],
+        ['verite','Truth','la vérité']
+    ];
+    document.getElementById('notions').innerHTML = NOTIONS.map(function (n) {
+        return '<a class="door" href="/philosophy/notion/?id=phil:notion:' + n[0] + '">' +
+            '<span class="en">' + esc(n[1]) + '</span>' +
+            '<span class="jp">' + esc(n[2]) + '</span></a>';
+    }).join('');
+
+    // The repères — the conceptual pairs, the "tools of thought" (a second axis). Compact
+    // chips into the archive's concept space (each shows its distinction + a Wikipedia exit).
+    var REPERES = [
+        ['absolu_relatif','Absolu / Relatif'], ['abstrait_concret','Abstrait / Concret'],
+        ['acte_puissance','Acte / Puissance'], ['analyse_synthese','Analyse / Synthèse'],
+        ['contingent_necessaire','Contingent / Nécessaire'], ['croire_savoir','Croire / Savoir'],
+        ['essentiel_accidentel','Essentiel / Accidentel'], ['exemple_preuve','Exemple / Preuve'],
+        ['expliquer_comprendre','Expliquer / Comprendre'], ['fait_droit','En fait / En droit'],
+        ['formel_materiel','Formel / Matériel'], ['genre_espece_individu','Genre / Espèce / Individu'],
+        ['hypothese_consequence_conclusion','Hypothèse / Conséquence'], ['ideal_reel','Idéal / Réel'],
+        ['identite_egalite_difference','Identité / Égalité / Différence'], ['impossible_possible','Impossible / Possible'],
+        ['intuitif_discursif','Intuitif / Discursif'], ['legal_legitime','Légal / Légitime'],
+        ['mediat_immediat','Médiat / Immédiat'], ['objectif_subjectif','Objectif / Subjectif'],
+        ['obligation_contrainte','Obligation / Contrainte'], ['origine_fondement','Origine / Fondement'],
+        ['persuader_convaincre','Persuader / Convaincre'], ['principe_cause_fin','Principe / Cause / Fin'],
+        ['public_prive','Public / Privé'], ['ressemblance_analogie','Ressemblance / Analogie'],
+        ['theorie_pratique','Théorie / Pratique'], ['transcendant_immanent','Transcendant / Immanent'],
+        ['universel_singulier','Universel / Singulier'], ['vrai_probable_certain','Vrai / Probable / Certain']
+    ];
+    var rp = document.getElementById('reperes');
+    if (rp) rp.innerHTML = REPERES.map(function (r) {
+        return '<a class="repere" href="' + wordHref('phil:repere:' + r[0]) + '">' + esc(r[1]) + '</a>';
+    }).join('');
+
+    // The nine fields — stable, from the graph's phil:field:* concepts.
+    var FIELDS = [
+        ['metaphysics', 'Metaphysics', 'métaphysique'], ['epistemology', 'Epistemology', 'épistémologie'],
+        ['ethics', 'Ethics', 'morale'], ['logic', 'Logic', 'logique'],
+        ['aesthetics', 'Aesthetics', 'esthétique'], ['political_philosophy', 'Political Philosophy', 'philosophie politique'],
+        ['philosophy_of_mind', 'Philosophy of Mind', 'philosophie de l’esprit'], ['philosophy_of_science', 'Philosophy of Science', 'philosophie des sciences'],
+        ['phenomenology', 'Phenomenology', 'phénoménologie']
+    ];
+    document.getElementById('fields').innerHTML = FIELDS.map(function (f) {
+        return '<a class="door" href="' + wordHref('phil:field:' + f[0]) + '">' +
+            '<span class="en">' + esc(f[1]) + '</span><span class="jp">' + esc(f[2]) + '</span></a>';
+    }).join('');
+
+    // The thinkers — from the phil:thinkers set (the freshly-added philosophers pack).
+    var THINKER_EMOJI = { socrates:'🏛️', plato:'📜', aristotle:'⚖️', descartes:'🧠', kant:'🕊️', nietzsche:'⚡' };
+    var FALLBACK = ['socrates','plato','aristotle','descartes','kant','nietzsche'];
+    function renderThinkers(names) {
+        var host = document.getElementById('thinkers');
+        if (!names.length) { host.innerHTML = '<p class="note">The thinkers’ hall is still being arranged.</p>'; return; }
+        host.innerHTML = names.map(function (id) {
+            var slug = tail(id);
+            return '<a class="door thinker" href="' + wordHref('phil:thinker:' + slug) + '">' +
+                '<span class="em">' + (THINKER_EMOJI[slug] || '🗿') + '</span>' +
+                '<span class="en">' + esc(title(slug)) + '</span></a>';
+        }).join('');
+    }
+    function loadThinkers(isRetry) {
+        getToken()
+            .then(function (tok) { return rpc('set.ls', { session_token: tok, name: 'phil:thinkers', limit: 100 }); })
+            .then(function (r) {
+                var ids = ((r && r.members) || []).map(function (m) { return m.alias || m.key; }).filter(Boolean);
+                renderThinkers(ids.length ? ids : FALLBACK);
+            })
+            .catch(function (err) {
+                var msg = err && err.message ? err.message : '';
+                if (!isRetry && isSessionErr(msg)) { freshToken().then(function () { loadThinkers(true); }).catch(function () {}); return; }
+                renderThinkers(FALLBACK);   // graceful — the pack ships these six
+            });
+    }
+
+    // Greet with Socrates — pull his note from the graph (proves the philosophers pack loaded).
+    function greet(isRetry) {
+        getToken()
+            .then(function (tok) { return rpc('archives.space', { session_token: tok, name: 'phil:thinker:socrates' }); })
+            .then(function (sp) {
+                var concept = (sp && sp.concept) || {};
+                var atom = concept.atom || {};
+                var note = (atom.description || '').replace(/^\s*\[[^\]]*\]\s*/, '').trim();
+                if (note) document.getElementById('bio').textContent = note;
+                // Wikipedia exit — from the concept's external_refs (the wp:<Title> alias).
+                var refs = concept.external_refs || [];
+                var wiki = null;
+                for (var i = 0; i < refs.length; i++) {
+                    if ((refs[i].source === 'wikipedia' || /wikipedia\.org/.test(refs[i].url || '')) && refs[i].url) { wiki = refs[i].url; break; }
+                }
+                if (wiki) { var w = document.getElementById('wiki'); if (w) w.href = wiki; }
+            })
+            .catch(function (err) {
+                var msg = err && err.message ? err.message : '';
+                if (!isRetry && isSessionErr(msg)) { freshToken().then(function () { greet(true); }).catch(function () {}); }
+            });
+    }
+
+    greet(false);
+    loadThinkers(false);
+
+    // Access beacon (server-side records the visit against the concept; no PII, DNT-honoured).
+    try {
+        if (navigator.sendBeacon) {
+            var body = JSON.stringify({ concept: 'phil:philosophy', surface: 'philosophy', prev: '', page_referrer: document.referrer || '' });
+            navigator.sendBeacon('/pulse', new Blob([body], { type: 'application/json' }));
+            try { sessionStorage.setItem('pulse_prev', 'phil:philosophy'); } catch (e) {}
+        }
+    } catch (e) {}
+}());
+</script>
+</body>
+</html>

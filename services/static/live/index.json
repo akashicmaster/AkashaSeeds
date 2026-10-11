@@ -1,0 +1,37 @@
+{
+  "generated_at": "2026-08-17T13:09:27Z",
+  "window": "6h",
+  "note": "illustrative snapshot",
+  "feeds": [
+    {
+      "id": "eonet",
+      "kind": "kind:disaster:event",
+      "title": "NASA EONET — natural-disaster events"
+    },
+    {
+      "id": "usgs_eq",
+      "kind": "kind:seismic:quake",
+      "title": "USGS — earthquakes (past hour)"
+    },
+    {
+      "id": "iss",
+      "kind": "kind:orbit:satellite",
+      "title": "ISS (ZARYA) — live position"
+    },
+    {
+      "id": "aircraft",
+      "kind": "kind:air:aircraft",
+      "title": "OpenSky — aircraft state vectors"
+    },
+    {
+      "id": "sea_level",
+      "kind": "kind:ocean:tide",
+      "title": "NOAA CO-OPS — coastal water level"
+    },
+    {
+      "id": "ships",
+      "kind": "kind:marine:vessel",
+      "title": "AIS — vessel positions (key required when live)"
+    }
+  ]
+}

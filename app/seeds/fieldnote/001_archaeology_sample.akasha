@@ -1,0 +1,93 @@
+{
+  "metadata": {
+    "protocol": "akasha_capsule_v1.2",
+    "author": "system",
+    "timestamp": 1700000000.0,
+    "doc_type": "fieldnote",
+    "concept_id": "41f8d37926b0e412eb7755bab9c50cddcba257c80480168a9dc33c97037f1676",
+    "extracted_since": 0.0,
+    "seed": {
+      "kind": "sample",
+      "title": "Sample: Archaeological Site Survey",
+      "order": 1,
+      "category": "archaeology",
+      "project": "Sample Project",
+      "region": "Region A",
+      "season": "2024-Spring",
+      "locale": "en"
+    }
+  },
+  "atoms": {
+    "41f8d37926b0e412eb7755bab9c50cddcba257c80480168a9dc33c97037f1676": "Sample: Archaeological Site Survey",
+    "5e3fc3d597a38e09e06acba2c7166931819c32e32b3ecaff9a05940c60197c54": "Survey grid established at 10 m intervals across the 2-hectare study area.",
+    "7c5106371268132c33a647356b321f3cfe5a5ca539b1b9ff40ea7d2e0836ea52": "Surface scatter of lithic debitage concentrated in the northeast quadrant.",
+    "56b872136feda9691073591b40c2199a72ab006a9958d44eb2bf8d04735bd515": "Possible hearth feature identified at Grid 4-N; charcoal present, pending dating.",
+    "3708694c1ee0affc8c809e1e1ce54bd16b11e28af0086378907be5d354b01a61": "Ceramic sherds consistent with regional Late Bronze Age assemblages.",
+    "675262bd618e7004d87ee112dbdb2e700caaae002544d1d350fee77f4dccdb34": "Recommend targeted excavation of northeast quadrant in next season."
+  },
+  "links": [
+    {
+      "src": "41f8d37926b0e412eb7755bab9c50cddcba257c80480168a9dc33c97037f1676",
+      "dst": "5e3fc3d597a38e09e06acba2c7166931819c32e32b3ecaff9a05940c60197c54",
+      "rel": "sys:top",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "5e3fc3d597a38e09e06acba2c7166931819c32e32b3ecaff9a05940c60197c54",
+      "dst": "7c5106371268132c33a647356b321f3cfe5a5ca539b1b9ff40ea7d2e0836ea52",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "7c5106371268132c33a647356b321f3cfe5a5ca539b1b9ff40ea7d2e0836ea52",
+      "dst": "56b872136feda9691073591b40c2199a72ab006a9958d44eb2bf8d04735bd515",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "56b872136feda9691073591b40c2199a72ab006a9958d44eb2bf8d04735bd515",
+      "dst": "3708694c1ee0affc8c809e1e1ce54bd16b11e28af0086378907be5d354b01a61",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "3708694c1ee0affc8c809e1e1ce54bd16b11e28af0086378907be5d354b01a61",
+      "dst": "675262bd618e7004d87ee112dbdb2e700caaae002544d1d350fee77f4dccdb34",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    }
+  ],
+  "atom_meta": {
+    "5e3fc3d597a38e09e06acba2c7166931819c32e32b3ecaff9a05940c60197c54": {
+      "role": "method",
+      "confidence": null,
+      "period": null
+    },
+    "7c5106371268132c33a647356b321f3cfe5a5ca539b1b9ff40ea7d2e0836ea52": {
+      "role": "observation",
+      "confidence": 0.9,
+      "period": null
+    },
+    "56b872136feda9691073591b40c2199a72ab006a9958d44eb2bf8d04735bd515": {
+      "role": "observation",
+      "confidence": 0.7,
+      "period": "Indeterminate"
+    },
+    "3708694c1ee0affc8c809e1e1ce54bd16b11e28af0086378907be5d354b01a61": {
+      "role": "interpretation",
+      "confidence": 0.75,
+      "period": "Late Bronze Age"
+    },
+    "675262bd618e7004d87ee112dbdb2e700caaae002544d1d350fee77f4dccdb34": {
+      "role": "recommendation",
+      "confidence": null,
+      "period": null
+    }
+  },
+  "telemetry": {}
+}

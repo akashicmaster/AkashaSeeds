@@ -1,0 +1,229 @@
+{
+  "format": "scroll",
+  "presentation_id": "4f11c1abc8761b47caefb78546c0400f833434708089016722436443367103e9",
+  "title": "Beer — the Beverage that Heals Labor",
+  "thesis": "Beer read as the dream that soothes labour, forking from one ancient stem. Born of the gods in Mesopotamia and made a wage in Egypt, brewing is kept alive by the medieval monasteries — then the modern age splits it in two: ALE, the warm-fermented soul of the Benelux abbeys, England's porter, and Poland's smoked grodziskie; and LAGER, the cold-fermented clarity of Vienna and Bavaria. Two rivers of the worker's cup, from one barley spring.",
+  "grounds": {
+    "rels": [],
+    "op": "authored"
+  },
+  "scenes": [
+    {
+      "scene": 0,
+      "ref_id": "c43de80aba97cea00e2c3c821a761e870b4682f982893ee8be320ca66c27252b",
+      "headword": "Mesopotamia",
+      "description": "Mesopotamia (Sumer, c.4000 BCE onward) — beer older than written history; the Hymn to Ninkasi, goddess of brewing, is both prayer and recipe. Barley bread turned to drink: the first civilising cup.",
+      "image": null,
+      "refs": [],
+      "links": [
+        {
+          "name": "beer:origin:egypt",
+          "href": "/a/beer:origin:egypt",
+          "rel": "curation:next"
+        },
+        {
+          "name": "curation:beer-journey",
+          "href": "/a/curation:beer-journey",
+          "rel": "curation:over"
+        }
+      ],
+      "caption": "Mesopotamia (Sumer, c.4000 BCE onward) — beer older than written history; the Hy",
+      "href": "/a/beer:origin:mesopotamia"
+    },
+    {
+      "scene": 1,
+      "ref_id": "000812a21b9d6e320f3976a84013b4cf7638c9d4fb7f98790b38869b56f4e927",
+      "headword": "Egypt",
+      "description": "Ancient Egypt — beer as daily bread and wage: the builders of the pyramids and temples were paid and fed in it. Thick, nourishing, and holy — the labourer's sustenance and the offering of the dead.",
+      "image": null,
+      "refs": [],
+      "links": [
+        {
+          "name": "beer:era:monastery",
+          "href": "/a/beer:era:monastery",
+          "rel": "curation:next"
+        },
+        {
+          "name": "curation:beer-journey",
+          "href": "/a/curation:beer-journey",
+          "rel": "curation:over"
+        },
+        {
+          "name": "beer:origin:mesopotamia",
+          "href": "/a/beer:origin:mesopotamia",
+          "rel": "curation:next"
+        }
+      ],
+      "caption": "Ancient Egypt — beer as daily bread and wage: the builders of the pyramids and t",
+      "href": "/a/beer:origin:egypt"
+    },
+    {
+      "scene": 2,
+      "ref_id": "ef12a961ffd9baad08fe178d0656a62b226bd74d757e2ef3039d6fd04388fce3",
+      "headword": "Monastery",
+      "description": "The medieval monasteries (Europe, c.6th–15th c.) — through the Middle Ages the abbeys keep brewing alive, refine it, and add hops for keeping. The common European stem from which the modern branches — ale and lager — will fork.",
+      "image": null,
+      "refs": [],
+      "links": [
+        {
+          "name": "beer:ale:benelux",
+          "href": "/a/beer:ale:benelux",
+          "rel": "curation:next"
+        },
+        {
+          "name": "beer:lager:vienna",
+          "href": "/a/beer:lager:vienna",
+          "rel": "chrono:before"
+        },
+        {
+          "name": "curation:beer-journey",
+          "href": "/a/curation:beer-journey",
+          "rel": "curation:over"
+        },
+        {
+          "name": "beer:origin:egypt",
+          "href": "/a/beer:origin:egypt",
+          "rel": "curation:next"
+        }
+      ],
+      "caption": "The medieval monasteries (Europe, c.6th–15th c.) — through the Middle Ages the a",
+      "href": "/a/beer:era:monastery"
+    },
+    {
+      "scene": 3,
+      "ref_id": "78bef829ad221d69cc205b195e35ed8c90455133206b91508fc6187c57dffd34",
+      "headword": "Benelux",
+      "description": "The Benelux (Belgium) — Trappist and abbey ales still brewed by monks, and the wild-fermented lambics of the Senne valley. Ale as devotion and terroir: patience, place, and prayer in a warm-fermented glass.",
+      "image": null,
+      "refs": [],
+      "links": [
+        {
+          "name": "beer:ale:england",
+          "href": "/a/beer:ale:england",
+          "rel": "curation:next"
+        },
+        {
+          "name": "curation:beer-journey",
+          "href": "/a/curation:beer-journey",
+          "rel": "curation:over"
+        },
+        {
+          "name": "beer:era:monastery",
+          "href": "/a/beer:era:monastery",
+          "rel": "curation:next"
+        }
+      ],
+      "caption": "The Benelux (Belgium) — Trappist and abbey ales still brewed by monks, and the w",
+      "href": "/a/beer:ale:benelux"
+    },
+    {
+      "scene": 4,
+      "ref_id": "2954fbe403737eb56da408f99b7e85715b0367efad979bc146e6ce375a6dde88",
+      "headword": "England",
+      "description": "England — London porter, the dark strong ale of the 18th-century worker, and the pale ales sent to India (IPA). Top-fermented and characterful; the pub becomes the labourer's hearth.",
+      "image": null,
+      "refs": [],
+      "links": [
+        {
+          "name": "beer:ale:poland",
+          "href": "/a/beer:ale:poland",
+          "rel": "curation:next"
+        },
+        {
+          "name": "curation:beer-journey",
+          "href": "/a/curation:beer-journey",
+          "rel": "curation:over"
+        },
+        {
+          "name": "beer:ale:benelux",
+          "href": "/a/beer:ale:benelux",
+          "rel": "curation:next"
+        }
+      ],
+      "caption": "England — London porter, the dark strong ale of the 18th-century worker, and the",
+      "href": "/a/beer:ale:england"
+    },
+    {
+      "scene": 5,
+      "ref_id": "2d06ec945704bf6bc564977c0f27fd73b3b407d5b1180575f31fa2cedcb44a19",
+      "headword": "Poland",
+      "description": "Poland — grodziskie (Grätzer), the oak-smoked wheat ale once called 'Polish Champagne'. The northern plains keep their own bright, smoky, top-fermented thirst-quencher.",
+      "image": null,
+      "refs": [],
+      "links": [
+        {
+          "name": "beer:lager:vienna",
+          "href": "/a/beer:lager:vienna",
+          "rel": "curation:next"
+        },
+        {
+          "name": "curation:beer-journey",
+          "href": "/a/curation:beer-journey",
+          "rel": "curation:over"
+        },
+        {
+          "name": "beer:ale:england",
+          "href": "/a/beer:ale:england",
+          "rel": "curation:next"
+        }
+      ],
+      "caption": "Poland — grodziskie (Grätzer), the oak-smoked wheat ale once called 'Polish Cham",
+      "href": "/a/beer:ale:poland"
+    },
+    {
+      "scene": 6,
+      "ref_id": "92715340355802ea15a7bc2844c943292441ac8f5da167f7599ef8040b3ce1a7",
+      "headword": "Vienna",
+      "description": "Vienna (Austria, 1841) — Anton Dreher's Vienna lager and its amber malt; cold, bottom-fermented, clear and keeping. The modern branch begins: beer turns from cloudy craft to bright science.",
+      "image": null,
+      "refs": [],
+      "links": [
+        {
+          "name": "beer:lager:germany",
+          "href": "/a/beer:lager:germany",
+          "rel": "curation:next"
+        },
+        {
+          "name": "curation:beer-journey",
+          "href": "/a/curation:beer-journey",
+          "rel": "curation:over"
+        },
+        {
+          "name": "beer:ale:poland",
+          "href": "/a/beer:ale:poland",
+          "rel": "curation:next"
+        },
+        {
+          "name": "beer:era:monastery",
+          "href": "/a/beer:era:monastery",
+          "rel": "chrono:before"
+        }
+      ],
+      "caption": "Vienna (Austria, 1841) — Anton Dreher's Vienna lager and its amber malt; cold, b",
+      "href": "/a/beer:lager:vienna"
+    },
+    {
+      "scene": 7,
+      "ref_id": "c8d4a7ec9444926b60e8efb93aea630c1e10ff3958fb4827c815eaf5415f993e",
+      "headword": "Germany",
+      "description": "Germany / Bavaria — the Reinheitsgebot (1516) and the great lager tradition; cold cellars, patient bottom fermentation, the Pilsner-bright pour and the beer hall. The lager becomes the world's beer.",
+      "image": null,
+      "refs": [],
+      "links": [
+        {
+          "name": "curation:beer-journey",
+          "href": "/a/curation:beer-journey",
+          "rel": "curation:over"
+        },
+        {
+          "name": "beer:lager:vienna",
+          "href": "/a/beer:lager:vienna",
+          "rel": "curation:next"
+        }
+      ],
+      "caption": "Germany / Bavaria — the Reinheitsgebot (1516) and the great lager tradition; col",
+      "href": "/a/beer:lager:germany"
+    }
+  ],
+  "count": 8
+}

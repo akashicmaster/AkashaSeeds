@@ -1,0 +1,55 @@
+{
+  "metadata": {
+    "protocol": "akasha_capsule_v1.2",
+    "author": "system",
+    "timestamp": 1700000000.0,
+    "doc_type": "note",
+    "concept_id": "00d01f38093349f3cb5563ea9320dcbfd2a1547b66e05e830fdfb6e2a3c43a09",
+    "extracted_since": 0.0,
+    "seed": {
+      "kind": "sample",
+      "title": "Welcome to Note",
+      "order": 1,
+      "category": "general",
+      "locale": "en"
+    }
+  },
+  "atoms": {
+    "00d01f38093349f3cb5563ea9320dcbfd2a1547b66e05e830fdfb6e2a3c43a09": "Welcome to Note",
+    "a535bd50db7827d65c1461b7b3bd94c0d339cd4ea5439c8bff9b2465ce6dac25": "This is your first note — feel free to edit or delete it.",
+    "af27b67a137d71592eeb261c15908ba4adf1040836bfe6bdca30661b825592e7": "Notes are the primary place to capture and develop your thinking. Each note is made of chunks you can reorganise with drag-and-drop.",
+    "b5cc13ff3adfa4b79ef49a8e5b118b1c09ce237dbdd30957eca1f6c5c7718e42": "Use the File menu to export your note as an Akasha capsule file (.akasha), or to import notes shared by others.",
+    "da2073aba66f03a9ec99a8513b22fdf790e4a9ebf73ef83ed521b434ee9ba85e": "Tip: open the Guide (? button) for a full list of keyboard shortcuts."
+  },
+  "links": [
+    {
+      "src": "00d01f38093349f3cb5563ea9320dcbfd2a1547b66e05e830fdfb6e2a3c43a09",
+      "dst": "a535bd50db7827d65c1461b7b3bd94c0d339cd4ea5439c8bff9b2465ce6dac25",
+      "rel": "sys:top",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "a535bd50db7827d65c1461b7b3bd94c0d339cd4ea5439c8bff9b2465ce6dac25",
+      "dst": "af27b67a137d71592eeb261c15908ba4adf1040836bfe6bdca30661b825592e7",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "af27b67a137d71592eeb261c15908ba4adf1040836bfe6bdca30661b825592e7",
+      "dst": "b5cc13ff3adfa4b79ef49a8e5b118b1c09ce237dbdd30957eca1f6c5c7718e42",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "b5cc13ff3adfa4b79ef49a8e5b118b1c09ce237dbdd30957eca1f6c5c7718e42",
+      "dst": "da2073aba66f03a9ec99a8513b22fdf790e4a9ebf73ef83ed521b434ee9ba85e",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    }
+  ],
+  "telemetry": {}
+}

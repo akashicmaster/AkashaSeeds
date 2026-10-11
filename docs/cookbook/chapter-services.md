@@ -241,7 +241,7 @@ restart`, the health check — is **identical** on every Akasha distribution:
 |---|---|---|
 | **seeds** (single user) | you, on your own machine | nothing |
 | **thesaurus** (a library/organisation) | the administrator | more services; some reachable over the network |
-| **server / enterprise** (future) | the administrator **plus delegated operators** | an admin can hand you operation of just *your* `app:you:*` services, without making you an admin |
+| **server / enterprise** (not yet released) | the administrator **plus delegated operators** | an admin can hand you operation of just *your* `app:you:*` services, without making you an admin |
 
 The last row is why you name your services `app:<you>:<name>`: on a shared server, an administrator
 can grant one person the right to start/stop/restart exactly their own services — a scoped

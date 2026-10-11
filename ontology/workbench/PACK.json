@@ -1,0 +1,7 @@
+{
+  "label": "Workbench — what a scheduled workload declares, and the state it is in",
+  "description": "The DUTY vocabulary (`wb:duty:continuous` — must not go silent: every gate that stops it reports, the breaker does not unschedule it, a start-up run that produced no output still owes one; `wb:duty:best_effort` — the default), declared in the workload rather than inferred from what the bench is about, because one driver serves research, operations and broadcast and only the workload knows which guarantee it needs. Plus the WORKLOAD vocabulary seed A added: `wl:workload` and its declared fields (`wl:effect`, `wl:trigger`, `wl:appetite`, `wl:budget`, `wl:pins`), and the workload STATE and REASON vocabulary the driver names (`wl:state:*`, `wl:reason:*`).",
+  "license": "MIT",
+  "source": "internal",
+  "version": "1.0"
+}

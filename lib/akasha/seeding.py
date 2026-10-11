@@ -33,7 +33,7 @@ Planned extensions:
   template system    — sys.template.ls / sys.template.use RPC (not yet implemented)
   admin export tool  — sys.seed.export RPC: let app developers export any document
                        as a seed file directly from within the app, replacing the
-                       current code-generation approach in scripts/generate_seeds.py
+                       current code-generation approach in app/scripts/generate_seeds.py
   locale-aware seeds — load seeds whose locale matches the session first; fall back
                        to "en" seeds when no locale match exists
 """
@@ -41,6 +41,72 @@ Planned extensions:
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+import logging
+import os
+
+# ── the seed recipes: APPLICATION data (config/seed/*.json), read here, dispatched through the ops ──
+# The planter used to import the note and fieldnote Concept Models and call their methods (group 4,
+# 4.4). A recipe names the ops instead; the platform reads it and dispatches through the routers the
+# manifests declared, so it names no Concept Model and imports none.
+_RECIPES: Dict[str, Dict[str, Any]] = {}
+
+
+def _recipe_dir() -> str:
+    from lib.akasha.api import reserved as _reserved
+    return _reserved.root("seed_recipes")
+
+
+def _recipe_for(doc_type: str) -> Optional[Dict[str, Any]]:
+    if not _RECIPES:
+        d = _recipe_dir()
+        for name in sorted(os.listdir(d)) if os.path.isdir(d) else []:
+            if not name.endswith(".json"):
+                continue
+            try:
+                with open(os.path.join(d, name), encoding="utf-8") as f:
+                    rec = json.load(f)
+            except (OSError, ValueError):
+                continue
+            for dt in rec.get("doc_types") or []:
+                _RECIPES.setdefault(str(dt), rec)
+    return _RECIPES.get(str(doc_type or "note"))
+
+
+def _fill(template: Any, ctx: Dict[str, Any]) -> Any:
+    """`{field}` / `{meta.key}` / `{a|b|literal}` → the first non-empty value; the last alternative
+    is a literal default when it names no field. None when nothing resolves (the arg is dropped)."""
+    if not (isinstance(template, str) and template.startswith("{") and template.endswith("}")):
+        return template
+    alts = template[1:-1].split("|")
+    for i, alt in enumerate(alts):
+        cur: Any = ctx
+        for part in alt.split("."):
+            cur = cur.get(part) if isinstance(cur, dict) else None
+        if cur not in (None, ""):
+            return cur
+        if i == len(alts) - 1 and i > 0 and "." not in alt and alt not in ctx:
+            return alt
+    return None
+
+
+def _dispatch(session, step: Dict[str, Any], ctx: Dict[str, Any]) -> bool:
+    op = str(step.get("op") or "")
+    if not op:
+        return False
+    args = {k: v for k, v in ((k, _fill(t, ctx)) for k, t in (step.get("args") or {}).items())
+            if v is not None}
+    from lib.akasha import api as _api
+    for router in _api.routers() or _api.discover_routers():
+        try:
+            r = router.dispatch_if_handled(op, session, args, "seed")
+        except Exception as exc:
+            logging.getLogger("Akasha.Seed").info("[seed] %s failed: %s", op, exc)
+            return False
+        if r is not None:
+            return isinstance(r, dict) and "result" in r
+    logging.getLogger("Akasha.Seed").info("[seed] %s skipped reason=no_router", op)
+    return False
 
 
 class SeedManager:
@@ -99,44 +165,25 @@ class SeedManager:
             dst = lk.get("dst", "")
             adj.setdefault(src, {}).setdefault(rel, []).append(dst)
 
-        if doc_type in ("note", "loom:note"):
-            return self._plant_note(session, concept_id, seed_meta, atoms, adj, doc_type)
-        if doc_type == "fieldnote":
-            return self._plant_fieldnote(session, concept_id, seed_meta, atoms, adj, atom_meta)
-        return None
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # Per-type planters
-    # ─────────────────────────────────────────────────────────────────────────
-
-    def _plant_note(self, session, concept_id, seed_meta, atoms, adj, doc_type) -> Optional[str]:
-        from .concepts.note import NoteConcept
-        title     = seed_meta.get("title") or atoms.get(concept_id, "Untitled")
-        namespace = "loom" if doc_type == "loom:note" else None
-        concept   = NoteConcept(session, namespace=namespace)
-        concept.op_new(title=title)
-        for text in self._walk_chain(concept_id, atoms, adj):
-            if text:
-                concept.op_add_chunk(text=text)
-        return title
-
-    def _plant_fieldnote(self, session, concept_id, seed_meta, atoms, adj, atom_meta) -> Optional[str]:
-        from .concepts.fieldnote import FieldNoteConcept
-        title   = seed_meta.get("title") or atoms.get(concept_id, "Sample FieldNote")
-        project = seed_meta.get("project")
-        region  = seed_meta.get("region")
-        season  = seed_meta.get("season")
-        concept = FieldNoteConcept(session)
-        concept.op_new(title=title, project=project, region=region, season=season)
-        for atom_id, text in self._walk_chain_items(concept_id, atoms, adj):
-            if text:
-                am   = atom_meta.get(atom_id, {})
-                concept.op_add(
-                    text       = text,
-                    role       = am.get("role", "observation"),
-                    confidence = am.get("confidence"),
-                    period     = am.get("period"),
-                )
+        recipe = _recipe_for(doc_type)
+        if recipe is None:
+            logging.getLogger("Akasha.Seed").info(
+                "[seed] skipped doc_type=%s reason=no_recipe (config/seed/*.json)", doc_type)
+            return None
+        title = (seed_meta.get("title") or atoms.get(concept_id)
+                 or recipe.get("default_title") or "Untitled")
+        ctx = dict(seed_meta)
+        ctx["title"] = title
+        if not _dispatch(session, recipe.get("create") or {}, ctx):
+            return None
+        item = recipe.get("item") or {}
+        if item.get("op"):
+            for atom_id, text in self._walk_chain_items(concept_id, atoms, adj):
+                if text:
+                    ictx = dict(ctx)
+                    ictx["text"] = text
+                    ictx["meta"] = atom_meta.get(atom_id, {}) or {}
+                    _dispatch(session, item, ictx)
         return title
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -158,3 +205,18 @@ class SeedManager:
             nexts   = adj.get(current, {}).get("sys:next", [])
             current = nexts[0] if nexts else None
         return result
+
+
+def handle_onboarding_seed(kernel, rid, data, session) -> dict:
+    """[sys.onboarding.seed] Load the sample seeds for `app` on the user's first login to it."""
+    from lib.akasha.api.rpc import ok as _ok, err as _err
+    app_name = (data or {}).get("app", "").strip()
+    if not app_name:
+        return _err(rid, -32602, "sys.onboarding.seed requires 'app'")
+    if app_name in kernel.iam.get_onboarded_apps(session.client_id):
+        return _ok(rid, {"already_done": True, "seeds_loaded": 0, "titles": []})
+    from lib.akasha.api import reserved as _reserved
+    seeds_root = Path(_reserved.root("seeds"))
+    result = SeedManager(seeds_root).seed_app(session, app_name)
+    kernel.iam.mark_onboarded(session.client_id, app_name)
+    return _ok(rid, result)

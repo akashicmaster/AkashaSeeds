@@ -1,0 +1,6 @@
+# sync.between (G4 §3.3 macro) — the world ↔ workbench coordinate pairs joined by cronon:sync, in
+# world order. Sync is a link between world and workbench time ONLY (a workflow/branch coordinate is
+# never synced), so this is the whole "when did the commons and this bench line up" reader.
+#
+#!params world=default,bench=
+cronon.sync.between world="$world" bench="$bench"

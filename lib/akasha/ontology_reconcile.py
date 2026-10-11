@@ -50,7 +50,7 @@ class OntologyReconciler:
     must expose evict_chunk / remove_link / delete_alias and a `.core` backend with
     get_chunk_raw / get_chunk_access_scopes / get_aliases_by_key / get_adjacent_links /
     get_incoming_links / get_collections_for_key / add_to_collection / remove_from_collection /
-    get_collection_members / update_meta. All mutators are WriteQueue-serialised (crash-stop).
+    get_collection_members / merge_meta. All mutators are WriteQueue-serialised (crash-stop).
     """
 
     def __init__(self, store: Any):
@@ -108,7 +108,8 @@ class OntologyReconciler:
                 changed = True
             if changed:
                 try:
-                    self.core.update_meta(key, meta)
+                    self.core.merge_meta(key, {"provenance": meta.get("provenance"),
+                                               "pack": meta.get("pack")})
                     n += 1
                 except Exception:
                     pass
@@ -177,6 +178,15 @@ class OntologyReconciler:
         # only `.core`, and going straight to it keeps every retire op on the crash-stop path.
         # aliases the pack registered for this atom
         for alias in (self.core.get_aliases_by_key(key) or []):
+            # Only a name that still points AT this key is this key's to remove (D16). A name the
+            # pack has since redefined points at its new text; deleting it here unbound the live
+            # atom (the reverse index of a store that kept a stale entry listed it under the old
+            # key too). The forward index is the authority on where a name points.
+            try:
+                if self.core.get_key_by_alias(alias) != key:
+                    continue
+            except Exception:
+                continue
             try:
                 self.core.delete_alias(alias); counts["aliases"] += 1
             except Exception:
@@ -234,15 +244,13 @@ class OntologyReconciler:
                 # just drop THIS pack from the owner list.
                 report["kept_shared"].append(key)
                 if not dry_run and remaining != owners:
-                    meta["pack"] = remaining
-                    try: self.core.update_meta(key, meta)
+                    try: self.core.merge_meta(key, {"pack": remaining})
                     except Exception: pass
                 continue
             if not self.retirable(key):
                 report["skipped_fenced"].append(key)
                 if not dry_run and owners:   # clear the now-empty owner list bookkeeping
-                    meta["pack"] = []
-                    try: self.core.update_meta(key, meta)
+                    try: self.core.merge_meta(key, {"pack": []})
                     except Exception: pass
                 continue
             refs = self._user_referrers(key)

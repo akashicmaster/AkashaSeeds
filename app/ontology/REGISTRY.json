@@ -1,0 +1,136 @@
+{
+  "version": "2",
+  "packages": [
+    {
+      "name": "app_lexicon",
+      "autoload": true,
+      "tier": "A"
+    },
+    {
+      "name": "base1",
+      "autoload": true,
+      "tier": "A"
+    },
+    {
+      "name": "base2",
+      "autoload": true,
+      "tier": "A"
+    },
+    {
+      "name": "base3",
+      "autoload": true,
+      "tier": "A"
+    },
+    {
+      "name": "vocab",
+      "autoload": false,
+      "tier": "B"
+    },
+    {
+      "name": "world",
+      "autoload": false,
+      "tier": "B"
+    },
+    {
+      "name": "shelf",
+      "autoload": false,
+      "tier": "B"
+    },
+    {
+      "name": "tech",
+      "autoload": false,
+      "tier": "B"
+    },
+    {
+      "name": "domain",
+      "autoload": false,
+      "tier": "B"
+    },
+    {
+      "name": "ancient",
+      "autoload": false,
+      "tier": "B"
+    },
+    {
+      "name": "art",
+      "autoload": false,
+      "tier": "B"
+    },
+    {
+      "name": "philosophy",
+      "autoload": false,
+      "tier": "B"
+    },
+    {
+      "name": "biology",
+      "autoload": false,
+      "tier": "B"
+    },
+    {
+      "name": "film",
+      "autoload": false,
+      "tier": "B"
+    },
+    {
+      "name": "geology",
+      "autoload": false,
+      "tier": "B"
+    },
+    {
+      "name": "law",
+      "autoload": false,
+      "tier": "B"
+    },
+    {
+      "name": "music",
+      "autoload": false,
+      "tier": "B"
+    },
+    {
+      "name": "people",
+      "autoload": false,
+      "tier": "B"
+    },
+    {
+      "name": "resources",
+      "autoload": false,
+      "tier": "B"
+    },
+    {
+      "name": "space",
+      "autoload": false,
+      "tier": "B"
+    },
+    {
+      "name": "war",
+      "autoload": false,
+      "tier": "B"
+    },
+    {
+      "name": "weather",
+      "autoload": false,
+      "tier": "B"
+    },
+    {
+      "name": "wine",
+      "autoload": false,
+      "tier": "B"
+    },
+    {
+      "name": "curation",
+      "autoload": true,
+      "tier": "A"
+    },
+    {
+      "name": "recipe",
+      "autoload": true,
+      "tier": "A"
+    },
+    {
+      "name": "station",
+      "autoload": true,
+      "tier": "A",
+      "consumer": "studio_ai (the station bench)"
+    }
+  ]
+}

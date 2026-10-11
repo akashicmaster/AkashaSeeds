@@ -1,0 +1,47 @@
+{
+  "metadata": {
+    "protocol": "akasha_capsule_v1.2",
+    "author": "system",
+    "timestamp": 1700000000.0,
+    "doc_type": "loom:note",
+    "concept_id": "21b2ae1a3d90468e4994c684fd7ee6f07ab42c912640127df37f7e799bf5546f",
+    "extracted_since": 0.0,
+    "seed": {
+      "kind": "sample",
+      "title": "My First Piece",
+      "order": 1,
+      "category": "general",
+      "locale": "en"
+    }
+  },
+  "atoms": {
+    "21b2ae1a3d90468e4994c684fd7ee6f07ab42c912640127df37f7e799bf5546f": "My First Piece",
+    "0eb8aaa9f4334706bba3200c08ec6764fb2d7f1a9ccb9e8c679602a1099ca071": "Welcome to Loom — a space for longer-form writing and composition.",
+    "3e9c630d114d272eb5ee1f6ad87241bc2591241087ea9f2f818ae7ac270aad65": "Unlike Note, Loom pieces are meant to be developed over time into polished text. Each chunk is a paragraph or section you can rearrange freely.",
+    "c196026d6a0d72c4980dee849a942df392c01808afb040ace035304c85e5a7aa": "Start writing here, or delete this sample and create your own piece from scratch."
+  },
+  "links": [
+    {
+      "src": "21b2ae1a3d90468e4994c684fd7ee6f07ab42c912640127df37f7e799bf5546f",
+      "dst": "0eb8aaa9f4334706bba3200c08ec6764fb2d7f1a9ccb9e8c679602a1099ca071",
+      "rel": "sys:top",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "0eb8aaa9f4334706bba3200c08ec6764fb2d7f1a9ccb9e8c679602a1099ca071",
+      "dst": "3e9c630d114d272eb5ee1f6ad87241bc2591241087ea9f2f818ae7ac270aad65",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "3e9c630d114d272eb5ee1f6ad87241bc2591241087ea9f2f818ae7ac270aad65",
+      "dst": "c196026d6a0d72c4980dee849a942df392c01808afb040ace035304c85e5a7aa",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    }
+  ],
+  "telemetry": {}
+}

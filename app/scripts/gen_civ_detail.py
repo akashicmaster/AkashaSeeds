@@ -1,0 +1,156 @@
+#!/usr/bin/env python3
+"""Generate app/ontology/world/civilizations_detail.ak — the DEPTH layer for the Ancient
+Civilizations archives. Reads app/scripts/civ_enrich_data.py (the committed source of truth:
+per-civ detail atoms + resolved bridges) and emits, for all 77 ancient:* civilizations:
+
+  • authored DETAIL atoms  — ancient:{site,figure,work,concept,event}:*  (typed @has_*/@embodies/@marks_event)
+  • a LEGACY class per atom — sys:is_a ancient:{site,figure,work,concept,event} (⊂ ancient:legacy)
+  • same_as BRIDGES        — an authored atom → an exact existing richer atom (person/heritage/epic/…)
+  • graph BRIDGES          — deities, epics, heritage, rulers, ethnicities, finds, hist: same_as (validated)
+  • civilizational SUCCESSION — thesaurus:related between civs in cultural/temporal succession
+
+Every bridge target is validated against the loaded ontology — nothing dangles. Re-run after
+editing app/scripts/civ_enrich_data.py; then run scripts/gen_lexicon.py and regenerate seeds.
+"""
+import os, re, glob
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# ── existing atom universe (validate every bridge target) ──
+E = set()
+for fp in glob.glob(os.path.join(ROOT, 'ontology/**/*.ak'), recursive=True):
+    for line in open(fp, encoding='utf-8', errors='replace'):
+        m = re.match(r'\s*def\s+"([a-z][a-z0-9_]*:[^"]+)"', line)
+        if m:
+            E.add(m.group(1))
+
+# ── the 77 civilizations (from civilizations.ak) ──
+CIV = set()
+for line in open(os.path.join(ROOT, 'app/ontology/world/civilizations.ak'), encoding='utf-8'):
+    m = re.match(r'\s*def\s+"(ancient:[^"]+)"\s', line)
+    if m and m.group(1) not in ('ancient:civilization', 'ancient:region') and not m.group(1).startswith('ancient:region'):
+        CIV.add(m.group(1))
+
+# ── the committed enrichment data ──
+import importlib.util
+_spec = importlib.util.spec_from_file_location('ced', os.path.join(ROOT, 'app/scripts/civ_enrich_data.py'))
+_mod = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_mod)
+DATA = _mod.DATA
+
+def _norm(s): return re.sub(r'[^a-z0-9]+', '_', s.lower()).strip('_')
+
+# ── exact-match same_as: an authored atom → an existing richer atom (category-aligned) ──
+from collections import Counter
+_lc = Counter(); _lk = {}
+for k in E:
+    ns0 = k.split(':', 1)[0]
+    if ns0 in ('person', 'heritage', 'landmark', 'epic', 'archaeo'):
+        last = _norm(k.split(':')[-1]); _lc[(ns0, last)] += 1; _lk[(ns0, last)] = k
+SAME_NS = {'site': ['heritage', 'landmark'], 'figure': ['person'], 'work': ['epic', 'archaeo']}
+def exact_same_as(cat, aid):
+    n = _norm(aid)
+    for ns0 in SAME_NS.get(cat, []):
+        if _lc[(ns0, n)] == 1:
+            return _lk[(ns0, n)]
+    return None
+
+# category → (namespace, civ→atom relation)
+CAT = {'site': ('ancient:site', '@has_site'), 'figure': ('ancient:figure', '@has_figure'),
+       'work': ('ancient:work', '@has_work'), 'concept': ('ancient:concept', '@embodies'),
+       'event': ('ancient:event', '@marks_event')}
+# a bridge's relation must match its target namespace (guards name-resolver false positives)
+BRIDGE_NS = {'@has_site': ('heritage', 'landmark'), '@has_figure': ('person',), '@worships': ('deity',),
+             '@has_work': ('epic', 'archaeo'), '@gave_rise_to': ('ethnicity',), '@left_relic': ('archaeo',)}
+
+# ── civilizational succession & cross-cultural influence (thesaurus:related) ──
+SUCCESSION = [
+    ('sumer','akkad'),('akkad','babylon'),('babylon','assyria'),('sumer','elam'),('assyria','babylon'),
+    ('egypt:old_kingdom','egypt:new_kingdom'),('egypt:new_kingdom','kush'),('kush','meroe'),
+    ('indus','vedic'),('vedic','maurya'),('maurya','gupta'),
+    ('shang','zhou'),('zhou','qin'),('qin','han'),
+    ('minoan','mycenae'),('mycenae','greece'),('greece','rome'),('etruscan','rome'),('phoenicia','carthage'),
+    ('media','achaemenid'),('achaemenid','parthia'),('parthia','sasanian'),
+    ('sogdia','kushan'),('scythian','xiongnu'),
+    ('olmec','maya'),('olmec','zapotec'),('teotihuacan','toltec'),('toltec','aztec'),('maya','toltec'),
+    ('caral','chavin'),('chavin','moche'),('chavin','nazca'),('moche','chimu'),('tiwanaku','wari'),
+    ('wari','inca'),('chimu','inca'),('tiwanaku','inca'),
+    ('hopewell','cahokia'),('puebloan','hohokam'),
+    ('nok','benin'),('ghana','mali'),('mali','songhai'),('kush','aksum'),
+    ('lapita','polynesia'),('polynesia','rapa_nui'),('polynesia','maori'),('polynesia','tonga'),
+    ('funan','khmer'),('funan','champa'),('srivijaya','majapahit'),('srivijaya','khmer'),
+    ('achaemenid','greece'),('greece','maurya'),('rome','parthia'),('han','xiongnu'),('kushan','han'),
+    ('phoenicia','greece'),('greece','etruscan'),('sasanian','rome'),
+]
+
+def esc(s): return (s or '').replace('"', "'").replace('\n', ' ').strip()
+
+out = []; w = out.append
+w("# Ancient Civilizations — DEPTH LAYER (authored detail atoms, legacy classes, and validated bridges).")
+w("# Generated by gen_civ_detail from civ_enrich_data. Namespace ancient:.")
+w("# Every bridge target is validated against the ontology — nothing dangles.\n")
+
+# ── legacy classes (every detail atom sys:is_a one of these) ──
+w("# ── legacy classes ──")
+w('def "ancient:legacy" "The legacy of a civilization — its places, people, works, ideas, and events."')
+for ns, lab in (('ancient:site', 'a place, city, or monument'), ('ancient:figure', 'a ruler, thinker, or notable person'),
+                ('ancient:work', 'an achievement, invention, text, or artwork'), ('ancient:concept', 'an institution, system, or idea'),
+                ('ancient:event', 'a pivotal historical event')):
+    w('def "%s" "%s — %s of an ancient civilization."' % (ns, ns.split(':')[1], lab))
+    w('ln %s ancient:legacy sys:is_a' % ns)
+w("")
+
+new_atoms = classed = sameas = bridges = dropped = 0
+seen = set(); missing = []
+for civ in sorted(CIV):
+    spec = DATA.get(civ, {})
+    lines = []; emitted = set()
+    for cat, (ns, rel) in CAT.items():
+        for aid, desc in spec.get(cat, []):
+            key = "%s:%s" % (ns, aid)
+            if key in emitted:
+                continue
+            emitted.add(key)
+            if key not in seen:
+                seen.add(key)
+                lines.append('def "%s" "%s"' % (key, esc(desc)))
+                lines.append('ln %s %s sys:is_a' % (key, ns))          # legacy class
+                classed += 1
+                sm = exact_same_as(cat, aid)
+                if sm:
+                    lines.append('ln %s %s sys:same_as' % (key, sm)); sameas += 1
+                new_atoms += 1
+            lines.append('ln %s %s %s' % (civ, key, rel))
+    # graph bridges (already resolved in the data), deduped + validated + namespace-guarded
+    bt = {}
+    for tgt, rel in spec.get('bridges', []):
+        ns = tgt.split(':', 1)[0]
+        ok_ns = BRIDGE_NS.get(rel)                    # relation ↔ target-namespace sanity
+        if 'subfield' in tgt or (ok_ns and ns not in ok_ns):
+            dropped += 1; missing.append(tgt); continue
+        if tgt in E:
+            bt.setdefault(tgt, rel)
+        else:
+            dropped += 1; missing.append(tgt)
+    for tgt, rel in sorted(bt.items()):
+        lines.append('ln %s %s %s' % (civ, tgt, rel)); bridges += 1
+    if lines:
+        w("# ── %s ──" % civ); w("\n".join(lines)); w("")
+
+# ── civilizational succession & influence ──
+w("# ── civilizational succession & influence ──")
+succ = 0
+for a, b in SUCCESSION:
+    ca, cb = 'ancient:' + a, 'ancient:' + b
+    if ca in CIV and cb in CIV:
+        w('ln %s %s thesaurus:related' % (ca, cb)); succ += 1
+    else:
+        print("WARN succession skips unknown pair: %s / %s" % (ca, cb))
+w("")
+
+open(os.path.join(ROOT, 'app/ontology/world/civilizations_detail.ak'), 'w', encoding='utf-8').write("\n".join(out) + "\n")
+print("civs              : %d" % len(CIV))
+print("detail atoms      : %d  (+6 legacy classes)" % new_atoms)
+print("class links       : %d" % classed)
+print("same_as bridges   : %d" % sameas)
+print("graph bridges     : %d  (dropped %d %s)" % (bridges, dropped, sorted(set(missing))[:8]))
+print("succession links  : %d" % succ)

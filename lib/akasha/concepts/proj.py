@@ -73,16 +73,16 @@ class ProjectionConcept(BaseConcept):
     # split is semantically load-bearing (several projection ops are pure reads), so the
     # authoritative actions are declared here rather than left to the verb convention.
     CONCEPT_METHODS = {
-        "new":   {"op": "op_new", "action": "write"},
-        "open":  {"op": "op_open", "action": "write",
+        "new":   {"op": "op_new", "action": "record"},
+        "open":  {"op": "op_open", "action": "record",
                   "coerce": lambda d: {"proj_id": d.get("proj_id") or d.get("id", "")}},
         "ls":    {"op": "op_list_all", "action": "read"},
         "map":   {"op": "op_map", "action": "read"},
-        "rm":    {"op": "op_delete", "action": "drop"},
-        "axis.add": {"op": "op_add_axis", "action": "write",
+        "rm":    {"op": "op_delete", "action": "record"},
+        "axis.add": {"op": "op_add_axis", "action": "record",
                      "coerce": lambda d: {"word": d.get("word") or d.get("name", ""),
                                           "ref_id": d.get("ref_id")}},
-        "extract":  {"op": "op_extract", "action": "write",
+        "extract":  {"op": "op_extract", "action": "record",
                      "coerce": lambda d: {"focal": (d.get("focal") or d.get("version_id")
                                                     or d.get("atom_id") or d.get("id", "")),
                                           "text": d.get("text")}},
@@ -99,10 +99,10 @@ class ProjectionConcept(BaseConcept):
                       "coerce": lambda d: {"focal": (d.get("focal") or d.get("atom_id")
                                                      or d.get("id", "")),
                                            "axis": d.get("axis"), "scope": d.get("scope", 1)}},
-        "void":  {"op": "op_void", "action": "write",
+        "void":  {"op": "op_void", "action": "record",
                   "coerce": lambda d: {"focal": (d.get("focal") or d.get("atom_id")
                                                  or d.get("id", ""))}},
-        "tag":   {"op": "op_tag", "action": "write"},
+        "tag":   {"op": "op_tag", "action": "record"},
         "diagnose": {"op": "op_diagnose", "action": "read"},
     }
 

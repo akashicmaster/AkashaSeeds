@@ -38,10 +38,27 @@ from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
 from lib.akasha.concepts.base import BaseConcept
-from lib.akasha.concepts.mixins.importable import ImportableMixin
-from lib.akasha.concepts.mixins.exportable import ExportableMixin
+from lib.akasha.api.concepts import ImportableMixin, ExportableMixin   # the contracts, through the API
+from lib.akasha.concepts._universal import UniversalConcept
 
 logger = logging.getLogger("Harmonia.Lens")
+
+
+from lib.akasha.artifact_epoch import artifact_id as _artifact_id, is_stale as _is_stale
+
+
+def _lslug(s: str) -> str:
+    import re as _re
+    return _re.sub(r"[^a-z0-9]+", "_", str(s or "").lower()).strip("_")
+
+
+class _LensNucIO(UniversalConcept):
+    """A NON-registered UniversalConcept (no CONCEPT_METHODS ⇒ the registry never discovers it): lens
+    borrows its nucleus-spanning helpers (_members / _meta / _alias / _key / _mk / _link / _add_to_set)
+    to read Set members that live in the shared nucleus and to write the ONE compare aggregate into
+    universal scope — the same helpers the source engine uses. Its `core` handles link adjacency in the
+    nucleus (which the session cortex does not span)."""
+    CONCEPT_PREFIX = "lens_nucio"
 
 # Module-level registry reference — injected by kernel.py at startup.
 _registry_ref = None
@@ -325,6 +342,7 @@ def _coerce_scan(data: Dict[str, Any]) -> Dict[str, Any]:
         "src":    data.get("src", "").strip().strip('"\''),
         "follow": data.get("follow", "").strip().strip('"\''),
         "depth":  int(data.get("depth", 2)),
+        "within": data.get("within", "").strip().strip('"\''),
     }
 
 
@@ -359,11 +377,33 @@ class LensConcept(BaseConcept):
         "flatten": {
             "op":     "op_flatten",
             "coerce": _coerce_flatten,
-            "action": "write",
+            "action": "record",
             "args":   ["into"],
             "desc":   "Persist scan nodes as rec atoms in a named set: lens.flatten into=<name>",
         },
+        "compare": {
+            "op":     "op_compare",
+            "action": "read",
+            "args":   ["a", "b", "key", "field", "truth", "result", "item"],
+            "desc":   "Join two Sets member-by-member (key=<relation to the join key>, empty = the "
+                      "member) and compare one meta field: lens.compare a=<set> b=<set> [key=<rel>] "
+                      "[field=label] [truth=<item field>] [result=<atom>] [item=<id>]",
+        },
+        "rank": {
+            "op":     "op_rank",
+            "action": "read",
+            "args":   ["set", "key", "order", "within", "group", "top"],
+            "desc":   "Rank a Set's atoms by a meta field, grouped (default group=frame): lens.rank "
+                      "set=<Set> key=<field> [order=desc|asc] [within=<Set>] [group=<f[,f]>] [top=<n>]",
+        },
     }
+
+    # ── nucleus IO helper (observations live in the shared nucleus) ─────────────
+    def _nucio(self) -> "_LensNucIO":
+        io = getattr(self, "_nucio_cache", None)
+        if io is None:
+            io = self._nucio_cache = _LensNucIO(self.session)
+        return io
 
     # ── helpers ───────────────────────────────────────────────────────────────
 
@@ -404,12 +444,17 @@ class LensConcept(BaseConcept):
         src:    str,
         follow: str = "",
         depth:  int = 2,
+        within: str = "",
     ) -> Dict[str, Any]:
         """[lens.scan] Scan a source and list compatible concept model targets.
 
         src    — set name (e.g. "set:rec:expense") or atom key/alias (tree root)
         follow — link relation to traverse for tree mode (e.g. "ref:therefore")
         depth  — max traversal depth in tree mode (default 2)
+        within — a Set to INTERSECT the scanned nodes with (G4): keep only nodes that are members of
+                 `within`, so a lens is confined to a membrane (e.g. the observations of one run). A
+                 coordinate/run membership Set is exactly such a membrane — this is Set algebra, no new
+                 traversal.
 
         Stores results in session context for follow-up lens.cast.
         Returns a lens:scan result for the renderer.
@@ -431,8 +476,14 @@ class LensConcept(BaseConcept):
         scanner = self._scanner()
         profile, nodes = scanner.scan(src, follow=follow, depth=depth)
 
+        if within:
+            keep = set(self._nucio()._members(within))
+            nodes = [n for n in nodes if n[0] in keep]
+            profile["within"] = within
+            profile["node_count"] = len(nodes)
+
         if not nodes:
-            raise ValueError(f"No nodes found at '{src}'.")
+            raise ValueError(f"No nodes found at '{src}'{f' within {within}' if within else ''}.")
 
         # Score all importable models
         importable = self._importable_classes()
@@ -471,6 +522,215 @@ class LensConcept(BaseConcept):
             "preview_cols": attr_keys,
             "preview_rows": preview_rows,
         }
+
+    # ── observation join (G4 / Part D T7 substrate) ─────────────────────────────
+    def _inputs_epoch(self, io: "_LensNucIO", sets: Tuple[str, ...]) -> Optional[int]:
+        """S1-a §1.4/§1.5 — the epoch of a set of observation Sets: the MAX member coordinate
+        (`cronon`/`at_seq`) across them. A later observation added to either Set raises this, so a diff
+        built at the old epoch reads as stale. O(members) — a bounded membrane read, never a scan."""
+        hi = None
+        for s in sets:
+            for okey in io._members(s):
+                m = io._meta(io._alias(okey) or okey) or {}
+                e = m.get("cronon")
+                if e is None:
+                    e = m.get("at_seq")
+                try:
+                    e = int(e) if e is not None else None
+                except (TypeError, ValueError):
+                    e = None
+                if e is not None and (hi is None or e > hi):
+                    hi = e
+        return hi
+
+    @staticmethod
+    def _member_row(io: "_LensNucIO", core, okey: str, key: str, field: str) -> Tuple[Optional[str], Any, float]:
+        """For one member of a compared Set: (its join key, its `field` value, its `confidence`). The
+        join key is the target of the member's first `key` link (`key` names a RELATION), or the member
+        itself when `key` is empty. The value is the member's own meta `field` (else its
+        `source_metadata[field]`). The lens reads what the member's writer stated — it derives no label
+        from any model's atoms (the purge order §2: the platform names no application relation)."""
+        oalias = io._alias(okey) or okey
+        item = oalias
+        if key:
+            item = None
+            try:
+                for l in core.get_adjacent_links(okey, key):
+                    dst = l.get("dst")
+                    if dst:
+                        item = io._alias(dst) or dst
+                        break
+            except Exception:
+                item = None
+        m = io._meta(oalias) or {}
+        val = m.get(field)
+        if val is None:
+            val = (m.get("source_metadata") or {}).get(field)
+        try:
+            conf = float(m.get("confidence") or 0.0)
+        except (TypeError, ValueError):
+            conf = 0.0
+        return item, val, conf
+
+    def op_compare(self, a: str = "", b: str = "", key: str = "", field: str = "label",
+                   truth: str = "", result: str = "", item: str = "") -> Dict[str, Any]:
+        """[lens.compare] Join two Sets member-by-member and compare one meta field — a per-item
+        before/after. `key` names the RELATION whose target is each member's join key (empty: the member
+        itself); `field` is the member meta field compared (default `label`; falls back to the member's
+        `source_metadata`). Optional `truth=<field>` scores agreement with the joined item's own field
+        (never read from a member); optional `item=<id>` returns just that item's row. With `result=`,
+        stores ONE aggregate atom (concept `lens_compare`, epoch-stamped) under that alias and returns its
+        key as `stored`; indexing it anywhere else is the caller's. Pure Set algebra over two membranes."""
+        if not a or not b:
+            raise ValueError("lens.compare requires a= and b= (two observation Sets)")
+        # F3 — a GUEST reads the comparison read-only: the answer key (`truth=`) NEVER leaves the
+        # admitted circle (rows carry truth=null, truth_known=0), and no aggregate atom is stored (a
+        # guest holds no write capability — `result=` is ignored rather than refused, so the read still
+        # returns the rows the public page shows).
+        _guest = self._is_guest()
+        if _guest:
+            truth = ""
+            result = ""
+        io = self._nucio()
+        core = io._nuc.core if io._nuc else None
+        if core is None:
+            raise RuntimeError("lens.compare needs the nucleus (observations live there)")
+
+        def _index(setname):
+            out = {}
+            for okey in io._members(setname):
+                item, label, conf = self._member_row(io, core, okey, key, field)
+                if item is not None:
+                    out[item] = {"observation": io._alias(okey) or okey, "label": label,
+                                 "confidence": round(conf, 4)}
+            return out
+
+        A, B = _index(a), _index(b)
+        items = sorted(set(A) | set(B))
+        rows, changed, agree_a, agree_b, truths = [], 0, 0, 0, 0
+        for it in items:
+            ra, rb = A.get(it), B.get(it)
+            la = ra["label"] if ra else None
+            lb = rb["label"] if rb else None
+            ch = (la != lb)
+            if ch:
+                changed += 1
+            tv = None
+            if truth:
+                tm = io._meta(it) or {}
+                tv = tm.get(truth) or (tm.get("source_metadata") or {}).get(truth)
+                if tv is not None:
+                    truths += 1
+                    if la is not None and str(la) == str(tv):
+                        agree_a += 1
+                    if lb is not None and str(lb) == str(tv):
+                        agree_b += 1
+            rows.append({"item": it, "a": ra, "b": rb, "changed": ch, "truth": tv})
+        summary = {"items": len(items), "changed": changed,
+                   "agree_a": agree_a, "agree_b": agree_b, "truth_known": truths}
+        # D2-M §4.5 — an item= filter returns just that item's row (the GUI's single-item compare).
+        if item:
+            rows = [r for r in rows if str(r.get("item")) == str(item)
+                    or str(r.get("item")) == str(io._alias(io._key(item)) or item)]
+
+        stored = None
+        if result:
+            # A `wb:<bench>:…` result alias is a bench's: slug its bench segment so it matches the bench
+            # alias (`wb:` + slug(name)) whatever spelling of the bench the caller passed.
+            if result.startswith("wb:"):
+                _parts = result.split(":")
+                if len(_parts) >= 2 and _parts[1]:
+                    _parts[1] = _lslug(_parts[1])
+                    result = ":".join(_parts)
+            content = "[lens.compare] %s vs %s: %d items, %d changed" % (a, b, len(items), changed)
+            # S1-a §1.4 — this stored aggregate is a DERIVED accelerator. Stamp its epoch identity so a
+            # reader can tell a fresh diff from a stale one (inputs advanced) and regenerate it: the
+            # inputs are the two observation Sets, the epoch is their max member coordinate, and the
+            # access_context distinguishes a guest's diff from an admitted member's (F3/R5).
+            _epoch = self._inputs_epoch(io, (a, b))
+            _aid = _artifact_id(_epoch, "universal", None, (a, b), "lens.compare", field,
+                                "guest" if self._is_guest() else "member")
+            meta = {"concept": "lens_compare", "a": a, "b": b, "key": key, "field": field,
+                    "truth": truth or None, "built_at_epoch": _epoch, "artifact_id": _aid,
+                    "access_context": "guest" if self._is_guest() else "member", **summary}
+            # S1-a §1.4 — REPLACE-on-change keyed on the artifact_id: a rebuild at a NEW epoch (inputs
+            # advanced) mints a fresh generation and re-points the alias; an identical rebuild is a no-op.
+            # (The old atom stays — history — per _mk_replace.)
+            stored, _achg, _aold = io._mk_replace(result, content, meta, compare_meta=("artifact_id",))
+        logger.info("[lens.compare] a=%s b=%s items=%d changed=%d agree_a=%d agree_b=%d",
+                    a, b, len(items), changed, agree_a, agree_b)
+        return {"type": "lens:compare", "a": a, "b": b, "key": key, "field": field,
+                "rows": rows, "summary": summary, "result": result or None, "stored": stored}
+
+    def op_rank(self, set: str = "", key: str = "accuracy", order: str = "desc",
+                within: str = "", group: str = "frame", top: str = "") -> Dict[str, Any]:
+        """[lens.rank] P0-a §2.4 — rank a Set's atoms by a meta `key`, GROUPED (default `group=frame`
+        so evaluations on different held-out frames never rank against each other — `frame_mismatch=true`
+        when a group spans frames), optionally intersected `within=<Set>`, `top=<n>` per group. Pure Set
+        algebra over the members' meta — no scan, guest-readable (F3). The leaderboard macro is built on
+        this."""
+        if not set:
+            raise ValueError("lens.rank requires set=")
+        io = self._nucio()
+        within_keys = {x for x in io._members(within)} if within else None
+        group_fields = [g.strip() for g in str(group or "").split(",") if g.strip()]
+        desc = str(order or "desc").lower() != "asc"
+        rows = []
+        for mk in io._members(set):
+            if within_keys is not None and mk not in within_keys:
+                continue
+            m = io._meta(io._alias(mk) or mk) or {}
+            if not m:
+                continue
+            row = dict(m)
+            row["atom"] = io._alias(mk) or mk
+            # B1 §A6 — a claim's `status` is DERIVED (never stored): when ranking the claims Set, ask the
+            # claim concept for each row's status (so `group=status` works) and HIDE the text from a guest.
+            if m.get("concept") == "claim":
+                try:
+                    from lib.akasha.concepts.claim import ClaimConcept
+                    row["status"] = ClaimConcept(self.session)._derive_status(mk)
+                except Exception:
+                    row.setdefault("status", "unattached")
+                if self._is_guest():
+                    row.pop("text", None)
+            rows.append(row)
+
+        def _num(v):
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return None
+
+        def _gkey(r):
+            return tuple(str(r.get(g)) for g in group_fields) if group_fields else ("_all",)
+
+        groups: Dict[tuple, list] = {}
+        for r in rows:
+            groups.setdefault(_gkey(r), []).append(r)
+        try:
+            _top = int(top) if str(top).strip() else None
+        except (TypeError, ValueError):
+            _top = None
+        out_groups = []
+        for gk, grows in groups.items():
+            # sort by the numeric key when possible (None sinks to the bottom), else lexicographically
+            grows.sort(key=lambda r: (_num(r.get(key)) is not None, _num(r.get(key))
+                                      if _num(r.get(key)) is not None else 0, str(r.get(key) or "")),
+                       reverse=desc)
+            ranked = grows[:_top] if _top else grows
+            for i, r in enumerate(ranked):
+                r["rank"] = i + 1
+            out_groups.append({"group": dict(zip(group_fields, gk)) if group_fields else {},
+                               "rows": ranked, "count": len(ranked)})
+        # a request that mixes frames when the caller did NOT group by frame is flagged (P0-a)
+        _frames = {str(r.get("frame")) for r in rows if r.get("frame") is not None}
+        frame_mismatch = (len(_frames) > 1) and ("frame" not in group_fields)
+        logger.debug("[lens.rank] set=%s key=%s groups=%d frame_mismatch=%s", set, key,
+                     len(out_groups), frame_mismatch)
+        return {"type": "lens:rank", "set": set, "key": key, "order": "desc" if desc else "asc",
+                "group": group_fields, "groups": out_groups, "count": len(rows),
+                "frame_mismatch": frame_mismatch}
 
     def op_cast(
         self,

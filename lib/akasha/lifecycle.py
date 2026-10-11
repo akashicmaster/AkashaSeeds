@@ -15,7 +15,9 @@ connections. Correctness/durability do not depend on any of this (the WriteQueue
 synchronous=FULL already guarantee crash-stop); this only makes the *graceful* exit
 clean instead of relying on the C module's finalization behaviour.
 """
+import sys as _sys
 import threading
+import time as _time
 import logging
 
 logger = logging.getLogger("Akasha.Lifecycle")
@@ -49,6 +51,15 @@ def wait_or_shutdown(timeout: float) -> bool:
     return _shutting_down.wait(timeout)
 
 
+def wait_for_shutdown() -> None:
+    """Block the calling thread until graceful shutdown begins (SIGTERM handler / a stop
+    RPC / begin_shutdown). This is what the Cell daemon's MAIN thread parks on — NEVER a
+    child portal's Popen.wait(): the writer's life is bound to the LIFECYCLE, not to the
+    first portal it happened to spawn. When the health tick reaps that portal, the writer
+    stays up; only a real shutdown signal releases this wait (A53 item 1)."""
+    _shutting_down.wait()
+
+
 def register_conn(conn) -> None:
     """Track a freshly-created SQLite connection so it can be closed on shutdown."""
     with _lock:
@@ -76,7 +87,19 @@ def begin_shutdown(join_timeout: float = 4.0) -> None:
     if _shutting_down.is_set():
         return
     _shutting_down.set()
+    # A53 item 2 — name WHO began the shutdown, so a daemon leaving is never a silent event.
+    # The caller's qualified name (SIGTERM handler, atexit, a stop RPC, a health tick) is the
+    # single most useful datum for "why did the writer go away".
+    _t0 = _time.time()
+    _joined = 0
     try:
+        _caller = "?"
+        try:
+            _f = _sys._getframe(1)
+            _caller = "%s:%d" % (_f.f_code.co_qualname if hasattr(_f.f_code, "co_qualname")
+                                 else _f.f_code.co_name, _f.f_lineno)
+        except Exception:
+            pass
         with _lock:
             wakes = list(_wakes)
         for fn in wakes:
@@ -93,8 +116,12 @@ def begin_shutdown(join_timeout: float = 4.0) -> None:
             if t.name in _DAEMON_NAMES:
                 try:
                     t.join(timeout=join_timeout)
+                    if not t.is_alive():
+                        _joined += 1
                 except Exception:
                     pass
+        logger.info("[Lifecycle] begin_shutdown caller=%s joined=%d in %.2fs",
+                    _caller, _joined, _time.time() - _t0)
         # 2. Close the backends (checkpoint WAL + drain/join each WriteQueue worker), so
         #    no writer thread is alive when we close connections.
         with _lock:

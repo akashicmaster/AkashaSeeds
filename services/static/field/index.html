@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AKASHA — Field Gallery</title>
+  <script src="/lib/plotly-2.27.0.min.js" charset="utf-8"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --ink:   #0e0a04;
+      --paper: #f0e8d4;
+      --rule:  rgba(200,160,80,0.18);
+    }
+
+    html, body {
+      height: 100%; background: #09060200;
+      font-family: Georgia, 'Times New Roman', serif;
+      overflow: hidden;
+    }
+
+    /* ── Atmosphere ──────────────────────────────────────────────── */
+    .bg {
+      position: fixed; inset: 0; z-index: 0;
+      background:
+        radial-gradient(ellipse 70% 60% at 20% 30%, rgba(50,18,4,0.92) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 70% at 80% 70%, rgba(4,12,40,0.88) 0%, transparent 60%),
+        radial-gradient(ellipse 80% 80% at 50% 50%, rgba(10,5,2,0.96) 0%, transparent 100%);
+      background-color: #08040100;
+    }
+    .bg::after {
+      content: '';
+      position: absolute; inset: 0;
+      background-color: #060401;
+      z-index: -1;
+    }
+
+    /* ── Header ──────────────────────────────────────────────────── */
+    header {
+      position: relative; z-index: 30;
+      height: 52px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 28px;
+      border-bottom: 1px solid rgba(180,120,40,0.18);
+      background: rgba(6,3,1,0.82);
+    }
+    .hd-left { display: flex; align-items: center; gap: 18px; }
+    #back-btn {
+      font-family: 'Courier New', monospace; font-size: 0.6rem;
+      letter-spacing: 2.5px; text-transform: uppercase;
+      background: transparent; border: 1px solid rgba(180,120,40,0.35);
+      color: rgba(190,140,55,0.85); padding: 5px 12px;
+      cursor: pointer; transition: color 0.15s, border-color 0.15s, background 0.15s;
+    }
+    #back-btn:hover { color: rgba(240,190,90,1); border-color: rgba(180,120,40,0.7);
+                      background: rgba(50,28,6,0.6); }
+    .hd-title {
+      font-family: 'Courier New', monospace; font-size: 0.6rem;
+      letter-spacing: 5px; text-transform: uppercase;
+      color: rgba(180,120,40,0.55);
+    }
+    #room-label {
+      font-family: Georgia, serif; font-size: 0.85rem;
+      color: rgba(220,180,90,0.8); letter-spacing: 1px;
+      opacity: 0; transition: opacity 0.4s;
+    }
+    #room-label.visible { opacity: 1; }
+    .hd-right {
+      font-family: 'Courier New', monospace; font-size: 0.52rem;
+      letter-spacing: 3px; color: rgba(180,120,40,0.3); text-transform: uppercase;
+    }
+
+    /* ── Main area ───────────────────────────────────────────────── */
+    main {
+      position: relative; z-index: 10;
+      height: calc(100vh - 52px);
+      display: flex; flex-direction: column;
+    }
+
+    /* ── Gallery view ────────────────────────────────────────────── */
+    #gallery-view {
+      flex: 1; overflow-y: auto;
+      padding: 32px 28px 40px;
+    }
+    #gallery-view::-webkit-scrollbar { width: 4px; }
+    #gallery-view::-webkit-scrollbar-thumb { background: rgba(180,120,40,0.3); }
+
+    .gallery-intro {
+      margin-bottom: 28px;
+    }
+    .gallery-intro h2 {
+      font-size: clamp(1.1rem, 2.5vw, 1.5rem);
+      font-weight: 400; letter-spacing: 3px;
+      color: rgba(220,185,90,0.72); margin-bottom: 6px;
+    }
+    .gallery-intro p {
+      font-size: 0.7rem; letter-spacing: 2px;
+      color: rgba(180,140,60,0.38); font-style: italic;
+    }
+
+    .room-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 16px;
+    }
+
+    .room-tile {
+      position: relative; cursor: pointer;
+      padding: 26px 22px 24px;
+      border: 1px solid rgba(180,120,40,0.18);
+      background: rgba(10,5,2,0.55);
+      transition: background 0.2s, border-color 0.25s, transform 0.18s;
+      overflow: hidden;
+    }
+    .room-tile::before {
+      content: '';
+      position: absolute; inset: 0;
+      opacity: 0;
+      transition: opacity 0.25s;
+    }
+    .room-tile:hover { border-color: rgba(180,120,40,0.5); transform: translateY(-2px); }
+    .room-tile:hover::before { opacity: 1; }
+
+    /* Per-room accent colors applied via inline style on ::before */
+    .room-tile .room-glow {
+      position: absolute; inset: 0; opacity: 0;
+      transition: opacity 0.25s;
+      pointer-events: none;
+    }
+    .room-tile:hover .room-glow { opacity: 1; }
+
+    .room-num {
+      font-family: 'Courier New', monospace; font-size: 0.48rem;
+      letter-spacing: 3px; color: rgba(180,120,40,0.38);
+      margin-bottom: 14px; text-transform: uppercase;
+    }
+    .room-ns {
+      font-family: 'Courier New', monospace; font-size: 0.58rem;
+      letter-spacing: 2px; margin-bottom: 8px;
+      transition: color 0.2s;
+    }
+    .room-name-en {
+      font-size: clamp(1.05rem, 2vw, 1.3rem); font-weight: 400;
+      letter-spacing: 1px; line-height: 1.2;
+      color: rgba(220,185,90,0.85); margin-bottom: 4px;
+    }
+    .room-name-jp {
+      font-size: 0.78rem; color: rgba(200,160,75,0.45);
+      letter-spacing: 2px; margin-bottom: 14px;
+    }
+    .room-desc {
+      font-size: 0.67rem; line-height: 1.65;
+      color: rgba(170,140,80,0.45); font-style: italic;
+      letter-spacing: 0.3px;
+    }
+    .room-arrow {
+      position: absolute; bottom: 16px; right: 18px;
+      font-family: 'Courier New', monospace; font-size: 0.9rem;
+      color: rgba(180,120,40,0.28);
+      transition: color 0.2s, transform 0.2s;
+    }
+    .room-tile:hover .room-arrow { color: rgba(220,175,80,0.7); transform: translateX(4px); }
+
+    /* ── Sphere / Room view ──────────────────────────────────────── */
+    #sphere-view {
+      flex: 1; display: none; flex-direction: column;
+      position: relative;
+    }
+    #sphere-view.active { display: flex; }
+
+    #sphere-plot {
+      flex: 1; width: 100%; position: relative; z-index: 1;
+    }
+    .sphere-fallback {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 8px; padding: 24px;
+      text-align: center; font-family: 'Courier New', monospace;
+      font-size: 0.8rem; letter-spacing: 1px; color: rgba(230,220,200,0.55);
+    }
+    .sphere-fallback span { font-size: 0.68rem; opacity: 0.7; }
+
+    .sphere-hint {
+      position: absolute; bottom: 22px; left: 0; right: 0;
+      text-align: center; pointer-events: none; z-index: 5;
+      font-family: 'Courier New', monospace; font-size: 0.5rem;
+      letter-spacing: 3px; color: rgba(200,155,65,0.28); font-style: italic;
+    }
+
+    /* ── Room index (reference-style list — replaces the scatter for now) ── */
+    .room-index {
+      position: absolute; inset: 0; overflow-y: auto; padding: 10px 30px 60px;
+    }
+    .room-index::-webkit-scrollbar { width: 4px; }
+    .room-index::-webkit-scrollbar-thumb { background: rgba(180,120,40,0.3); border-radius: 2px; }
+    .idx-count {
+      font-family: 'Courier New', monospace; font-size: 0.58rem; letter-spacing: 2px;
+      text-transform: uppercase; color: rgba(200,165,90,0.6); margin: 4px 0 12px;
+    }
+    .idx-jump { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 26px; }
+    .idx-jump a {
+      font-family: 'Courier New', monospace; font-size: 0.6rem; color: rgba(200,150,60,0.75);
+      text-decoration: none; padding: 2px 7px;
+      border: 1px solid rgba(180,120,40,0.25); border-radius: 2px;
+    }
+    .idx-jump a:hover { color: #f0c46a; border-color: rgba(200,146,58,0.6); }
+    .idx-group { margin-bottom: 1.7rem; }
+    .idx-group h3 {
+      font-family: Georgia, serif; font-size: 1.05rem; font-weight: 400; color: #c8923a;
+      border-bottom: 1px solid rgba(180,120,40,0.22); padding-bottom: 6px; margin-bottom: 11px;
+    }
+    .idx-terms {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 3px 18px;
+    }
+    .idx-term { color: rgba(232,198,122,0.88); text-decoration: none; font-size: 0.96rem; padding: 3px 0; }
+    .idx-term:hover { color: #fff2cf; }
+    .room-loading {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      font-family: 'Courier New', monospace; font-size: 0.7rem; letter-spacing: 1px;
+      color: rgba(200,165,90,0.55);
+    }
+
+    /* ── Two-pane room: LEFT concept hierarchy · RIGHT reference index ── */
+    .room-split { position: absolute; inset: 0; display: flex; }
+    .room-tree {
+      width: 38%; max-width: 460px; min-width: 220px; overflow-y: auto;
+      padding: 14px 14px 60px; border-right: 1px solid rgba(180,120,40,0.18);
+    }
+    .room-split.no-tree .room-tree { display: none; }
+    .room-ref { flex: 1; position: relative; overflow-y: auto; }
+    .room-tree::-webkit-scrollbar, .room-ref::-webkit-scrollbar { width: 4px; }
+    .room-tree::-webkit-scrollbar-thumb,
+    .room-ref::-webkit-scrollbar-thumb { background: rgba(180,120,40,0.3); border-radius: 2px; }
+    /* inside the scrolling .room-ref the index/loading flow normally (not absolute) */
+    .room-ref .room-index   { position: static; inset: auto; }
+    .room-ref .room-loading { position: static; padding: 40px 20px; }
+
+    .tree-head {
+      font-family: 'Courier New', monospace; font-size: 0.56rem; letter-spacing: 2.5px;
+      text-transform: uppercase; color: rgba(200,150,60,0.65); margin-bottom: 12px;
+    }
+    .tree-list { list-style: none; margin: 0; padding-left: 13px; }
+    .tree-node > .tree-children { display: none; }
+    .tree-node.open > .tree-children { display: block; }
+    .tree-row {
+      display: flex; align-items: baseline; gap: 6px; padding: 6px 6px;
+      cursor: pointer; border-radius: 3px; color: rgba(232,198,122,0.85);
+    }
+    .tree-row:hover { background: rgba(180,120,40,0.10); }
+    .tree-row.selected { background: rgba(180,120,40,0.18); color: #fff2cf; }
+    .tree-all { margin-bottom: 8px; }
+    /* A generous touch target for the arrow (was a 12px tap target — too small on iPad,
+       so the branch looked un-expandable). The row also expands on tap now. */
+    .tree-toggle, .tree-bullet {
+      font-size: 0.7rem; width: 22px; flex-shrink: 0; color: rgba(200,150,60,0.8);
+      text-align: center; margin: -6px 0 -6px -2px; padding: 6px 0; align-self: center;
+    }
+    .tree-bullet { color: rgba(200,150,60,0.35); }
+    .tree-term { font-size: 0.92rem; }
+    .tree-count {
+      margin-left: auto; font-family: 'Courier New', monospace; font-size: 0.55rem;
+      color: rgba(200,165,90,0.5); padding-left: 8px;
+    }
+    .tree-loading { font-family: 'Courier New', monospace; font-size: 0.62rem;
+                    color: rgba(200,165,90,0.45); padding: 4px 8px; }
+    .idx-scope {
+      position: sticky; top: 0; z-index: 2; background: rgba(10,6,2,0.93);
+      font-family: 'Courier New', monospace; font-size: 0.62rem; letter-spacing: 1px;
+      color: #d8b878; padding: 10px 30px; border-bottom: 1px solid rgba(180,120,40,0.2);
+    }
+    .idx-clear { color: rgba(200,150,60,0.85); cursor: pointer; margin-left: 8px; }
+    .idx-clear:hover { color: #f0c46a; }
+    @media (max-width: 720px) {
+      .room-split { flex-direction: column; }
+      .room-tree {
+        width: auto; max-width: none; min-width: 0; max-height: 42%;
+        border-right: none; border-bottom: 1px solid rgba(180,120,40,0.18);
+      }
+    }
+
+    /* ── Room entry transition overlay ──────────────────────────── */
+    #room-flash {
+      position: fixed; inset: 0; z-index: 50;
+      background: rgba(200,150,50,0.0);
+      pointer-events: none;
+      transition: background 0.15s;
+    }
+    #room-flash.flash { background: rgba(200,150,50,0.12); }
+  </style>
+</head>
+<body>
+
+<div class="bg"></div>
+<div id="room-flash"></div>
+
+<header>
+  <div class="hd-left">
+    <button id="back-btn">←</button>
+    <span class="hd-title">Field Gallery</span>
+    <span id="room-label"></span>
+  </div>
+  <div class="hd-right">Akasha Semantic Field</div>
+</header>
+
+<main>
+
+  <!-- ── Room gallery ── -->
+  <div id="gallery-view">
+    <div class="gallery-intro">
+      <h2>Semantic Fields</h2>
+      <p>each room is a semantic field — select one to enter</p>
+    </div>
+    <div class="room-grid" id="room-grid"></div>
+  </div>
+
+  <!-- ── Sphere view (shown after room selection) ── -->
+  <div id="sphere-view">
+    <div id="sphere-plot"></div>
+    <p class="sphere-hint">rotate · zoom · click a word to open its record</p>
+  </div>
+
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // ── Room definitions ────────────────────────────────────────────────────────
+  var ROOMS = [
+    {
+      id: 'narrative',
+      num: '01',
+      ns: 'nar:',
+      nameEn: 'Narrative',
+      nameJp: 'The Story Room',
+      desc: 'Story archetypes, plot structures, dramatic modes — the grammar of all told things.',
+      color: '#7ab4c8',
+      glow: 'rgba(80,160,200,0.08)',
+    },
+    {
+      id: 'philosophy',
+      num: '02',
+      ns: 'phil:',
+      nameEn: 'Philosophy',
+      nameJp: 'The Philosophy Room',
+      desc: 'Concepts of mind, ethics, metaphysics and the questions that outlive their answers.',
+      color: '#9880b4',
+      glow: 'rgba(140,100,180,0.08)',
+    },
+    {
+      id: 'emotion',
+      num: '03',
+      ns: 'emo:',
+      nameEn: 'Emotions',
+      nameJp: 'The Emotion Room',
+      desc: 'The 27 core emotional states and their resonances across culture and perception.',
+      color: '#b47870',
+      glow: 'rgba(180,100,90,0.08)',
+    },
+    {
+      id: 'fables',
+      num: '04',
+      ns: 'tale:',
+      nameEn: 'Fables & Tales',
+      nameJp: 'The Tale Room',
+      desc: 'Aesop, La Fontaine, Panchatantra, Jataka — the world’s moral imagination in animal form.',
+      color: '#c89050',
+      glow: 'rgba(200,140,60,0.10)',
+    },
+    {
+      id: 'language',
+      num: '05',
+      ns: 'word:',
+      nameEn: 'Language',
+      nameJp: 'The Language Room',
+      desc: 'Vocabulary atoms across tongues — etymology, idiom, the drift of meaning through time.',
+      color: '#8aaa76',
+      glow: 'rgba(100,160,90,0.08)',
+    },
+    {
+      id: 'cosmos',
+      num: '06',
+      ns: 'astro:',
+      nameEn: 'Stars & Cosmos',
+      nameJp: 'The World of Stars',
+      desc: 'Celestial bodies, orbital mechanics, and the mythologies written in the night sky.',
+      color: '#6888b4',
+      glow: 'rgba(80,110,180,0.08)',
+    },
+    {
+      id: 'food',
+      num: '07',
+      ns: 'food:',
+      nameEn: 'Food & Culture',
+      nameJp: 'The Food-Culture Room',
+      desc: 'Ingredients, flavours, culinary traditions — taste as a form of collective memory.',
+      color: '#a8803a',
+      glow: 'rgba(168,120,50,0.09)',
+    },
+    {
+      id: 'science',
+      num: '08',
+      ns: 'sci:',
+      nameEn: 'Sciences',
+      nameJp: 'The Science Room',
+      desc: 'Physical, chemical, biological concepts — the shared vocabulary of empirical inquiry.',
+      color: '#60b4a8',
+      glow: 'rgba(70,170,160,0.08)',
+    },
+  ];
+
+  // ── Render room tiles ────────────────────────────────────────────────────────
+  var grid = document.getElementById('room-grid');
+  ROOMS.forEach(function (room) {
+    var tile = document.createElement('div');
+    tile.className = 'room-tile';
+    tile.setAttribute('data-id', room.id);
+    tile.innerHTML =
+      '<div class="room-glow" style="background:radial-gradient(ellipse at 30% 40%,' + room.glow + ',transparent 70%)"></div>' +
+      '<div class="room-num">ROOM ' + room.num + '</div>' +
+      '<div class="room-ns" style="color:' + room.color + ';opacity:0.7">' + room.ns + '</div>' +
+      '<div class="room-name-en">' + room.nameEn + '</div>' +
+      '<div class="room-name-jp">' + room.nameJp + '</div>' +
+      '<div class="room-desc">' + room.desc + '</div>' +
+      '<div class="room-arrow">→</div>';
+    tile.addEventListener('click', function () { enterRoom(room); });
+    grid.appendChild(tile);
+  });
+
+  // ── RPC ─────────────────────────────────────────────────────────────────────
+  function rpc(method, params) {
+    return fetch('/rpc', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', method: method, params: params, id: method }),
+    }).then(function (r) { return r.json(); }).then(function (j) {
+      if (j.error) throw new Error(j.error.message || 'rpc error');
+      return j.result;
+    });
+  }
+  // Reject a slow read after a deadline so loadTree() degrades to index-only
+  // (its .catch → degradeTree) instead of leaving the tree pane blank forever.
+  function withTimeout(p, ms, label) {
+    return new Promise(function (resolve, reject) {
+      var settled = false;
+      var t = setTimeout(function () {
+        if (!settled) { settled = true; reject(new Error((label || 'request') + ' timed out')); }
+      }, ms || 25000);
+      p.then(function (v) { if (!settled) { settled = true; clearTimeout(t); resolve(v); } },
+             function (e) { if (!settled) { settled = true; clearTimeout(t); reject(e); } });
+    });
+  }
+
+  // One guest session per VISITOR, reused across page loads (localStorage), so a
+  // public site does not exhaust the small guest pool with a slot per page view.
+  var _guestToken   = null;
+  var _guestExp     = 0;      // token expiry (ms epoch); a gbk: token has a FIXED lifetime
+  var _guestPromise = null;   // in-flight guest.create, shared by concurrent callers
+  var _GUEST_KEY    = 'akasha_guest_token';
+  var _GUEST_SKEW   = 30000;  // refresh this many ms before the token actually dies
+  // A guest binding token (gbk:) hard-expires at creation + ttl (<=30 min) and is NOT
+  // renewed by activity server-side, so a token cached in localStorage goes stale. Reusing
+  // a stale token made every read return -32001 and the pane render empty on each reload.
+  // So: remember the expiry, never reuse a (near-)expired token, mint fresh before it dies.
+  function _readGuestCache() {
+    try {
+      var raw = localStorage.getItem(_GUEST_KEY); if (!raw) return null;
+      if (raw.charAt(0) === '{') { var o = JSON.parse(raw); return (o && o.key) ? o : null; }
+      return { key: raw, exp: 0 };             // legacy plain-string token: expiry unknown
+    } catch (e) { return null; }
+  }
+  function getToken() {
+    var now = Date.now();
+    if (_guestToken && _guestExp - now > _GUEST_SKEW) return Promise.resolve(_guestToken);
+    if (_guestPromise) return _guestPromise;   // concurrent callers SHARE one guest.create.
+    if (!_guestToken) {
+      var c = _readGuestCache();
+      if (c && c.exp - now > _GUEST_SKEW) { _guestToken = c.key; _guestExp = c.exp; return Promise.resolve(_guestToken); }
+    }
+    _guestPromise = rpc('session.guest.create', {}).then(function (g) {
+      _guestPromise = null; _guestToken = g.binding_key;
+      _guestExp = (g && g.expires_at) ? g.expires_at * 1000 : (Date.now() + 25 * 60000);
+      try { localStorage.setItem(_GUEST_KEY, JSON.stringify({ key: _guestToken, exp: _guestExp })); } catch (e) {}
+      return _guestToken;
+    }).catch(function (e) { _guestPromise = null; throw e; });
+    return _guestPromise;
+  }
+  function freshToken() {
+    _guestToken = null; _guestExp = 0; _guestPromise = null;
+    try { localStorage.removeItem(_GUEST_KEY); } catch (e) {}
+    return getToken();
+  }
+  // A cached guest token can go stale (TTL expiry / pool-slot reclamation) between page
+  // views; classify those errors so a load can self-heal with a fresh token + one retry
+  // instead of dead-ending on "could not be loaded" (the intermittent field-index failure).
+  function isSessionErr(m) {
+    m = (m || '').toLowerCase();
+    return m.indexOf('session') >= 0 || m.indexOf('token') >= 0 || m.indexOf('expired') >= 0
+        || m.indexOf('denied') >= 0 || m.indexOf('binding') >= 0 || m.indexOf('signature') >= 0
+        || m.indexOf('mismatch') >= 0 || m.indexOf('identity') >= 0 || m.indexOf('unauthor') >= 0
+        || m.indexOf('guest') >= 0 || m.indexOf('not found') >= 0;
+  }
+
+  // Fetch all shelf atoms; filter client-side by namespace prefix
+  var _allAtoms = null;
+  function getAtoms() {
+    if (_allAtoms) return Promise.resolve(_allAtoms);
+    return getToken().then(function (tok) {
+      return rpc('thesaurus.reference', { session_token: tok, limit: 500 });
+    }).then(function (r) {
+      var cs = (r && (r.concepts || r.entries)) || [];
+      // adapt the reference shape to the sphere's expected atom shape
+      _allAtoms = cs.filter(function (a) { return a.name || a.term; }).map(function (a) {
+        return { name: a.term || a.name, alias: a.name || a.term,
+                 url_slug: a.name || a.term, shelf_score: a.salience || 0.5, components: {} };
+      });
+      if (!_allAtoms.length) _allAtoms = makeFallback();
+      return _allAtoms;
+    }).catch(function () {
+      _allAtoms = makeFallback();
+      return _allAtoms;
+    });
+  }
+
+  // ── Fallback word pool ───────────────────────────────────────────────────────
+  var FALLBACK = [
+    'memory','longing','shadow','silence','corridor','labyrinth',
+    'mirror','dream','echo','threshold','mosaic','cipher',
+    'vessel','murmur','spiral','wanderer','patina','lacuna',
+    'fragment','reverie','dusk','shimmer','undertow','interval',
+    'moon','forest','tide','candle','stone','void',
+    'signal','trace','hollow','pillar','fugue','feather',
+  ];
+  function makeFallback() {
+    return FALLBACK.map(function (w, i) {
+      return { name: w, alias: w, url_slug: w,
+               shelf_score: 1.0 - (i / FALLBACK.length) * 0.8, components: {} };
+    });
+  }
+
+  // ── Colour hash (same as library page) ──────────────────────────────────────
+  var EMO = {
+    joy:'#d4b84a', trust:'#8aaa76', fear:'#7a9a88', surprise:'#7ab4bc',
+    sadness:'#8898b8', disgust:'#9880b4', anger:'#b47870',
+    anticipation:'#c89050', calm:'#c8c0a0',
+  };
+  var EMO_KEYS = Object.keys(EMO);
+  function wordColor(name, roomColor) {
+    var h = 0;
+    for (var i = 0; i < name.length; i++) h = (Math.imul(h, 31) + name.charCodeAt(i)) | 0;
+    var base = EMO[EMO_KEYS[Math.abs(h) % EMO_KEYS.length]];
+    // Blend slightly toward room accent color
+    return base;
+  }
+
+  // ── Filter atoms for a room ──────────────────────────────────────────────────
+  function filterForRoom(atoms, room) {
+    var ns = room.ns;
+    // For proto-word atoms (bare aliases), we can't directly filter by namespace.
+    // Return all atoms; the sphere shows the full semantic field framed by room context.
+    // In future: RPC with ns filter. For now, shuffle deterministically per room.
+    var seed = 0;
+    for (var i = 0; i < room.id.length; i++) seed = (seed * 31 + room.id.charCodeAt(i)) | 0;
+    seed = Math.abs(seed);
+    // Simple deterministic Fisher-Yates with room seed
+    var arr = atoms.slice();
+    for (var j = arr.length - 1; j > 0; j--) {
+      var k = (seed * (j + 1)) % (j + 1);
+      seed = (seed * 1664525 + 1013904223) | 0;
+      seed = Math.abs(seed);
+      var tmp = arr[j]; arr[j] = arr[k]; arr[k] = tmp;
+    }
+    return arr.slice(0, Math.min(arr.length, 80));
+  }
+
+  // ── 3D Fibonacci sphere ──────────────────────────────────────────────────────
+  function renderSphere(atoms, room) {
+    // Degrade gracefully if the visualization library did not load (CDN blocked,
+    // CSP, offline / air-gapped). Show a notice instead of failing silently.
+    if (typeof Plotly === 'undefined' || !Plotly || typeof Plotly.react !== 'function') {
+      var _sp = document.getElementById('sphere-plot');
+      if (_sp) _sp.innerHTML = '<div class="sphere-fallback">Interactive 3-D view unavailable'
+        + '<span>the visualization library could not be loaded</span></div>';
+      return;
+    }
+    var N  = atoms.length;
+    var G  = Math.PI * (3 - Math.sqrt(5));
+    var sx = [], sy = [], sz = [], labels = [], slugs = [], colors = [], sizes = [];
+
+    for (var i = 0; i < N; i++) {
+      var yy = 1 - (i / (N - 1)) * 2;
+      var rr = Math.sqrt(Math.max(0, 1 - yy * yy));
+      var th = G * i;
+      sx.push(rr * Math.cos(th));
+      sy.push(yy);
+      sz.push(rr * Math.sin(th));
+      var a = atoms[i];
+      labels.push(a.name || a.alias || '—');
+      slugs.push(a.url_slug || a.name || '');
+      colors.push(wordColor(a.name || '', room.color));
+      sizes.push(5 + (a.shelf_score || 0.5) * 3);
+    }
+
+    var trace = {
+      x: sx, y: sy, z: sz,
+      mode: 'markers+text',
+      type: 'scatter3d',
+      text: labels,
+      customdata: slugs,
+      textfont: { family: 'Georgia, serif', size: 8,
+                  color: 'rgba(220, 185, 100, 0.22)' },
+      textposition: 'top center',
+      hovertemplate: '<b>%{text}</b><br><span style="font-size:10px;color:' + room.color + '">' + room.nameEn + '</span><extra></extra>',
+      marker: { size: sizes, color: colors, opacity: 0.82,
+                line: { width: 0 } },
+    };
+
+    var layout = {
+      paper_bgcolor: 'rgba(0,0,0,0)',
+      plot_bgcolor:  'rgba(0,0,0,0)',
+      margin: { l: 0, r: 0, t: 0, b: 0 },
+      scene: {
+        bgcolor: 'rgba(0,0,0,0)',
+        xaxis: { visible: false, showgrid: false, zeroline: false, showspikes: false },
+        yaxis: { visible: false, showgrid: false, zeroline: false, showspikes: false },
+        zaxis: { visible: false, showgrid: false, zeroline: false, showspikes: false },
+        camera: { eye: { x: 1.55, y: 1.55, z: 0.55 }, up: { x: 0, y: 0, z: 1 } },
+        aspectmode: 'cube',
+      },
+      hoverlabel: {
+        bgcolor: 'rgba(12,7,2,0.92)', bordercolor: 'rgba(180,120,40,0.5)',
+        font: { family: 'Georgia, serif', size: 13, color: room.color },
+        namelength: 0,
+      },
+    };
+
+    Plotly.react('sphere-plot', [trace], layout,
+      { responsive: true, displayModeBar: false, scrollZoom: true });
+
+    // Click → word report
+    var plotEl = document.getElementById('sphere-plot');
+    if (!plotEl._fieldClickBound) {
+      plotEl.on('plotly_click', function (data) {
+        var pt = data.points[0];
+        if (!pt) return;
+        var slug = pt.customdata;
+        if (slug) window.location.href = '/a/' + encodeURIComponent(slug).replace(/%3A/g, ':');
+      });
+      plotEl._fieldClickBound = true;
+    }
+  }
+
+  // ── Enter a room ─────────────────────────────────────────────────────────────
+  var _currentRoom = null;
+  // Room state: the namespace A–Z index (default right pane) + which view is active
+  // ('ns' = the whole field; 'concept' = the selected concept's sub-tree). `sel` is a
+  // monotonic token so a slow response can't clobber a newer selection; enterRoom mints
+  // a FRESH object so a load from a previous room can't render into the current one.
+  var _room = { concepts: [], mode: 'ns', sel: 0 };
+
+  // Field namespace → root concept (from docs/for-llm/concept-navigator.md §4). The
+  // navigator roots at a CONCEPT, not a namespace: '*' = concept.roots {} (the
+  // Product·Component·Method apex = food/drink); '<id>' = concept.roots {field:<id>}
+  // (one field's sys:is_a apex). A namespace not listed here shows the index only
+  // (front-end degrades cleanly) — e.g. sci: has no single sys:is_a apex. word: roots
+  // at `lexeme`: proto-words roll up sys:is_a lexeme, and the navigator follows the
+  // is-a FAMILY (sys:is_a ∪ specializes), so lemmas → senses are reachable as a field.
+  var ROOM_ROOT = {
+    'food:':  '*',                          // canon apex (meal/drink taxonomy)
+    'phil:':  'philosophy',                 // logic / metaphysics / ethics / …
+    'nar:':   'narrative',                  // story typology + forms
+    'emo:':   'emo:emotion',                // joy / fear / sadness / … (+ finer feelings)
+    'astro:': 'astro:body:celestial_body',  // celestial body → star → …
+    'word:':  'lexeme',                     // vocabulary apex → lemmas → senses (is-a family)
+    'tale:':  'tale',                        // fables / folktales / scientific romance → collections
+    'sci:':   'science',                     // archaeoastronomy / astronomy / … → items
+  };
+
+  function enterRoom(room) {
+    _currentRoom = room;
+
+    var flash = document.getElementById('room-flash');
+    flash.classList.add('flash');
+    setTimeout(function () { flash.classList.remove('flash'); }, 220);
+
+    document.getElementById('gallery-view').style.display = 'none';
+    document.getElementById('sphere-view').classList.add('active');
+
+    var lbl = document.getElementById('room-label');
+    lbl.textContent = room.nameEn + ' — ' + room.nameJp;
+    lbl.classList.add('visible');
+
+    // Two panes: LEFT = concept-navigator taxonomy, RIGHT = A–Z index. Selecting a tree
+    // node makes the index that concept's whole sub-tree; "clear" returns to the field.
+    var hint = document.querySelector('.sphere-hint');
+    if (hint) hint.style.display = 'none';
+    document.getElementById('sphere-plot').innerHTML =
+      '<div class="room-split no-tree">' +
+        '<div class="room-tree" id="room-tree"></div>' +
+        '<div class="room-ref"  id="room-ref"><div class="room-loading">loading…</div></div>' +
+      '</div>';
+
+    _room = { concepts: [], mode: 'ns', sel: 0 };
+    var rm = _room;                      // capture: a later room mints a new _room
+    var nsClean = (room.ns || '').replace(/:+$/, '');
+
+    // RIGHT (default): the field's A–Z reference, namespace-scoped and bounded. Self-heals a
+    // stale guest token (one fresh-token retry) so the index does not intermittently dead-end.
+    function loadRef(isRetry) {
+      getToken()
+        .then(function (tok) {
+          return withTimeout(rpc('thesaurus.reference', { session_token: tok, ns: nsClean, limit: 1000 }),
+                             20000, 'field index');
+        })
+        .then(function (r) {
+          rm.concepts = ((r && (r.concepts || r.entries)) || []).map(function (c) {
+            return { id: c.name || c.term, name: c.term || c.name, initial: c.initial };
+          });
+          if (_room === rm && rm.mode === 'ns') renderRoomRef(rm.concepts, '');
+        })
+        .catch(function (err) {
+          if (_room !== rm) return;       // we've since left this room
+          var msg = (err && err.message) || '';
+          if (!isRetry && isSessionErr(msg)) { freshToken().then(function () { loadRef(true); }).catch(function () {}); return; }
+          var ref = document.getElementById('room-ref');
+          if (ref) ref.innerHTML = '<div class="room-loading">this field could not be loaded.</div>';
+        });
+    }
+    loadRef(false);
+
+    // LEFT: the concept hierarchy (concept navigator). Degradation-first — a room with no
+    // root, or a root the backend doesn't know (-32602), hides the tree; the index runs
+    // full width, exactly as before.
+    loadTree(ROOM_ROOT[room.ns]);
+  }
+
+  // ── RIGHT pane: an A–Z index of {id,name} items (ns default OR a concept sub-tree) ──
+  function _isWordHead(c) {
+    var t = (c.name || c.id || ''), ch = t.charAt(0);
+    return !!t && (/[a-zA-Z]/.test(ch) || ch.charCodeAt(0) > 0x7f);
+  }
+  function renderRoomRef(list, scopeLabel) {
+    var host = document.getElementById('room-ref');
+    if (!host) return;
+    var items = (list || []).filter(_isWordHead);
+    var scope = scopeLabel
+      ? '<div class="idx-scope">▸ ' + esc(scopeLabel) + '  <a class="idx-clear">clear ✕</a></div>' : '';
+    if (!items.length) {
+      host.innerHTML = scope + '<div class="room-loading">' +
+        (scopeLabel ? 'no concepts under this branch.' : 'this field has no entries yet.') + '</div>';
+      _bindClear(host); return;
+    }
+    var groups = {};
+    items.forEach(function (c) {
+      var nm = c.name || c.id, ini = (c.initial || nm.charAt(0) || '?').toUpperCase();
+      if (!/[A-Z]/.test(ini)) ini = '#';
+      (groups[ini] = groups[ini] || []).push(c);
+    });
+    var letters = Object.keys(groups).sort();
+    var html = scope + '<div class="room-index">';
+    html += '<div class="idx-count">' + items.length + ' concepts' +
+            (scopeLabel ? '' : ' · ' + esc(_currentRoom.ns)) + '</div>';
+    html += '<div class="idx-jump">' + letters.map(function (l) {
+      return '<a href="#fg-' + l + '">' + l + '</a>'; }).join('') + '</div>';
+    letters.forEach(function (l) {
+      html += '<section class="idx-group" id="fg-' + l + '"><h3>' + l + '</h3><div class="idx-terms">';
+      groups[l].forEach(function (c) {
+        var nav = c.id || c.name, disp = c.name || c.id;
+        html += '<a class="idx-term" href="/a/' + encodeURIComponent(nav).replace(/%3A/g, ':') +
+                '">' + esc(disp) + '</a>';
+      });
+      html += '</div></section>';
+    });
+    html += '</div>';
+    host.innerHTML = html;
+    _bindClear(host);
+  }
+  function _bindClear(host) {
+    var clr = host.querySelector('.idx-clear');
+    if (clr) clr.addEventListener('click', function () {
+      _room.mode = 'ns'; highlightRow(null); renderRoomRef(_room.concepts, '');
+    });
+  }
+
+  // ── LEFT pane: concept-navigator taxonomy tree ────────────────────────────────
+  // Contract (docs/…/conceptnavigator): concept.roots {field?}/concept.tree {root} →
+  // {roots:[node]} / {tree:node}; node = {id, name, child_count, leaf_count,
+  // children:[node], truncated}. Display name, use id as the opaque handle.
+  function loadTree(root, isRetry) {
+    var tree = document.getElementById('room-tree');
+    if (!tree) return;
+    if (root == null) return degradeTree();          // no hierarchy mapped for this room
+    var params = (root === '*') ? { depth: 3 } : { field: root, depth: 3 };
+    getToken()
+      .then(function (tok) { params.session_token = tok; return withTimeout(rpc('concept.roots', params), 25000, 'concept tree'); })
+      .then(function (r) {
+        var roots = (r && r.roots) || (r && r.tree ? [r.tree] : []);
+        if (!roots.length) return degradeTree();
+        renderTree(roots, tree);
+      })
+      .catch(function (err) {                         // stale token → refresh once; else index-only
+        var msg = (err && err.message) || '';
+        if (!isRetry && isSessionErr(msg)) { freshToken().then(function () { loadTree(root, true); }).catch(function () { degradeTree(); }); return; }
+        degradeTree();
+      });
+  }
+  function degradeTree() {
+    var split = document.querySelector('.room-split'); if (split) split.classList.add('no-tree');
+    var tree = document.getElementById('room-tree'); if (tree) tree.innerHTML = '';
+  }
+  function renderTree(roots, treeEl) {
+    var split = document.querySelector('.room-split'); if (split) split.classList.remove('no-tree');
+    treeEl.innerHTML = '<div class="tree-head">concept hierarchy</div>' + _treeNodes(roots);
+    bindTreeEvents(treeEl);
+  }
+  function _treeNodes(nodes) {
+    var h = '<ul class="tree-list">';
+    (nodes || []).forEach(function (n) {
+      var id = n.id || '', nm = n.name || id || '';
+      var kids = n.children || [];
+      var cc = (n.child_count != null) ? n.child_count : kids.length;
+      var expandable = kids.length || (cc > (n.leaf_count || 0));   // has branch children
+      h += '<li class="tree-node" data-id="' + esc(id) + '">';
+      h += '<div class="tree-row" data-id="' + esc(id) + '" data-name="' + esc(nm) + '">';
+      h += expandable ? '<span class="tree-toggle">▸</span>' : '<span class="tree-bullet">·</span>';
+      h += '<span class="tree-term">' + esc(nm) + '</span>';
+      if (cc) h += '<span class="tree-count">' + cc + '</span>';
+      h += '</div>';
+      if (kids.length) h += '<div class="tree-children">' + _treeNodes(kids) + '</div>';
+      h += '</li>';
+    });
+    return h + '</ul>';
+  }
+  function bindTreeEvents(treeEl) {
+    treeEl.addEventListener('click', function (e) {
+      // The ▸/▾ arrow is a pure toggle (expand AND collapse) — the affordance for
+      // folding a branch back up.
+      var tg = e.target.closest ? e.target.closest('.tree-toggle') : null;
+      if (tg) { toggleNode(tg); return; }
+      var row = e.target.closest ? e.target.closest('.tree-row') : null;
+      if (!row) return;
+      var id = row.getAttribute('data-id');
+      // Tapping the ROW of an expandable node drills IN: expand the sub-tree on the left
+      // (if not already open — the tiny arrow was an easy-to-miss target on touch, which
+      // is why "下に展開されない" — the node looked like it did nothing) AND scope the
+      // right index to it. A leaf row just scopes. Only the arrow ever collapses.
+      var li = row.closest ? row.closest('.tree-node') : null;
+      var toggle = row.querySelector ? row.querySelector('.tree-toggle') : null;
+      if (toggle && li && !li.classList.contains('open')) {
+        toggleNode(toggle);
+      }
+      if (id) selectConcept(id, row.querySelector('.tree-term').textContent, row);
+    });
+  }
+  function toggleNode(tg) {
+    var li = tg.closest('.tree-node');
+    var open = li.classList.toggle('open');
+    tg.textContent = open ? '▾' : '▸';
+    if (open && !li.querySelector('.tree-children')) {      // lazy-load one level on first open
+      var holder = document.createElement('div');
+      holder.className = 'tree-children'; holder.innerHTML = '<div class="tree-loading">…</div>';
+      li.appendChild(holder);
+      getToken()
+        .then(function (tok) { return rpc('concept.tree', { session_token: tok, root: li.getAttribute('data-id'), depth: 2 }); })
+        .then(function (r) {
+          var node = r && r.tree, kids = (node && node.children) || [];
+          holder.innerHTML = kids.length ? _treeNodes(kids) : '<div class="tree-loading">no sub-concepts</div>';
+        })
+        .catch(function () { holder.innerHTML = ''; });
+    }
+  }
+  function highlightRow(row) {
+    var tree = document.getElementById('room-tree'); if (!tree) return;
+    var sel = tree.querySelectorAll('.tree-row.selected');
+    for (var i = 0; i < sel.length; i++) sel[i].classList.remove('selected');
+    if (row) row.classList.add('selected');
+  }
+  // Select a concept → the RIGHT index becomes its whole sub-tree, A–Z. Fetched with
+  // leaves=yes so instances are included; concept-derived, so it always matches the
+  // hierarchy (no namespace guesswork).
+  function selectConcept(id, name, row) {
+    var rm = _room;                      // this room's state object
+    rm.mode = 'concept';
+    var token = ++rm.sel;                // supersedes any earlier in-flight selection
+    highlightRow(row);
+    var ref = document.getElementById('room-ref');
+    ref.innerHTML = '<div class="idx-scope">▸ ' + esc(name) +
+      '  <a class="idx-clear">clear ✕</a></div><div class="room-loading">loading…</div>';
+    _bindClear(ref);
+    // Only render if this is STILL the current room (_room === rm), STILL in concept
+    // mode (not cleared), and STILL the latest selection (token === rm.sel). Otherwise a
+    // slow response for an earlier click would clobber the newer one.
+    var fresh = function () { return _room === rm && rm.mode === 'concept' && token === rm.sel; };
+    getToken()
+      .then(function (tok) { return rpc('concept.tree', { session_token: tok, root: id, depth: 5, leaves: 'yes' }); })
+      .then(function (r) {
+        var seen = {}, list = [];
+        (function walk(n) {
+          if (!n || !n.id || seen[n.id]) return;
+          seen[n.id] = true; list.push({ id: n.id, name: n.name || n.id });
+          (n.children || []).forEach(walk);
+        })(r && r.tree);
+        if (fresh()) renderRoomRef(list, name);
+      })
+      .catch(function () { if (fresh()) renderRoomRef([], name); });
+  }
+
+  // ── Back button ──────────────────────────────────────────────────────────────
+  document.getElementById('back-btn').addEventListener('click', function () {
+    var sv = document.getElementById('sphere-view');
+    if (sv.classList.contains('active')) {
+      // Back to gallery
+      sv.classList.remove('active');
+      document.getElementById('gallery-view').style.display = '';
+      var lbl = document.getElementById('room-label');
+      lbl.classList.remove('visible');
+      _currentRoom = null;
+    } else {
+      if (document.referrer && document.referrer !== window.location.href) {
+        history.back();
+      } else {
+        // Direct landing (no referrer): the Field Gallery is a Reading Hall
+        // fixture, so its natural home is the reading room, not the cookbook.
+        window.location.href = '/hall/';
+      }
+    }
+  });
+
+}());
+</script>
+<!-- pulse beacon (F18) — fire-and-forget access analytics; never breaks the page -->
+<script>
+(function () {
+  try {
+    var prev = ''; try { prev = sessionStorage.getItem('pulse_prev') || ''; } catch (e) {}
+    var concept = 'site:archives_field';
+    var payload = { concept: concept, surface: 'field', prev: prev,
+                    page_referrer: document.referrer || '' };
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon('/pulse', new Blob([JSON.stringify(payload)],
+                                              { type: 'application/json' }));
+    }
+    try { sessionStorage.setItem('pulse_prev', concept); } catch (e) {}
+  } catch (e) { /* analytics must never break a page */ }
+})();
+</script>
+</body>
+</html>

@@ -1,7 +1,8 @@
 # Writing a drop-in concept model
 
-Drop a Python file into `lib/akasha/concepts/` and its operators are **immediately usable
-and discoverable from the CLI** — no router edit, no kernel handler, no GUI. This page is
+Drop a Python file into the application's `app/concepts/` and its operators are **usable and
+discoverable from the CLI at the next start** — no router edit, no kernel handler, no GUI, no change
+to the platform (everything an application provides lives under `app/`). This page is
 the whole story: the minimal file, what you get for free, and how to override a default.
 
 > This is the concrete expression of Akasha's **Operand / Operator / Agent** methodology:
@@ -13,7 +14,7 @@ the whole story: the minimal file, what you get for free, and how to override a 
 ## The minimal file
 
 ```python
-# lib/akasha/concepts/foo.py
+# app/concepts/foo.py
 
 class Foo:
     CONCEPT_PREFIX  = "foo"                     # command namespace
@@ -176,8 +177,9 @@ namespaced surface is just another entry in the one drop-in path.
 - Registry + derivation: `lib/akasha/concepts/registry.py` (`register`,
   `_derive_action` / `_derive_positional_args` / `_derive_desc`).
 - Router folding: `api/router.py` (`augment_from_registry`, `concept_namespaces`).
-- Capability gate: `lib/akasha/kernel.py` (the `_METHOD_TO_ACTION` lookup) merges the
-  registry's derived actions at boot (hand-written entries win).
+- Capability gate: the platform's gate (`lib/akasha/api/gate.py`) decides each call by its
+  action; the registry supplies the derived actions at boot, and an action declared in a
+  manifest's access table wins.
 - End-to-end eval: `test/dropin_concept_eval.py`.
 - The fuller contributor spec (lifecycle, rendering, pipeline hooks):
   `docs/concept-model/concept-model-spec.md`.

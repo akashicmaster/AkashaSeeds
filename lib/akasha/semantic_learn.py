@@ -90,29 +90,44 @@ class OntologyLearner:
         self.vocab = {w: i for i, w in enumerate(vocab)}
         V = len(vocab)
 
-        C = _np.zeros((V, V), dtype=_np.float64)
-        for d in docs:
-            present = list({self.vocab[w] for w in d if w in self.vocab})
-            for i in range(len(present)):
-                ai = present[i]
-                for j in range(i + 1, len(present)):
-                    bj = present[j]
-                    C[ai, bj] += 1.0
-                    C[bj, ai] += 1.0
-
-        tot = C.sum()
-        if tot <= 0:
-            return False
-        rows = C.sum(1, keepdims=True)
-        cols = C.sum(0, keepdims=True)
-        with _np.errstate(divide="ignore", invalid="ignore"):
-            P = _np.where(C > 0, _np.log((C * tot) / (rows * cols + 1e-12)), 0.0)
-        P = _np.maximum(P, 0.0)          # positive PMI
-
+        # F49-2 — a V×V float64 co-occurrence matrix + its SVD is a NATIVE numpy/BLAS allocation that
+        # scales as V² (invisible to MemTop). Wrap the two big allocations so a large PPMI/SVD run
+        # names its RSS cost directly. This path is autolearn — normally skipped at boot on Py3.14 —
+        # but if it ever fires it is attributed, not a mystery.
         try:
-            U, S, _ = _np.linalg.svd(P, full_matrices=False)
-        except Exception:                # pragma: no cover
-            return False
+            from lib.akasha.memtrace import native_load as _nl
+        except Exception:
+            from contextlib import contextmanager as _cm
+
+            @_cm
+            def _nl(_name):
+                yield
+
+        with _nl("semantic.ppmi:V=%d(~%dMB)" % (V, (V * V * 8) // (1 << 20))):
+            C = _np.zeros((V, V), dtype=_np.float64)
+            for d in docs:
+                present = list({self.vocab[w] for w in d if w in self.vocab})
+                for i in range(len(present)):
+                    ai = present[i]
+                    for j in range(i + 1, len(present)):
+                        bj = present[j]
+                        C[ai, bj] += 1.0
+                        C[bj, ai] += 1.0
+
+            tot = C.sum()
+            if tot <= 0:
+                return False
+            rows = C.sum(1, keepdims=True)
+            cols = C.sum(0, keepdims=True)
+            with _np.errstate(divide="ignore", invalid="ignore"):
+                P = _np.where(C > 0, _np.log((C * tot) / (rows * cols + 1e-12)), 0.0)
+            P = _np.maximum(P, 0.0)          # positive PMI
+
+        with _nl("semantic.svd:V=%d" % V):
+            try:
+                U, S, _ = _np.linalg.svd(P, full_matrices=False)
+            except Exception:                # pragma: no cover
+                return False
         k = int(min(self.dim, V - 1))
         E = U[:, :k] * _np.sqrt(S[:k])
         norms = _np.linalg.norm(E, axis=1, keepdims=True)

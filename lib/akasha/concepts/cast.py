@@ -70,6 +70,7 @@ class CastConcept(BaseConcept):
     """Cognitive topology model for a character / narrative actor."""
 
     CONCEPT_PREFIX = "cast"
+    CONCEPT_LABEL = "Fictional character model — identity, emotions, wounds, bonds, masks, secrets, arcs, and reaction simulation"
     CONTEXT_KEY_ACTIVE = CONTEXT_KEY_ACTIVE  # expose module constant as class attribute
     CONCEPT_METHODS = {
         # Basic

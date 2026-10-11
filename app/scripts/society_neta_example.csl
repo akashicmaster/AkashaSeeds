@@ -1,0 +1,33 @@
+# society_neta_example.csl — 演出 (DIRECTION = 解釈) for studio_ai / mail_show（✉️ show）
+#
+# 演出は台本にぶら下げるラベルではなく「解釈」。だから curation.new でモデル化する:
+#   thesis = 切り口 / 強調点 / スタンス（役者への注文。アドリブはこの範囲内で歓迎）
+#   ids    = かける台本（society_neta_example.ak で def 済みの素材）。複数なら解釈の物語順。
+#   mode   = authored（人が読み筋を与える。関係から導出はしない）
+#   alias  = neta:<gid>:<space>:seg-NNN（番組のネタ列。この接頭辞でドライバが順に拾う）
+# 出力は provenance:interpretation（立証責任なし・ASI06で学習からfenced）で curation:over/next を台本に張る。
+#
+# title は "<space> seg-NNN"（ゼロ埋め）でソート順=放送順になる。
+# キャスターは curation.narrate 経由で (thesis=演出 + path=台本) を手渡され、--takes 本ぶんアドリブで演じる。
+# 台本(.ak)を読み込んだ後にこの .csl を（host client として）実行すると、演出 curation がグラフに載る。
+
+$seg1 = curation.new
+    title  = "mail_show seg-001"
+    thesis = "切り口『小さいのに効く』一点押し。皮肉とワクワクを混ぜ、最後は視聴者に『で、自分のノートPCで動くの?』と思わせて締める。強調する数字は1つだけ。"
+    mode   = "authored"
+    ids    = "neta:studio_ai:mail_show:001"
+    alias  = "neta:studio_ai:mail_show:seg-001"
+
+$seg2 = curation.new
+    title  = "mail_show seg-002"
+    thesis = "切り口『GPU一強の終わりの始まり?』をやや煽り気味に。ただし断定は避け、キャスターとして『まだ様子見』の余韻を必ず残す。"
+    mode   = "authored"
+    ids    = "neta:studio_ai:mail_show:002"
+    alias  = "neta:studio_ai:mail_show:seg-002"
+
+$seg3 = curation.new
+    title  = "mail_show seg-003"
+    thesis = "切り口『まだ人間の仕事は奪えない、が…』。6割という数字を軸に、安心と不穏を行き来する語り。最後にひとひねりの皮肉。"
+    mode   = "authored"
+    ids    = "neta:studio_ai:mail_show:003"
+    alias  = "neta:studio_ai:mail_show:seg-003"

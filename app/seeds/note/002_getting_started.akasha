@@ -1,0 +1,55 @@
+{
+  "metadata": {
+    "protocol": "akasha_capsule_v1.2",
+    "author": "system",
+    "timestamp": 1700000000.0,
+    "doc_type": "note",
+    "concept_id": "d00eca1bae6742803906ab42a831e8b5396d15b6573ea13c139ec31631208ec1",
+    "extracted_since": 0.0,
+    "seed": {
+      "kind": "sample",
+      "title": "Getting Started",
+      "order": 2,
+      "category": "general",
+      "locale": "en"
+    }
+  },
+  "atoms": {
+    "d00eca1bae6742803906ab42a831e8b5396d15b6573ea13c139ec31631208ec1": "Getting Started",
+    "af9512cb518cca46b208461aeb86ef604a31f895d53dbc40388ddfbd3706d7a0": "Akasha stores everything as a graph of atoms linked by relationships.",
+    "1d936381788d242d868834662344bf8d0fa24528a63cbece1b4355d9df2d6f6c": "Every chunk you write becomes an atom in your local cortex. Links between atoms form the structure of your knowledge.",
+    "e3ae8ca3329b84ad1c6969ac8698f0e2e9b78b06cbd7ba014829b5de3e68765d": "You can connect notes to field notes, surveys, and loom pieces — the graph grows with your thinking.",
+    "71fde44b3166523e3f605324821ef016b01da7a76f723074a89d0e57d259b589": "This sample note is yours to keep, edit, or delete. Duplicate it via File → Duplicate if you want to use it as a starting point."
+  },
+  "links": [
+    {
+      "src": "d00eca1bae6742803906ab42a831e8b5396d15b6573ea13c139ec31631208ec1",
+      "dst": "af9512cb518cca46b208461aeb86ef604a31f895d53dbc40388ddfbd3706d7a0",
+      "rel": "sys:top",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "af9512cb518cca46b208461aeb86ef604a31f895d53dbc40388ddfbd3706d7a0",
+      "dst": "1d936381788d242d868834662344bf8d0fa24528a63cbece1b4355d9df2d6f6c",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "1d936381788d242d868834662344bf8d0fa24528a63cbece1b4355d9df2d6f6c",
+      "dst": "e3ae8ca3329b84ad1c6969ac8698f0e2e9b78b06cbd7ba014829b5de3e68765d",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "e3ae8ca3329b84ad1c6969ac8698f0e2e9b78b06cbd7ba014829b5de3e68765d",
+      "dst": "71fde44b3166523e3f605324821ef016b01da7a76f723074a89d0e57d259b589",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    }
+  ],
+  "telemetry": {}
+}

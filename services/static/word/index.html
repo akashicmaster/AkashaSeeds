@@ -1,0 +1,1274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AKASHA — Word Detail</title>
+  <!-- AKASHA:SSR_HEAD -->
+  <!-- ↑ The /a/<slug> portal replaces this marker with server-rendered SEO for this atom
+       (title, description, canonical, OGP, schema.org DefinedTerm JSON-LD) so crawlers index
+       real content without running JS. Absent when served as a plain file — the client's
+       setSeoMeta() then fills canonical/description at runtime, so nothing regresses.
+       See docs/for-llm/atom-detail-ssr-seo-spec.md. -->
+  <script src="/lib/plotly-2.27.0.min.js" charset="utf-8"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --paper:      #f0e8d4;
+      --paper-mid:  #e6dbc4;
+      --paper-dark: #cfc4a8;
+      --ink:        #1a1409;
+      --ink-mid:    #2c2010;   /* darker — section labels / meta / chips now read clearly */
+      --ink-lt:     #574220;   /* darker tan — secondary labels have real contrast on cream */
+      --amber:      #8f5f0c;   /* a touch deeper so small amber text/links contrast better */
+      --amber-lt:   #b5831f;
+      --rule:       rgba(120, 92, 48, 0.36);   /* stronger dividers */
+      --rule-lt:    rgba(120, 92, 48, 0.14);
+    }
+
+    html, body {
+      height: 100%;
+      font-family: Georgia, 'Times New Roman', serif;
+      background: var(--paper);
+      color: var(--ink);
+      overflow: hidden;
+    }
+
+    /* ── Header ────────────────────────────────────────────────────── */
+    header {
+      height: 50px;
+      background: var(--paper-dark);
+      border-bottom: 1.5px solid var(--rule);
+      display: flex; align-items: center; padding: 0 28px; gap: 16px;
+    }
+    .back-link {
+      font-family: 'Courier New', monospace; font-size: 0.63rem;
+      letter-spacing: 2.5px; text-transform: uppercase; color: var(--ink-lt);
+      text-decoration: none; transition: color 0.2s;
+    }
+    .back-link:hover { color: var(--amber); }
+    .breadcrumb-sep { color: var(--paper-dark); font-size: 0.9rem; opacity: 0.6; }
+    .site-title {
+      font-size: 0.78rem; font-weight: 400; letter-spacing: 5px;
+      text-transform: uppercase; color: var(--ink);
+    }
+    .site-title em {
+      font-style: italic; font-size: 0.66rem; letter-spacing: 3px;
+      color: var(--ink-lt); text-transform: none;
+    }
+    .header-word {
+      margin-left: auto;
+      font-size: 0.72rem; letter-spacing: 3px; color: var(--ink-lt);
+      font-style: italic; white-space: nowrap; overflow: hidden;
+      text-overflow: ellipsis; max-width: 280px;
+    }
+
+    /* ── Layout ────────────────────────────────────────────────────── */
+    main { display: flex; height: calc(100vh - 50px); }
+
+    /* ── Left: Sphere ──────────────────────────────────────────────── */
+    .sphere-panel {
+      width: 50%; min-width: 320px;
+      border-right: 1.5px solid rgba(100, 60, 20, 0.5);
+      position: relative; overflow: hidden;
+      background-color: #1c1208;
+      background-image:
+        radial-gradient(ellipse at 50% 50%, rgba(185, 96, 18, 0.10) 0%, rgba(110, 55, 10, 0.04) 42%, transparent 70%),
+        repeating-linear-gradient(to right,
+          transparent 0px, transparent 56px,
+          rgba(0,0,0,0.025) 56px, rgba(0,0,0,0.025) 57px),
+        repeating-linear-gradient(to bottom,
+          transparent 0px, transparent 56px,
+          rgba(0,0,0,0.020) 56px, rgba(0,0,0,0.020) 57px);
+    }
+    #word-sphere { width: 100%; height: 100%; }
+
+    /* Loading veil — the in-place figure/chip focal shift is a fetch; show that
+       something is happening so a slow load never looks like a dead click. */
+    #load-veil {
+      position: fixed; inset: 0; z-index: 60;
+      display: none; align-items: center; justify-content: center;
+      background: rgba(20, 13, 5, 0.28);
+    }
+    #load-veil.on { display: flex; }
+    #load-veil .spin {
+      width: 34px; height: 34px; border-radius: 50%;
+      border: 3px solid rgba(200, 150, 60, 0.28);
+      border-top-color: var(--amber-lt);
+      animation: veil-spin 0.8s linear infinite;
+    }
+    @keyframes veil-spin { to { transform: rotate(360deg); } }
+
+    /* Sphere legend */
+    .sphere-legend {
+      position: absolute; bottom: 18px; left: 18px;
+      display: flex; flex-direction: column; gap: 5px;
+      pointer-events: none; z-index: 10;
+    }
+    .legend-row {
+      display: flex; align-items: center; gap: 7px;
+      font-family: 'Courier New', monospace; font-size: 0.48rem;
+      letter-spacing: 1.5px; color: rgba(200, 165, 90, 0.55);
+    }
+    .legend-dot {
+      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    }
+
+    /* ── Right: Info panel ─────────────────────────────────────────── */
+    .info-panel {
+      flex: 1; overflow-y: auto; overflow-x: hidden;
+      background: var(--paper);
+      background-image: repeating-linear-gradient(
+        to bottom,
+        transparent 0px, transparent 30px,
+        var(--rule-lt) 30px, var(--rule-lt) 31px
+      );
+      background-size: 100% 31px;
+    }
+    .info-panel::-webkit-scrollbar { width: 4px; }
+    .info-panel::-webkit-scrollbar-thumb { background: var(--paper-dark); border-radius: 2px; }
+
+    .info-inner { padding: 36px 40px 60px; max-width: 680px; }
+
+    /* Word title block */
+    .word-display-name {
+      font-size: 2.8rem; font-weight: 400; line-height: 1.1;
+      color: var(--ink); letter-spacing: -0.5px; margin-bottom: 8px;
+    }
+    .word-alias {
+      font-family: 'Courier New', monospace; font-size: 0.7rem;
+      letter-spacing: 2px; color: var(--ink-mid);
+      margin-bottom: 22px; display: block;
+    }
+    .word-description {
+      font-size: 1.05rem; line-height: 1.8; font-style: italic;
+      color: var(--ink); border-left: 3px solid var(--amber);
+      padding-left: 18px; margin-bottom: 36px;
+    }
+
+    /* Section heading */
+    .section-label {
+      font-family: 'Courier New', monospace; font-size: 0.62rem;
+      letter-spacing: 4px; text-transform: uppercase; color: var(--ink-mid);
+      margin-bottom: 14px; margin-top: 36px;
+      border-bottom: 1px solid var(--rule); padding-bottom: 7px;
+    }
+    .section-label:first-of-type { margin-top: 0; }
+
+    /* ShelfScore */
+    .score-row {
+      display: flex; align-items: center; gap: 16px; margin-bottom: 20px;
+    }
+    .score-value {
+      font-family: 'Courier New', monospace; font-size: 2.2rem;
+      color: var(--amber); letter-spacing: -1px; flex-shrink: 0;
+    }
+    .score-bar-track {
+      flex: 1; height: 5px; background: var(--rule);
+      border-radius: 2px; overflow: hidden;
+    }
+    .score-bar-fill {
+      height: 100%; background: linear-gradient(to right, var(--amber), var(--amber-lt));
+      border-radius: 2px; transition: width 0.6s ease;
+    }
+    .component-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px 28px;
+      margin-bottom: 4px;
+    }
+    .comp-row { display: flex; align-items: center; gap: 10px; }
+    .comp-label {
+      font-family: 'Courier New', monospace; font-size: 0.62rem;
+      letter-spacing: 1px; color: var(--ink-mid); flex: 1; white-space: nowrap;
+    }
+    .comp-bar-track {
+      width: 56px; height: 4px; background: var(--rule); border-radius: 2px;
+    }
+    .comp-bar-fill {
+      height: 100%; border-radius: 2px;
+      background: linear-gradient(to right, var(--amber), var(--amber-lt));
+    }
+    .comp-val {
+      font-family: 'Courier New', monospace; font-size: 0.60rem;
+      color: var(--ink-mid); width: 32px; text-align: right;
+    }
+
+    /* Semantic link chips */
+    .link-type-block { margin-bottom: 22px; }
+    .link-type-name {
+      font-family: 'Courier New', monospace; font-size: 0.60rem;
+      letter-spacing: 2.5px; text-transform: uppercase; color: var(--ink-mid);
+      margin-bottom: 9px;
+    }
+    .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+    .chip {
+      font-family: 'Courier New', monospace; font-size: 0.68rem;
+      letter-spacing: 1px; padding: 5px 13px;
+      border: 1px solid var(--rule); background: rgba(240,232,212,0.4);
+      color: var(--ink-mid); cursor: pointer; transition: all 0.15s;
+      text-decoration: none; display: inline-block;
+      border-radius: 1px;
+    }
+    .chip:hover {
+      background: var(--paper-mid); border-color: var(--amber);
+      color: var(--amber); transform: translateY(-1px);
+    }
+    /* similar-by-meaning chips: dashed, to read as a softer/inferred relation */
+    .sim-chip { border-style: dashed; }
+
+    /* External refs — headword as readable text, source as a small link badge */
+    .ref-item {
+      display: flex; align-items: baseline; gap: 12px;
+      margin-bottom: 9px; flex-wrap: wrap;
+    }
+    .ref-headword { color: var(--ink); font-size: 0.98rem; font-family: Georgia, serif; }
+    .ref-source {
+      font-family: 'Courier New', monospace; font-size: 0.56rem;
+      letter-spacing: 1.5px; text-transform: uppercase; white-space: nowrap;
+      color: var(--amber); text-decoration: none;
+      border: 1px solid var(--rule); border-radius: 2px; padding: 2px 8px;
+      transition: all 0.15s;
+    }
+    .ref-source:hover {
+      color: var(--amber-lt); border-color: var(--amber); background: var(--paper-mid);
+    }
+    /* curated (authored) refs read as more solid than auto-fetched ones */
+    .ref-source.curated { border-color: var(--amber); background: rgba(143, 95, 12, 0.09); }
+
+    /* Curations */
+    .curation-card {
+      border-left: 3px solid rgba(140,110,60,0.4);
+      padding: 12px 16px; margin-bottom: 14px;
+      background: rgba(240,232,212,0.45);
+    }
+    .curation-collection {
+      font-family: 'Courier New', monospace; font-size: 0.62rem;
+      letter-spacing: 1.5px; color: var(--amber); margin-bottom: 7px;
+      text-transform: uppercase;
+    }
+    .curation-text {
+      font-size: 0.92rem; font-style: italic; color: var(--ink);
+      line-height: 1.7;
+    }
+
+    /* Alias chips */
+    .alias-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 22px; }
+    .alias-chip {
+      font-family: 'Courier New', monospace; font-size: 0.64rem;
+      letter-spacing: 1px; padding: 3px 10px;
+      border: 1px dashed var(--rule); background: transparent;
+      color: var(--ink-lt); border-radius: 1px;
+    }
+    a.alias-chip.alias-ext {
+      text-decoration: none; color: var(--amber);
+      border-color: var(--amber); border-style: solid;
+    }
+    a.alias-chip.alias-ext:hover { background: rgba(143,95,12,0.08); }
+
+    /* Media image (a media:img atom whose content is an image URL) */
+    .word-media-link { display: inline-block; margin: 6px 0 4px; }
+    .word-media {
+      max-width: 100%; max-height: 320px; height: auto;
+      border-radius: 2px; border: 1px solid var(--rule);
+    }
+    .word-media-src { font-size: 0.75rem; margin: 2px 0 18px; }
+    .word-media-src a { color: var(--amber); text-decoration: none; }
+    .word-media-src a:hover { text-decoration: underline; }
+    .word-description a { color: var(--amber); text-decoration: none; }
+    .word-description a:hover { text-decoration: underline; }
+
+    /* Meta / properties table */
+    .meta-table { margin-bottom: 22px; }
+    .meta-row { display: flex; gap: 12px; padding: 4px 0; border-bottom: 1px solid var(--rule-lt); font-size: 0.80rem; }
+    .meta-key { font-family: 'Courier New', monospace; font-size: 0.62rem; letter-spacing: 1px; color: var(--ink-lt); min-width: 80px; flex-shrink: 0; }
+    .meta-val { color: var(--ink-mid); }
+
+    /* Geo country profile card */
+    .geo-card {
+      border: 1px solid var(--rule); border-radius: 2px;
+      background: var(--paper-mid); padding: 14px 16px; margin-bottom: 22px;
+    }
+    .geo-card-header {
+      display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px;
+    }
+    .geo-iso3 {
+      font-family: 'Courier New', monospace; font-size: 1.1rem;
+      font-weight: bold; letter-spacing: 3px; color: var(--amber);
+    }
+    .geo-gdp-tier {
+      font-family: 'Courier New', monospace; font-size: 0.58rem;
+      letter-spacing: 1.5px; text-transform: uppercase;
+      border: 1px solid var(--amber-lt); color: var(--amber);
+      padding: 2px 7px; border-radius: 1px;
+    }
+    .geo-stat-row { display: flex; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--rule-lt); font-size: 0.78rem; align-items: baseline; }
+    .geo-stat-row:last-child { border-bottom: none; }
+    .geo-stat-label { font-family: 'Courier New', monospace; font-size: 0.60rem; letter-spacing: 0.8px; color: var(--ink-lt); min-width: 90px; flex-shrink: 0; }
+    .geo-stat-val { color: var(--ink-mid); }
+
+    /* Graph links */
+    .graph-link-row { display: flex; align-items: baseline; gap: 10px; padding: 3px 0; font-size: 0.80rem; }
+    .graph-rel { font-family: 'Courier New', monospace; font-size: 0.58rem; letter-spacing: 0.5px; color: var(--ink-lt); min-width: 160px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .graph-node { color: var(--ink-mid); }
+    .graph-node-link { color: var(--amber); text-decoration: none; }
+    .graph-node-link:hover { text-decoration: underline; }
+
+    /* Loading / error */
+    .state-msg {
+      padding: 60px 40px; font-family: 'Courier New', monospace;
+      font-size: 0.80rem; letter-spacing: 1.5px; color: var(--ink-mid);
+      line-height: 1.8;
+    }
+    .sphere-fallback {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 8px; padding: 24px;
+      text-align: center; font-family: 'Courier New', monospace;
+      font-size: 0.8rem; letter-spacing: 1px; color: var(--ink-mid);
+    }
+    .sphere-fallback span { font-size: 0.68rem; opacity: 0.7; letter-spacing: 0.5px; }
+    .state-error { color: #c05030; font-size: 0.82rem; }
+
+    @media (max-width: 720px) {
+      html, body { overflow: auto; }
+      main { flex-direction: column; height: auto; }
+      .sphere-panel { width: 100%; min-width: 0; height: 55vw; min-height: 260px; border-right: none; border-bottom: 1.5px solid rgba(100,60,20,0.5); }
+      .info-inner { padding: 28px 22px 56px; }
+      .word-display-name { font-size: 2.2rem; }
+      .word-description { font-size: 1.0rem; }
+      .component-grid { grid-template-columns: 1fr; }
+      .info-panel { overflow: auto; height: auto; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <a href="/hall/" class="back-link" id="back-link">← Reading Hall</a>
+  <span class="breadcrumb-sep">/</span>
+  <h1 class="site-title">AKASHA &ensp;<em>word detail</em></h1>
+  <span class="header-word" id="header-word"></span>
+</header>
+
+<div id="load-veil" aria-hidden="true"><div class="spin"></div></div>
+
+<main>
+  <!-- Left: semantic sphere -->
+  <section class="sphere-panel" aria-label="Semantic link sphere">
+    <div id="word-sphere"></div>
+    <div class="sphere-legend" id="sphere-legend"></div>
+  </section>
+
+  <!-- Right: information panel -->
+  <section class="info-panel" aria-label="Word information">
+    <div class="info-inner" id="info-inner">
+      <p class="state-msg" id="state-msg">loading …</p>
+    </div>
+  </section>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  // Permalink: prefer the clean /a/<slug> path, fall back to ?name=<slug>.
+  var NAME = (function () {
+    var m = location.pathname.match(/^\/a\/(.+)$/);
+    if (m) { try { return decodeURIComponent(m[1]); } catch (e) { return m[1]; } }
+    return new URLSearchParams(location.search).get('name') || '';
+  })();
+
+  // Back-link: return to wherever the visitor actually came from. The atom viewer is
+  // reached from many rooms (world map, reference, field, curation gallery, word sphere),
+  // so a same-origin referrer → a natural "← Back" (history.back), which lands back on
+  // the exact room of origin. A direct landing (no referrer / SEO / new tab) cannot know
+  // the origin, so it falls back to the hub every room returns to — the Reading Hall —
+  // rather than guessing one specific room; a country keeps the world map as its natural
+  // home. The href stays the fallback so middle-click / open-in-new-tab / no-JS still work.
+  (function () {
+    var bl = document.getElementById('back-link');
+    if (!bl) return;
+    var isGeo = /^geo:country:/.test(NAME);
+    bl.href = isGeo ? '/worldmap/' : '/hall/';
+    bl.textContent = isGeo ? '← World Map' : '← Reading Hall';
+    var ref = document.referrer || '';
+    var isBack = !!(ref && ref.indexOf(location.origin) === 0 && ref !== location.href);
+    if (isBack) bl.textContent = '← Back';
+    // The button must ALWAYS lead somewhere. history.back() is a no-op in a fresh tab,
+    // a single-entry history, or a translate/proxy context — and because we preventDefault
+    // to run it, that would leave the link dead (the exact "戻るボタンが反応しない" on an
+    // orphan atom with no other way out). So: try history.back(), and if the page hasn't
+    // navigated away shortly after, fall through to the href (Reading Hall / World Map).
+    // Uses a closure flag, NOT the button text — in-page translation (Google Translate
+    // rewrites "← Back" to "戻る") must not change the behaviour.
+    bl.addEventListener('click', function (e) {
+      if (!isBack) return;                       // plain hub link → let the href navigate
+      e.preventDefault();
+      var fallback = bl.getAttribute('href');
+      var left = false;
+      window.addEventListener('pagehide', function () { left = true; }, { once: true });
+      try { history.back(); } catch (_) {}
+      setTimeout(function () { if (!left) location.href = fallback; }, 500);
+    });
+  })();
+
+  // Clean permalink href for a slug (qualified alias); keep ':' readable.
+  function atomHref(slug) {
+    return '/a/' + encodeURIComponent(slug).replace(/%3A/gi, ':');
+  }
+
+  // Bound a promise so a slow RPC degrades instead of hanging the UI forever. Some
+  // high-degree hub atoms take a long time to build server-side (2-hop neighbourhood);
+  // without this the loading veil covers the (already server-prerendered) content for
+  // minutes. On timeout we reject with 'timeout' so the caller can degrade gracefully.
+  function withTimeout(p, ms) {
+    return new Promise(function (resolve, reject) {
+      var done = false;
+      var t = setTimeout(function () { if (!done) { done = true; reject(new Error('timeout')); } }, ms);
+      p.then(function (v) { if (!done) { done = true; clearTimeout(t); resolve(v); } },
+             function (e) { if (!done) { done = true; clearTimeout(t); reject(e); } });
+    });
+  }
+
+  // Non-destructive slow-load banner: prepended to the info panel so any server-prerendered
+  // content stays visible underneath (the veil is cleared), and the ← Back button still works.
+  function showSlowBanner(name) {
+    var host = document.getElementById('info-inner');
+    if (!host || document.getElementById('slow-banner')) return;
+    var b = document.createElement('div');
+    b.id = 'slow-banner';
+    b.style.cssText = 'border:1px dashed var(--rule);background:var(--paper-mid);' +
+      'padding:12px 14px;margin-bottom:18px;font-size:0.82rem;line-height:1.6;color:var(--ink-mid)';
+    b.innerHTML = 'This concept has a large neighbourhood and is taking a while to build. ' +
+      'Any details below are the fast-loaded summary — <a href="' + atomHref(name) +
+      '" style="color:var(--amber)">reload</a> to try the full view, or use ← Back.';
+    host.insertBefore(b, host.firstChild);
+  }
+
+  // Consolidate SEO signals for the current atom: canonical URL + description.
+  function setSeoMeta(slug, description) {
+    var head = document.head;
+    var canon = document.querySelector('link[rel="canonical"]');
+    if (!canon) { canon = document.createElement('link'); canon.rel = 'canonical'; head.appendChild(canon); }
+    canon.href = location.origin + atomHref(slug);
+    var md = document.querySelector('meta[name="description"]');
+    if (!md) { md = document.createElement('meta'); md.name = 'description'; head.appendChild(md); }
+    var text = (description || '').replace(/\s+/g, ' ').trim();
+    md.content = text ? text.slice(0, 300) : ('Akasha — semantic entry for ' + slug);
+  }
+
+  function displayName(qualifiedAlias) {
+    if (!qualifiedAlias) return '—';
+    var parts = qualifiedAlias.split(':');
+    var last  = parts[parts.length - 1];
+    // For namespaced atoms (geo:, lang:, org:, etc.) prettify: underscores → spaces, title-case
+    if (parts.length > 1) {
+      return last.replace(/_/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+    }
+    return last;
+  }
+
+  // For linked atoms (no meta available): geo:country:* use description (= full country name)
+  function linkedAtomLabel(atom) {
+    if (!atom) return '—';
+    var name = atom.name || '';
+    if (/^geo:country:/.test(name) && atom.description) {
+      return atom.description;
+    }
+    return displayName(name);
+  }
+
+  function atomSlug(atom) {
+    // Use the FULL qualified alias for navigation so geo:country:USA links correctly.
+    // Fall back to url_slug only if name is absent.
+    return atom.name || atom.url_slug || '';
+  }
+
+  function esc(str) {
+    var d = document.createElement('div');
+    d.textContent = str || '';
+    return d.innerHTML;
+  }
+
+  // ── External-link affordances ──────────────────────────────────────────────
+  // Give visitors a real 動線 to external sources. Two things the frontend can do
+  // reliably on its own (the fuller external_refs — Commons via the linked media
+  // atom, Wikipedia — is assembled by the backend and rendered by the badge section):
+  //   • linkify a URL that appears in a description, and render a media:img atom's
+  //     image inline with a clickable source link;
+  //   • turn a `<ns>:wd:Q<id>` cross-ref alias into a Wikidata link (deterministic).
+  function firstUrl(s) {
+    var m = String(s || '').match(/https?:\/\/[^\s<>"']+/);
+    return m ? m[0] : '';
+  }
+  function isImageUrl(u) {
+    return /\.(jpe?g|png|gif|webp|svg|bmp)(\?|#|$)/i.test(u || '');
+  }
+  function hostOf(u) {
+    return (String(u).split('/')[2] || '').replace(/^www\./, '');
+  }
+  function linkifyInline(raw) {
+    var s = String(raw || ''), re = /https?:\/\/[^\s<>"']+/g, out = '', last = 0, m;
+    while ((m = re.exec(s))) {
+      out += esc(s.slice(last, m.index));
+      var u = m[0];
+      out += '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">'
+           + esc(hostOf(u) || u) + ' ↗</a>';
+      last = m.index + u.length;
+    }
+    out += esc(s.slice(last));
+    return out;
+  }
+  function renderDescriptionHtml(desc, alias, meta) {
+    var url = firstUrl(desc);
+    var isMedia = /^media:img:/.test(alias || '')
+               || (meta && /image|img/i.test(meta.type || ''))
+               || (url && isImageUrl(url));
+    if (url && isMedia) {
+      return '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer" class="word-media-link">'
+           + '<img class="word-media" src="' + esc(url) + '" loading="lazy" '
+           + 'alt="' + esc(displayName(alias)) + '" onerror="this.style.display=\'none\'"></a>'
+           + '<p class="word-media-src"><a href="' + esc(url) + '" target="_blank" '
+           + 'rel="noopener noreferrer">' + esc(hostOf(url) || 'source') + ' ↗</a></p>';
+    }
+    return '<p class="word-description">' + linkifyInline(desc) + '</p>';
+  }
+  function externalAliasLink(a) {
+    var m = String(a || '').match(/(?:^|:)wd:(Q\d+)$/i);
+    if (m) return { url: 'https://www.wikidata.org/wiki/' + m[1], title: 'Wikidata ' + m[1] };
+    return null;
+  }
+
+  // ── RPC ────────────────────────────────────────────────────────────────────
+
+  // F47-2.3 — a busy/-32029 (or HTTP 503) answer is a transient SERVICE state, not an error: retry
+  // up to 3 times with a 1–3 s jitter (honouring an explicit retry_after) BEFORE surfacing anything.
+  // Callers are unchanged — the retry is invisible unless it is exhausted, then a `.busy` error is
+  // thrown so the UI can show the honest "engine busy" state (2.2) rather than a raw message.
+  var _RPC_MAX_RETRY = 3;
+  function _isBusyErr(code, msg) {
+    if (code === -32029) return true;
+    msg = String(msg || '').toLowerCase();
+    return msg.indexOf('busy') !== -1 || msg.indexOf('saturated') !== -1 ||
+           msg.indexOf('warming') !== -1 || msg.indexOf('retry shortly') !== -1 ||
+           msg.indexOf('unreachable') !== -1 || msg.indexOf('write path unavailable') !== -1;
+  }
+  function _busyError() {
+    var e = new Error('The archive engine is busy right now — please try again in a moment.');
+    e.busy = true; return e;
+  }
+  function _retryAfter(attempt, ms) {
+    if (attempt >= _RPC_MAX_RETRY) throw _busyError();
+    var wait = ms > 0 ? ms : (1000 + Math.floor(Math.random() * 2000));   // 1–3 s jitter
+    return new Promise(function (resolve) { setTimeout(resolve, wait); });
+  }
+  function rpc(method, params, _attempt) {
+    _attempt = _attempt || 0;
+    return fetch('/rpc', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', method: method, params: params, id: method }),
+    }).then(function (r) {
+      if (r.status === 503) {                       // portal-side busy (crawler/bot degraded, warming)
+        var ra = parseInt(r.headers.get('Retry-After') || '0', 10);
+        return { __busy: true, __wait: ra > 0 ? ra * 1000 : 0 };
+      }
+      return r.json();
+    }).then(function (j) {
+      if (j && j.__busy) {
+        return _retryAfter(_attempt, j.__wait).then(function () { return rpc(method, params, _attempt + 1); });
+      }
+      if (j.error) {
+        var code = j.error.code, m = j.error.message || 'rpc error';
+        if (_isBusyErr(code, m)) {
+          var ms = (j.error.data && j.error.data.retry_after_ms) || 0;
+          return _retryAfter(_attempt, ms).then(function () { return rpc(method, params, _attempt + 1); });
+        }
+        throw new Error(m);
+      }
+      return j.result;
+    });
+  }
+
+  // One guest session per VISITOR, reused across page loads (localStorage) — not
+  // one per page view, which would exhaust the small guest pool on a public site.
+  var _guestToken   = null;
+  var _guestExp     = 0;      // token expiry (ms epoch); a gbk: token has a FIXED lifetime
+  var _guestPromise = null;   // in-flight guest.create, shared by concurrent callers
+  var _GUEST_KEY    = 'akasha_guest_token';
+  var _GUEST_SKEW   = 30000;  // refresh this many ms before the token actually dies
+  // A guest binding token (gbk:) hard-expires at creation + ttl (<=30 min) and is NOT
+  // renewed by activity server-side, so a token cached in localStorage goes stale. Reusing
+  // a stale token made every read return -32001 and the pane render empty on each reload.
+  // So: remember the expiry, never reuse a (near-)expired token, mint fresh before it dies.
+  function _readGuestCache() {
+    try {
+      var raw = localStorage.getItem(_GUEST_KEY); if (!raw) return null;
+      if (raw.charAt(0) === '{') { var o = JSON.parse(raw); return (o && o.key) ? o : null; }
+      return { key: raw, exp: 0 };             // legacy plain-string token: expiry unknown
+    } catch (e) { return null; }
+  }
+  function getToken() {
+    var now = Date.now();
+    if (_guestToken && _guestExp - now > _GUEST_SKEW) return Promise.resolve(_guestToken);
+    if (_guestPromise) return _guestPromise;   // concurrent callers SHARE one guest.create.
+    if (!_guestToken) {
+      var c = _readGuestCache();
+      if (c && c.exp - now > _GUEST_SKEW) { _guestToken = c.key; _guestExp = c.exp; return Promise.resolve(_guestToken); }
+    }
+    _guestPromise = rpc('session.guest.create', {}).then(function (g) {
+      _guestPromise = null; _guestToken = g.binding_key;
+      _guestExp = (g && g.expires_at) ? g.expires_at * 1000 : (Date.now() + 25 * 60000);
+      try { localStorage.setItem(_GUEST_KEY, JSON.stringify({ key: _guestToken, exp: _guestExp })); } catch (e) {}
+      return _guestToken;
+    }).catch(function (e) { _guestPromise = null; throw e; });
+    return _guestPromise;
+  }
+  // A cached token can also go stale if its pool slot was reclaimed while the token was still
+  // cryptographically valid. Drop it and mint fresh — the retry-once-on-session-error path.
+  function freshToken() {
+    _guestToken = null; _guestExp = 0; _guestPromise = null;
+    try { localStorage.removeItem(_GUEST_KEY); } catch (e) {}
+    return getToken();
+  }
+  function isSessionErr(msg) {
+    msg = String(msg || '').toLowerCase();
+    return msg.indexOf('session') !== -1 || msg.indexOf('token') !== -1 ||
+           msg.indexOf('access denied') !== -1 || msg.indexOf('guest') !== -1 ||
+           msg.indexOf('expired') !== -1;
+  }
+
+  // ── Sphere colours by link type ────────────────────────────────────────────
+
+  // Categories of the writer's view returned by thesaurus.concept.
+  var LINK_COLORS = {
+    synonyms:  '#8aaa76',   // sage
+    antonyms:  '#b47870',   // dusty rose
+    broader:   '#7a9a88',   // dark teal  (hypernyms)
+    narrower:  '#7ab4bc',   // cyan       (hyponyms)
+    related:   '#a09070',   // warm stone (everything else linked)
+  };
+
+  var LINK_LABELS = {
+    synonyms:  'synonyms',
+    antonyms:  'antonyms',
+    broader:   'broader',
+    narrower:  'narrower',
+    related:   'related',
+  };
+
+  // Build the writer's-view link buckets from a thesaurus.concept payload.
+  function semanticLinksOf(c) {
+    return {
+      synonyms: c.synonyms || [],
+      antonyms: c.antonyms || [],
+      broader:  c.broader  || [],
+      narrower: c.narrower || [],
+      related:  c.related  || [],
+    };
+  }
+
+  // ── Fibonacci sphere positions ─────────────────────────────────────────────
+
+  function fibonacciSphere(n) {
+    var pts = [];
+    var G = Math.PI * (3 - Math.sqrt(5));
+    for (var i = 0; i < n; i++) {
+      var y = 1 - (i / Math.max(n - 1, 1)) * 2;
+      var r = Math.sqrt(Math.max(0, 1 - y * y));
+      var theta = G * i;
+      pts.push({ x: r * Math.cos(theta), y: y, z: r * Math.sin(theta) });
+    }
+    return pts;
+  }
+
+  // ── Render sphere ──────────────────────────────────────────────────────────
+
+  function renderSphere(mainAtom, semanticLinks, rawLinks) {
+    rawLinks = rawLinks || {};
+    // Degrade gracefully if the visualization library is unavailable (CDN blocked,
+    // CSP, offline / air-gapped deploy). The info panel (text, links, score) still
+    // renders — only the interactive 3-D sphere is skipped, with a clear notice.
+    if (typeof Plotly === 'undefined' || !Plotly || typeof Plotly.newPlot !== 'function') {
+      var _sph = document.getElementById('word-sphere');
+      if (_sph) {
+        _sph.innerHTML = '<div class="sphere-fallback">Interactive 3-D view unavailable'
+          + '<span>the visualization library could not be loaded</span></div>';
+      }
+      var _lg = document.getElementById('sphere-legend');
+      if (_lg) _lg.innerHTML = '';
+      return;
+    }
+    var allAtoms  = [];  // { atom, type, color }
+    var seenKeys  = {};
+    var types = Object.keys(LINK_COLORS);
+
+    // First pass: thesaurus semantic links (categorised, distinct colours)
+    types.forEach(function (type) {
+      var list = (semanticLinks[type] || []);
+      list.forEach(function (atom) {
+        if (atom.key && !seenKeys[atom.key]) {
+          seenKeys[atom.key] = true;
+          allAtoms.push({ atom: atom, type: type, color: LINK_COLORS[type] });
+        }
+      });
+    });
+
+    // Second pass: raw graph neighbours not already shown (stone colour)
+    var rawOut = (rawLinks.outgoing || []);
+    var rawIn  = (rawLinks.incoming || []);
+    rawOut.concat(rawIn).forEach(function(lk) {
+      if (lk.key && !seenKeys[lk.key] && allAtoms.length < 40) {
+        seenKeys[lk.key] = true;
+        allAtoms.push({ atom: lk, type: 'related', color: LINK_COLORS.related });
+      }
+    });
+
+    // Fibonacci positions for linked atoms
+    var pts = fibonacciSphere(allAtoms.length);
+
+    // ── Node arrays ──
+    var nx = [0], ny = [0], nz = [0];
+    var ncolors     = ['#d4a050'];
+    var nsizes      = [28];
+    var _mainMeta   = mainAtom.meta || {};
+    // Detect a country by its alias (meta.type is "hub" for well-connected countries,
+    // not "geo_country"), and label it by its description (the country name), never the
+    // qualified key in meta.name.
+    var _mainIsGeo  = /^geo:country:/.test(mainAtom.name || '');
+    var _mainLabel  = (_mainIsGeo && mainAtom.description)
+      ? mainAtom.description.replace(/\s*—.*$/, '').trim()
+      : displayName(mainAtom.name || mainAtom.url_slug || NAME);
+    var nlabels     = [_mainLabel];
+    var nslugs      = [atomSlug(mainAtom)];
+    var ntextColor  = ['rgba(235, 195, 110, 0.95)'];
+    var ntextSize   = [11];
+    var nopacity    = [1.0];
+
+    allAtoms.forEach(function (entry, i) {
+      var p = pts[i] || { x: 0, y: 0, z: 0 };
+      nx.push(p.x); ny.push(p.y); nz.push(p.z);
+      ncolors.push(entry.color);
+      nsizes.push(entry.type === 'associated' ? 11 : 15);
+      nlabels.push(linkedAtomLabel(entry.atom));
+      nslugs.push(atomSlug(entry.atom));
+      ntextColor.push(entry.type === 'associated'
+        ? 'rgba(185, 155, 90, 0.50)'
+        : 'rgba(210, 175, 105, 0.75)');
+      ntextSize.push(8);
+      nopacity.push(entry.type === 'associated' ? 0.65 : 0.90);
+    });
+
+    // ── Edge lines: center → each neighbour ──
+    var ex = [], ey = [], ez = [];
+    pts.forEach(function(p) {
+      ex.push(0, p.x, null);
+      ey.push(0, p.y, null);
+      ez.push(0, p.z, null);
+    });
+
+    var edgeTrace = {
+      type: 'scatter3d',
+      mode: 'lines',
+      x: ex, y: ey, z: ez,
+      line: { color: 'rgba(185, 135, 55, 0.22)', width: 1.5 },
+      hoverinfo: 'skip',
+      showlegend: false,
+    };
+
+    var nodeTrace = {
+      type: 'scatter3d',
+      mode: allAtoms.length > 0 ? 'markers+text' : 'markers',
+      x: nx, y: ny, z: nz,
+      text: nlabels,
+      customdata: nslugs,
+      textfont: {
+        family: 'Georgia, serif',
+        size: ntextSize,
+        color: ntextColor,
+      },
+      textposition: 'top center',
+      hovertemplate: '%{text}<extra></extra>',
+      marker: {
+        size: nsizes, color: ncolors, opacity: nopacity,
+        line: { color: 'rgba(220, 175, 80, 0.30)', width: 0.8 },
+      },
+      showlegend: false,
+    };
+
+    var traces = allAtoms.length > 0 ? [edgeTrace, nodeTrace] : [nodeTrace];
+    var nodeTraceIdx = allAtoms.length > 0 ? 1 : 0;
+
+    var layout = {
+      paper_bgcolor: 'rgba(0,0,0,0)',
+      plot_bgcolor:  'rgba(0,0,0,0)',
+      margin: { l: 0, r: 0, t: 0, b: 0 },
+      scene: {
+        bgcolor: 'rgba(0,0,0,0)',
+        xaxis: { visible: false, showgrid: false, zeroline: false, showspikes: false, range: [-1.1, 1.1] },
+        yaxis: { visible: false, showgrid: false, zeroline: false, showspikes: false, range: [-1.1, 1.1] },
+        zaxis: { visible: false, showgrid: false, zeroline: false, showspikes: false, range: [-1.1, 1.1] },
+        camera: {
+          eye: { x: 1.4, y: 0.7, z: 0.7 },
+          up:  { x: 0, y: 1, z: 0 },
+        },
+        aspectmode: 'cube',
+      },
+      hoverlabel: {
+        bgcolor: 'rgba(22,13,5,0.93)',
+        bordercolor: 'rgba(180,115,35,0.5)',
+        font: { family: 'Georgia, serif', size: 13, color: '#c8923a' },
+        namelength: 0,
+      },
+    };
+
+    Plotly.newPlot('word-sphere', traces, layout,
+                   { responsive: true, displayModeBar: false, scrollZoom: true });
+
+    // Click: in-place focal shift (newPlot clears old handlers — safe to add fresh)
+    var el = document.getElementById('word-sphere');
+    el.on('plotly_click', function (data) {
+      var pt = data.points[0];
+      if (pt.curveNumber !== nodeTraceIdx) return;
+      var slug = pt.customdata;
+      if (slug && pt.pointNumber !== 0) {
+        loadAtom(slug);
+      }
+    });
+
+    // Legend
+    var legendEl = document.getElementById('sphere-legend');
+    var legendHtml = '';
+    var seen = {};
+    types.forEach(function (type) {
+      var list = semanticLinks[type] || [];
+      if (!list.length) return;
+      if (seen[type]) return;
+      seen[type] = true;
+      legendHtml +=
+        '<div class="legend-row">' +
+        '<div class="legend-dot" style="background:' + LINK_COLORS[type] + '"></div>' +
+        '<span>' + LINK_LABELS[type].toUpperCase() + '</span>' +
+        '</div>';
+    });
+    legendEl.innerHTML = legendHtml;
+  }
+
+  // ── Render info panel ──────────────────────────────────────────────────────
+
+  function pct(v) { return Math.round(v * 100); }
+
+  function compBar(label, value) {
+    return '<div class="comp-row">' +
+      '<span class="comp-label">' + esc(label) + '</span>' +
+      '<div class="comp-bar-track"><div class="comp-bar-fill" style="width:' + pct(value) + '%"></div></div>' +
+      '<span class="comp-val">' + (value !== undefined ? pct(value) + '%' : '—') + '</span>' +
+      '</div>';
+  }
+
+  function renderLinks(semanticLinks) {
+    var types = Object.keys(LINK_COLORS);
+    var html = '';
+    var hasAny = false;
+
+    types.forEach(function (type) {
+      var list = semanticLinks[type] || [];
+      if (!list.length) return;
+      hasAny = true;
+      html += '<div class="link-type-block">';
+      html += '<div class="link-type-name">' + esc(LINK_LABELS[type]) + '</div>';
+      html += '<div class="chips">';
+      list.forEach(function (atom) {
+        var slug = atomSlug(atom);
+        var dname = linkedAtomLabel(atom);
+        html += '<a class="chip" href="' + atomHref(slug) + '">' +
+                esc(dname) + '</a>';
+      });
+      html += '</div></div>';
+    });
+
+    if (!hasAny) {
+      html = '<p style="font-size:0.75rem;font-style:italic;color:var(--ink-lt)">No semantic links recorded.</p>';
+    }
+    return html;
+  }
+
+  // c is a thesaurus.concept payload (dive base + writer's view).
+  function renderInfoPanel(c) {
+    var atom     = c.atom || {};
+    var links    = semanticLinksOf(c);
+    var refs     = c.external_refs || [];
+    var examples = c.examples || [];
+    var allLinks = c.all_links || {};
+
+    var meta   = atom.meta || {};
+    // Country name, never the ISO3 slug. Prefer meta.name when the backend sends it,
+    // else derive from the description head (geo:country:* descriptions ARE the country
+    // name, sometimes with a " — …" detail tail). Detect geo countries by alias too, so
+    // the name resolves even when the backend omits meta.type.
+    var _alias = atom.name || atom.term || NAME || '';
+    var _isGeoCountry = (meta.type === 'geo_country') || /^geo:country:/.test(_alias);
+    // geo:country:* descriptions ARE the country name (sometimes with a " — …" tail).
+    // Do NOT prefer meta.name here — the backend fills it with the qualified KEY
+    // ("geo:country:AUS"), not a display name, which is exactly what leaked into the
+    // headword. The description ("Australia") is the reliable human form.
+    var dname  = _isGeoCountry
+      ? ((atom.description || '').replace(/\s*—.*$/, '').trim() || displayName(_alias))
+      : displayName(_alias);
+    var alias  = atom.name || '';
+    var desc   = atom.description || '';
+    var sal    = (typeof c.salience === 'number') ? c.salience : null;
+
+    // Update page title, SEO meta (canonical + description), and header
+    document.title = 'AKASHA — ' + dname;
+    setSeoMeta(alias || atom.term || NAME, desc);
+    document.getElementById('header-word').textContent = dname;
+
+    var html = '';
+
+    // ── Title ──
+    html += '<h2 class="word-display-name">' + esc(dname) + '</h2>';
+    if (alias) {
+      html += '<span class="word-alias">' + esc(alias) + '</span>';
+    }
+    if (desc && !_isGeoCountry) {
+      // geo_country description is just the country name — skip it (shown as title already).
+      // A media:img atom's description IS an image URL: render the image + a source link;
+      // any other URL in the description is linkified so the visitor can actually follow it.
+      html += renderDescriptionHtml(desc, _alias, meta);
+    }
+
+    // ── All Aliases ──
+    var aliases = atom.aliases || [];
+    if (aliases.length > 1) {
+      html += '<div class="section-label">Aliases</div>';
+      html += '<div class="alias-chips">';
+      aliases.forEach(function(a) {
+        // A `<ns>:wd:Q<id>` cross-ref alias becomes a Wikidata link (a real 動線);
+        // other aliases stay plain identifier chips.
+        var ext = externalAliasLink(a);
+        if (ext) {
+          html += '<a class="alias-chip alias-ext" href="' + esc(ext.url) + '" target="_blank"'
+                + ' rel="noopener noreferrer" title="' + esc(ext.title) + '">'
+                + esc(a) + ' ↗</a>';
+        } else {
+          html += '<span class="alias-chip">' + esc(a) + '</span>';
+        }
+      });
+      html += '</div>';
+    }
+
+    // ── Properties (meta) ──
+    var SKIP_META = { type: 1, name: 1, role: 1, canonical: 1, auto_created: 1 };
+
+    if (meta.type === 'geo_country') {
+      // Styled geographic profile card
+      var gdp = meta.gdp_billions;
+      var gdpStr = '—';
+      if (gdp !== null && gdp !== undefined) {
+        if (gdp >= 1000) {
+          gdpStr = '$' + (gdp / 1000).toFixed(2) + 'T';
+        } else {
+          gdpStr = '$' + gdp.toFixed(1) + 'B';
+        }
+      }
+      var tier = null;
+      if (gdp !== null && gdp !== undefined) {
+        if (gdp >= 500)       tier = 'high';
+        else if (gdp >= 50)   tier = 'upper middle';
+        else if (gdp >= 5)    tier = 'lower middle';
+        else                  tier = 'low';
+      }
+      html += '<div class="geo-card">';
+      html += '<div class="geo-card-header">';
+      html += '<span class="geo-iso3">' + esc(meta.iso3 || '') + '</span>';
+      if (tier) html += '<span class="geo-gdp-tier">' + esc(tier) + '</span>';
+      html += '</div>';
+      if (gdp !== null && gdp !== undefined) {
+        html += '<div class="geo-stat-row"><span class="geo-stat-label">GDP (2014)</span><span class="geo-stat-val">' + esc(gdpStr) + '</span></div>';
+      }
+      if (meta.coordinate_system) {
+        html += '<div class="geo-stat-row"><span class="geo-stat-label">coord sys</span><span class="geo-stat-val">' + esc(meta.coordinate_system) + '</span></div>';
+      }
+      html += '</div>';
+    } else {
+      var metaKeys = Object.keys(meta).filter(function(k) { return !SKIP_META[k] && meta[k] !== null && meta[k] !== undefined; });
+      if (metaKeys.length) {
+        html += '<div class="section-label">Properties</div>';
+        html += '<div class="meta-table">';
+        metaKeys.forEach(function(k) {
+          html += '<div class="meta-row"><span class="meta-key">' + esc(k) + '</span><span class="meta-val">' + esc(String(meta[k])) + '</span></div>';
+        });
+        html += '</div>';
+      }
+    }
+
+    // ── Salience (meaning-density) ──
+    if (sal !== null) {
+      html += '<div class="section-label">Salience</div>';
+      html += '<div class="score-row">';
+      html += '<span class="score-value">' + sal.toFixed(3) + '</span>';
+      // salience accumulates (unbounded); show a soft, diminishing-returns bar.
+      var _softpct = Math.round((sal / (sal + 3)) * 100);
+      html += '<div class="score-bar-track">' +
+              '<div class="score-bar-fill" style="width:' + _softpct + '%"></div>' +
+              '</div>';
+      html += '</div>';
+    }
+
+    // ── Semantic links (writer's view) ──
+    html += '<div class="section-label">Semantic Links</div>';
+    html += renderLinks(links);
+
+    // ── Similar by meaning (self-owned embeddings — filled in async) ──
+    // A distinct axis from the explicit links above: atoms NEAREST in the semantic
+    // vector space (semantic.search id=), i.e. "means the same" rather than "is linked".
+    // Fetched after the panel renders so it never delays the main content.
+    html += '<div class="section-label" id="sim-label" style="display:none">Similar by Meaning</div>';
+    html += '<div class="chips" id="sim-chips"></div>';
+
+    // ── Usage examples ──
+    if (examples.length) {
+      html += '<div class="section-label">Examples</div>';
+      examples.forEach(function (ex) {
+        var t = (ex && ex.text ? ex.text : '').trim();
+        if (t) html += '<p class="word-description" style="margin:4px 0">' + esc(t) + '</p>';
+      });
+    }
+
+    // ── External refs ──
+    // Headword as plain readable text; the SOURCE as a small link badge (not the whole
+    // "headword → long-url" as one ugly link). The backend now unifies curated + fetched
+    // refs and always supplies a URL + a `source` (curated / web / wikipedia / …), so use
+    // it: label the badge by source, and mark curated (authored) refs distinctly. A stored
+    // URL wins; else build the Wikipedia article URL from the headword as a last resort.
+    if (refs.length) {
+      html += '<div class="section-label">External References</div>';
+      refs.forEach(function (ref) {
+        var url    = (ref.url || '').trim();
+        var head   = (ref.label || '').trim();
+        var source = (ref.source || '').trim().toLowerCase();
+        var isHttp = /^https?:\/\//i.test(url);
+        var href   = isHttp ? url
+                   : (head ? 'https://en.wikipedia.org/wiki/'
+                             + encodeURIComponent(head.replace(/\s+/g, '_')) : '');
+        var host   = isHttp ? (url.split('/')[2] || '').replace(/^www\./, '') : '';
+        var isWiki = source === 'wikipedia' || /wikipedia\.org/i.test(href);
+        // Badge = where the link goes. Prefer a clean source name, else the host.
+        var src    = isWiki ? 'Wikipedia'
+                   : (source && source !== 'web' && source !== 'curated') ? source
+                   : (host || 'source');
+        var curated = source === 'curated';
+        if (!head && !href) return;
+        html += '<div class="ref-item">';
+        if (head) html += '<span class="ref-headword">' + esc(head) + '</span>';
+        if (href) html += '<a class="ref-source' + (curated ? ' curated' : '') + '" href="'
+                        + esc(href) + '" target="_blank" rel="noopener"'
+                        + (curated ? ' title="curated reference"' : '')
+                        + '>' + esc(src || 'open') + ' ↗</a>';
+        html += '</div>';
+      });
+    }
+
+    // ── Graph Links ──
+    var outLinks = allLinks.outgoing || [];
+    var inLinks  = allLinks.incoming || [];
+    if (outLinks.length || inLinks.length) {
+      html += '<div class="section-label">Graph Links</div>';
+      outLinks.forEach(function(lk) {
+        var lname = displayName(lk.name) || (lk.key || '').substring(0, 16) + '…';
+        var slug  = atomSlug(lk);
+        var nodeHtml = slug
+          ? '<a class="graph-node-link" href="' + atomHref(slug) + '">' + esc(lname) + '</a>'
+          : '<span class="graph-node">' + esc(lname) + '</span>';
+        html += '<div class="graph-link-row"><span class="graph-rel">→ ' + esc(lk.rel || '') + '</span>' + nodeHtml + '</div>';
+      });
+      inLinks.forEach(function(lk) {
+        var lname = displayName(lk.name) || (lk.key || '').substring(0, 16) + '…';
+        var slug  = atomSlug(lk);
+        var nodeHtml = slug
+          ? '<a class="graph-node-link" href="' + atomHref(slug) + '">' + esc(lname) + '</a>'
+          : '<span class="graph-node">' + esc(lname) + '</span>';
+        html += '<div class="graph-link-row"><span class="graph-rel">← ' + esc(lk.rel || '') + '</span>' + nodeHtml + '</div>';
+      });
+    }
+
+    var inner = document.getElementById('info-inner');
+    inner.innerHTML = '<div class="info-inner">' + html + '</div>';
+  }
+
+  // ── Error / loading states ─────────────────────────────────────────────────
+
+  // F47-2.2 — a visible RETRY control so the loading state always gives up into an action, never an
+  // endless spinner. Re-runs the in-place load for the current atom.
+  function _retryControl() {
+    return '<p style="margin-top:16px"><button id="retry-btn" style="font:inherit;cursor:pointer;' +
+      'padding:7px 16px;border:1px solid var(--rule);background:var(--paper-mid);color:var(--ink);' +
+      'border-radius:3px">Retry</button></p>';
+  }
+  function _wireRetry() {
+    var b = document.getElementById('retry-btn');
+    if (b) b.onclick = function () { showLoading(); _loadAtomOnce(false); };
+  }
+
+  function showError(msg) {
+    hideLoading();
+    document.getElementById('info-inner').innerHTML =
+      '<div class="info-inner"><p class="state-msg state-error">' + esc(String(msg)) + '</p>' +
+      _retryControl() + '</div>';
+    _wireRetry();
+  }
+
+  // F47-2.2 — honest SERVICE-state copy: the engine is busy or restarting, NOT the concept being
+  // unbuildable. Distinct from showError (a genuine failure) and showSlowBanner (a real long build).
+  function showBusy() {
+    hideLoading();
+    document.getElementById('info-inner').innerHTML =
+      '<div class="info-inner"><p class="state-msg">The archive engine is busy or restarting — ' +
+      'it will be back in a moment.</p>' + _retryControl() + '</div>';
+    _wireRetry();
+  }
+
+  function showNotIndexed(word) {
+    hideLoading();
+    var dname = displayName(word);
+    document.title = 'AKASHA — ' + dname;
+    document.getElementById('header-word').textContent = dname;
+    document.getElementById('info-inner').innerHTML =
+      '<h2 class="word-display-name">' + esc(dname) + '</h2>' +
+      '<p class="word-description" style="margin-top:18px">' +
+        'This concept has not yet been added to the thesaurus.' +
+      '</p>' +
+      '<p class="section-label" style="margin-top:32px">About</p>' +
+      '<p style="font-size:0.88rem;line-height:1.75;color:var(--ink-mid);font-style:italic">' +
+        'The Akasha thesaurus is a living graph — words gain depth as curators add ' +
+        'semantic links, examples, and affective scores over time.' +
+      '</p>';
+  }
+
+  // ── Load atom (in-place navigation) ───────────────────────────────────────
+
+  function showLoading() { var v = document.getElementById('load-veil'); if (v) v.classList.add('on'); }
+  function hideLoading() { var v = document.getElementById('load-veil'); if (v) v.classList.remove('on'); }
+
+  // "Similar by meaning" — self-owned embeddings (semantic.search id=<atom>). READ-level,
+  // so guests can call it. Non-blocking: the panel is already rendered; this fills the
+  // placeholder when it returns, and stays hidden on empty/error. Excludes atoms already
+  // shown as explicit links so the two sections don't just repeat each other.
+  function loadSimilar(atom, shownSlugs) {
+    var anchor = (atom && (atom.name || atom.key)) || NAME;
+    var chips  = document.getElementById('sim-chips');
+    var label  = document.getElementById('sim-label');
+    if (!anchor || !chips) return;
+    getToken()
+      .then(function (tok) { return withTimeout(rpc('semantic.search', { session_token: tok, id: anchor, limit: 12 }), 8000); })
+      .then(function (r) {
+        var results = (r && r.results) || [];
+        var seen = shownSlugs || {};
+        var out = '', n = 0;
+        results.forEach(function (res) {
+          var nm = res.name || res.key;
+          if (!nm || nm === anchor || seen[nm] || n >= 8) return;
+          seen[nm] = true; n++;
+          out += '<a class="chip sim-chip" href="' + atomHref(nm) + '" title="similarity '
+               + (res.score != null ? res.score : '') + '">' + esc(displayName(nm)) + '</a>';
+        });
+        if (n) { chips.innerHTML = out; if (label) label.style.display = ''; }
+      })
+      .catch(function () { /* similar-by-meaning is optional — stay silent */ });
+  }
+
+  function loadAtom(name) {
+    NAME = name;
+    history.pushState(null, '', atomHref(name));
+    showLoading();               // in-place fetch — give immediate feedback
+    _loadAtomOnce(false);
+  }
+  function _loadAtomOnce(isRetry) {
+    getToken()
+      .then(function (tok) {
+        return withTimeout(rpc('archives.space', { session_token: tok, name: NAME }), 20000);
+      })
+      .then(function (data) {
+        // archives.space wraps the thesaurus.concept payload under `concept`;
+        // fall back to a bare thesaurus.concept response too.
+        var c = (data && data.concept) ? data.concept : data;
+        // Info panel first — it needs no external library, so the page is usable
+        // (and 'loading …' is cleared) even if the 3-D sphere cannot be drawn.
+        renderInfoPanel(c);
+        hideLoading();
+        // Access beacon — server-side records the visit against this concept (no PII, DNT-honoured).
+        // F51 (Cause B, 2.3.2): beacon ONLY after the concept fetch actually FOUND an atom. A shell
+        // served for a nonexistent slug (a crawler probing /a/<junk>) resolves to an empty concept —
+        // it must NOT beacon (never trust the client for truth, only for effort). The server still
+        // accepts arbitrary strings, but they now become counted misses, not rejects.
+        try {
+          var _pk = (c && c.atom && (c.atom.alias || c.atom.key)) || '';
+          if (navigator.sendBeacon && _pk) {
+            var _prev = ''; try { _prev = sessionStorage.getItem('pulse_prev') || ''; } catch (e) {}
+            navigator.sendBeacon('/pulse', new Blob([JSON.stringify(
+              { concept: _pk, surface: 'word', prev: _prev, page_referrer: document.referrer || '' })], { type: 'application/json' }));
+            try { sessionStorage.setItem('pulse_prev', _pk); } catch (e) {}
+          }
+        } catch (e) {}
+        try {
+          renderSphere(c.atom || {}, semanticLinksOf(c), c.all_links || {});
+        } catch (e) { /* sphere is non-essential — info panel already rendered */ }
+        // Similar-by-meaning (async), deduped against the explicit-link chips just shown.
+        var _shown = {};
+        try {
+          var _cs = document.querySelectorAll('#info-inner a.chip');
+          for (var _i = 0; _i < _cs.length; _i++) {
+            var _m = (_cs[_i].getAttribute('href') || '').match(/^\/a\/(.+)$/);
+            if (_m) { try { _shown[decodeURIComponent(_m[1])] = true; } catch (e2) { _shown[_m[1]] = true; } }
+          }
+        } catch (e) {}
+        loadSimilar(c.atom || {}, _shown);
+      })
+      .catch(function (err) {
+        var msg = err && err.message ? err.message : '';
+        // Slow hub atom: the enrichment fetch timed out. Don't wipe the page — clear the
+        // veil, keep any server-prerendered content, and surface a non-blocking note so the
+        // visitor is never stuck behind a spinner (the ← Back button stays usable).
+        if (msg === 'timeout') {
+          hideLoading();
+          showSlowBanner(NAME);
+          try { renderSphere({ name: NAME }, {}, {}); } catch (e) {}
+          return;
+        }
+        // F47-2.2/2.3 — the RPC layer already retried a busy/503 up to 3×; if it STILL came back
+        // busy, show the honest "engine busy/restarting — Retry" state, not a raw error string.
+        if (err && err.busy) {
+          try { renderSphere({ name: NAME }, {}, {}); } catch (e) {}
+          showBusy();
+          return;
+        }
+        // A stale/exhausted guest token: mint a fresh one and retry once.
+        // (Veil stays up across the silent retry; showError/showNotIndexed clear it.)
+        if (!isRetry && isSessionErr(msg)) {
+          freshToken().then(function () { _loadAtomOnce(true); })
+                      .catch(function () { showError(msg); });
+          return;
+        }
+        try { renderSphere({ name: NAME }, {}, {}); } catch (e) {}
+        if (!msg || msg.indexOf('not found') !== -1 || msg.indexOf('Atom not found') !== -1) {
+          showNotIndexed(NAME);
+        } else {
+          showError(msg || ('Could not load: ' + NAME));
+        }
+      });
+  }
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+
+  if (!NAME) {
+    showError('No word specified. Use ?name=<word> in the URL.');
+  } else {
+    loadAtom(NAME);
+  }
+
+}());
+</script>
+</body>
+</html>

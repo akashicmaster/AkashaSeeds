@@ -1,0 +1,171 @@
+{
+  "format": "kamishibai",
+  "presentation_id": "4cf0d68e63ea65505e20a0f240db578a2951ffd3620f145bc3d5b224f8281663",
+  "title": "The Wish to Fly — Icarus's Wings",
+  "thesis": "The dream of flight read as a genealogy of falls and flights: myth foreshadows history, and each rise carries its fall.",
+  "grounds": {
+    "rels": [],
+    "op": "authored"
+  },
+  "scenes": [
+    {
+      "scene": 0,
+      "ref_id": "1597ff27ba7a852803d6fed99859f06e9b49018eb4ee570dee2562dba8476a9e",
+      "headword": "Icarus",
+      "description": "Icarus — flew too near the sun on wax wings and fell into the sea; the myth of overreach",
+      "image": null,
+      "refs": [],
+      "links": [
+        {
+          "name": "sky:myth:daedalus",
+          "href": "/a/sky:myth:daedalus",
+          "rel": "curation:next"
+        },
+        {
+          "name": "curation:sky-dreamers",
+          "href": "/a/curation:sky-dreamers",
+          "rel": "curation:over"
+        }
+      ],
+      "caption": "Icarus — flew too near the sun on wax wings and fell into the sea; the myth of o",
+      "href": "/a/sky:myth:icarus",
+      "blocks": []
+    },
+    {
+      "scene": 1,
+      "ref_id": "2bb4585def7e85c12e3bbfe2d67d0a6c847c1d8ace1729838707a28d203eb98a",
+      "headword": "Daedalus",
+      "description": "Daedalus — the maker of the wings; flew the same sky and survived; craft over hubris",
+      "image": null,
+      "refs": [],
+      "links": [
+        {
+          "name": "sky:pioneer:lilienthal",
+          "href": "/a/sky:pioneer:lilienthal",
+          "rel": "curation:next"
+        },
+        {
+          "name": "curation:sky-dreamers",
+          "href": "/a/curation:sky-dreamers",
+          "rel": "curation:over"
+        },
+        {
+          "name": "sky:myth:icarus",
+          "href": "/a/sky:myth:icarus",
+          "rel": "curation:next"
+        }
+      ],
+      "caption": "Daedalus — the maker of the wings; flew the same sky and survived; craft over hu",
+      "href": "/a/sky:myth:daedalus",
+      "blocks": []
+    },
+    {
+      "scene": 2,
+      "ref_id": "7e86043201d314bd8514c99240ed3ba4029bd84ea659ba57ca226ee9e8fd34d4",
+      "headword": "Lilienthal",
+      "description": "Otto Lilienthal — the first repeatable human glides; died in a glider crash (1896)",
+      "image": null,
+      "refs": [],
+      "links": [
+        {
+          "name": "sky:pioneer:wright",
+          "href": "/a/sky:pioneer:wright",
+          "rel": "curation:next"
+        },
+        {
+          "name": "curation:sky-dreamers",
+          "href": "/a/curation:sky-dreamers",
+          "rel": "curation:over"
+        },
+        {
+          "name": "sky:myth:daedalus",
+          "href": "/a/sky:myth:daedalus",
+          "rel": "curation:next"
+        }
+      ],
+      "caption": "Otto Lilienthal — the first repeatable human glides; died in a glider crash (189",
+      "href": "/a/sky:pioneer:lilienthal",
+      "blocks": []
+    },
+    {
+      "scene": 3,
+      "ref_id": "a0a1726181e2bbd9064b41ab32d9a340910e9f63123ffe51364f298abc8f1602",
+      "headword": "Wright",
+      "description": "The Wright brothers — the first sustained powered flight (1903); the dream achieved",
+      "image": null,
+      "refs": [],
+      "links": [
+        {
+          "name": "sky:aviator:earhart",
+          "href": "/a/sky:aviator:earhart",
+          "rel": "curation:next"
+        },
+        {
+          "name": "curation:sky-dreamers",
+          "href": "/a/curation:sky-dreamers",
+          "rel": "curation:over"
+        },
+        {
+          "name": "sky:pioneer:lilienthal",
+          "href": "/a/sky:pioneer:lilienthal",
+          "rel": "curation:next"
+        }
+      ],
+      "caption": "The Wright brothers — the first sustained powered flight (1903); the dream achie",
+      "href": "/a/sky:pioneer:wright",
+      "blocks": []
+    },
+    {
+      "scene": 4,
+      "ref_id": "af80db3f079eb53306131afc5a158312a47f55aee0f2d6cdd16f0665b2452ca6",
+      "headword": "Earhart",
+      "description": "Amelia Earhart — record-setting aviator; vanished over the Pacific (1937)",
+      "image": null,
+      "refs": [],
+      "links": [
+        {
+          "name": "sky:aviator:saint_exupery",
+          "href": "/a/sky:aviator:saint_exupery",
+          "rel": "curation:next"
+        },
+        {
+          "name": "curation:sky-dreamers",
+          "href": "/a/curation:sky-dreamers",
+          "rel": "curation:over"
+        },
+        {
+          "name": "sky:pioneer:wright",
+          "href": "/a/sky:pioneer:wright",
+          "rel": "curation:next"
+        }
+      ],
+      "caption": "Amelia Earhart — record-setting aviator; vanished over the Pacific (1937)",
+      "href": "/a/sky:aviator:earhart",
+      "blocks": []
+    },
+    {
+      "scene": 5,
+      "ref_id": "c1921b4d62a73a07e3f3e3349de59c6756e0e05e101c03cdba985ae9cedd23e6",
+      "headword": "Saint exupery",
+      "description": "Antoine de Saint-Exupery — aviator and writer of flight; vanished on a reconnaissance flight (1944)",
+      "image": null,
+      "refs": [],
+      "links": [
+        {
+          "name": "curation:sky-dreamers",
+          "href": "/a/curation:sky-dreamers",
+          "rel": "curation:over"
+        },
+        {
+          "name": "sky:aviator:earhart",
+          "href": "/a/sky:aviator:earhart",
+          "rel": "curation:next"
+        }
+      ],
+      "caption": "Antoine de Saint-Exupery — aviator and writer of flight; vanished on a reconnais",
+      "href": "/a/sky:aviator:saint_exupery",
+      "blocks": []
+    }
+  ],
+  "count": 6
+}

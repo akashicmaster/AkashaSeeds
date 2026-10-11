@@ -8,6 +8,7 @@ This file is intentionally the only place in the codebase that imports
 sqlite3, threading.local, or anything SQLite-specific.  All higher layers
 depend on AkashaBackend only.
 """
+from lib.akasha import owned_fields as _owned
 import re
 import sqlite3
 import hashlib
@@ -16,12 +17,29 @@ import json
 import time
 import threading
 import functools
+import logging
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 
 from lib.akasha.backends.base import AkashaBackend
 from lib.akasha.dna import get_primal_sequence
 from lib.akasha.jcl.write_queue import WriteQueue
+
+logger = logging.getLogger("Akasha.SQLite")
+_scan_warn_seen = {}
+
+
+def _scan_warn(caller: str) -> None:
+    """A48.2 — one throttled WARNING per uncapped full-store walk, so a new O(store) read (the F33/F50
+    access-degree violation the nightly sweeps were) cannot appear silently. Throttled ~5 min/caller."""
+    try:
+        now = time.time()
+        if now - _scan_warn_seen.get(caller, 0.0) >= 300.0:
+            _scan_warn_seen[caller] = now
+            logger.warning("[scan] O(store) walk caller=%s (uncapped iter_all_chunks; "
+                           "prefer a membership set or iter_chunk_meta)", caller)
+    except Exception:
+        pass
 
 
 def _queued(method):
@@ -316,6 +334,16 @@ class SQLiteBackend(AkashaBackend):
         except sqlite3.OperationalError:
             pass
 
+        # SINGLE-WRITER INVARIANT: the serve-only portal subprocess must NEVER write the shared
+        # nucleus. The DATA migrations below (chunk_access promotion, pending-derivation drain, the
+        # alias→collection backfill) all WRITE, and the PRIMARY writer already ran them BEFORE it
+        # spawned the portal — so a serve-only worker re-running them is TWO processes writing one
+        # nucleus.db, which is the "Dead (two writers)" crash the portal just hit (connection
+        # refused). The idempotent schema ALTERs above are harmless; stop here for a serve-only worker.
+        if os.environ.get("AKASHA_SERVE_ONLY", "").strip().lower() in ("1", "yes", "true", "on"):
+            self._commit()
+            return
+
         # Promote access scopes from collections → chunk_access (idempotent).
         cursor.execute("""
             INSERT OR IGNORE INTO chunk_access (key, scope)
@@ -336,13 +364,35 @@ class SQLiteBackend(AkashaBackend):
             self._derive_alias_collections(alias, key)
             cursor.execute("DELETE FROM pending_derivations WHERE id=?", (pid,))
 
-        # Full alias backfill — catch-all for gaps (INSERT OR IGNORE, idempotent).
-        rows = cursor.execute("SELECT alias, key FROM aliases").fetchall()
-        for row in rows:
-            self._derive_alias_collections(
-                row["alias"] if isinstance(row, sqlite3.Row) else row[0],
-                row["key"]   if isinstance(row, sqlite3.Row) else row[1],
-            )
+        # Alias→collection backfill — INCREMENTAL by a rowid high-water mark, so it is O(new aliases)
+        # NOT O(whole corpus) at every boot. The old code re-derived EVERY alias's leaf:/ns:/lang:
+        # collections at each startup — a synchronous O(corpus) pass INSIDE create_gateway (minutes on
+        # a large store) that blocked the socket bind, so the CLI/portal appeared to "wait out the
+        # ontology load" before the prompt. Collections are already derived at WRITE time (set_alias →
+        # _derive_alias_collections), so this only needs aliases added since the last boot — the
+        # catch-all for any that bypassed that path (a raw put_alias / legacy bulk import). Streamed
+        # via a SEPARATE read connection (bounded memory; INSERTs go to self.conn, no cursor clash).
+        # A store starts with the mark at 0 (the data-format id guarantees it was written by this
+        # build); there is no baseline adoption for an older store and no forced re-derive switch
+        # (the purge order §2 / §4.5).
+        cursor.execute("CREATE TABLE IF NOT EXISTS alias_backfill_state "
+                       "(id INTEGER PRIMARY KEY CHECK(id=1), hwm INTEGER NOT NULL)")
+        _st = cursor.execute("SELECT hwm FROM alias_backfill_state WHERE id=1").fetchone()
+        _amax = (cursor.execute("SELECT COALESCE(MAX(rowid),0) FROM aliases").fetchone() or [0])[0] or 0
+        _from = (_st[0] if _st else 0) or 0
+        _newmax = _from
+        if _from < _amax:                                  # only when there are unprocessed rows
+            _bf = sqlite3.connect(self._db_path)
+            try:
+                for _rid, _alias, _key in _bf.execute(
+                        "SELECT rowid, alias, key FROM aliases WHERE rowid > ? ORDER BY rowid", (_from,)):
+                    self._derive_alias_collections(_alias, _key)
+                    if _rid > _newmax:
+                        _newmax = _rid
+            finally:
+                _bf.close()
+        cursor.execute("INSERT INTO alias_backfill_state (id, hwm) VALUES (1, ?) "
+                       "ON CONFLICT(id) DO UPDATE SET hwm=excluded.hwm", (max(_newmax, _amax),))
         self._commit()
 
     def _unfold_dna(self):
@@ -422,9 +472,16 @@ class SQLiteBackend(AkashaBackend):
 
     # ── Atom CRUD ──────────────────────────────────────────────────────────────
 
-    @_queued
     def put_chunk_raw(self, key: str, content: Optional[str], meta_str: str,
                       author: str, status: str, ts: float) -> None:
+        # engine-owned fields (purge order §1.4) — checked on the CALLER's thread, before the write
+        # is queued: the owner's context is not visible on the writer thread
+        _owned.check(self, key, meta_str)
+        return self._put_chunk_raw_q(key, content, meta_str, author, status, ts)
+
+    @_queued
+    def _put_chunk_raw_q(self, key: str, content: Optional[str], meta_str: str,
+                         author: str, status: str, ts: float) -> None:
         self.conn.execute(
             "INSERT OR REPLACE INTO chunks (key, content, created_at, meta, author, status) VALUES (?, ?, ?, ?, ?, ?)",
             (key, content, str(ts), meta_str, author, status)
@@ -455,10 +512,40 @@ class SQLiteBackend(AkashaBackend):
         self.conn.execute("DELETE FROM chunk_access WHERE key=?", (key,))
         self._commit()
 
-    @_queued
     def update_meta(self, key: str, meta_dict: dict) -> None:
+        who, cols = _owned.context(self, key, meta_dict)
+        return self._update_meta_q(key, meta_dict, who, cols)
+
+    @_queued
+    def _update_meta_q(self, key: str, meta_dict: dict, who, cols) -> None:
+        row = self.get_chunk_raw(key)          # on the writer: the record this write replaces
+        _owned.check(self, key, meta_dict, old_meta=(row or {}).get("meta"), who=who, cols=cols)
         self.conn.execute("UPDATE chunks SET meta=? WHERE key=?", (json.dumps(meta_dict), key))
         self._commit()
+
+    def merge_meta(self, key: str, updates) -> Optional[dict]:
+        who, cols = _owned.context(self, key, updates if isinstance(updates, dict) else None)
+        return self._merge_meta_q(key, updates, who, cols)
+
+    @_queued
+    def _merge_meta_q(self, key: str, updates, who, cols) -> Optional[dict]:
+        row = self.get_chunk_raw(key)          # read + merge + write on the ONE writer thread
+        if row is None:
+            return None
+        try:
+            old = json.loads(row["meta"]) if row["meta"] else {}
+        except (TypeError, ValueError):
+            old = {}
+        if not isinstance(old, dict):
+            old = {}
+        new = dict(old)
+        new.update((updates(dict(old)) if callable(updates) else updates) or {})
+        if new == old:
+            return new
+        _owned.check(self, key, new, old_meta=old, who=who, cols=cols)
+        self.conn.execute("UPDATE chunks SET meta=? WHERE key=?", (json.dumps(new), key))
+        self._commit()
+        return new
 
     # ── Access Control ─────────────────────────────────────────────────────────
 
@@ -958,6 +1045,31 @@ class SQLiteBackend(AkashaBackend):
             return [dict(r) for r in self.conn.execute(
                 "SELECT * FROM chunks LIMIT ?", (int(limit),)).fetchall()]
         return [dict(r) for r in self.conn.execute("SELECT * FROM chunks").fetchall()]
+
+    def iter_all_chunks(self, limit: Optional[int] = None):
+        """Lazy row-at-a-time cursor (no fetchall): a filtering consumer never holds the whole
+        page. `execute(...)` yields rows on demand, so peak RAM is one row + whatever the caller
+        chooses to keep. A48.2: an UNCAPPED walk (limit=None) logs one throttled `[scan] O(store)`
+        WARNING so a new full-store read cannot appear silently (the F33/F50 access-degree rule)."""
+        if limit is None:
+            _scan_warn("iter_all_chunks")
+            cur = self.conn.execute("SELECT * FROM chunks")
+        else:
+            cur = self.conn.execute("SELECT * FROM chunks LIMIT ?", (int(limit),))
+        for r in cur:
+            yield dict(r)
+
+    def iter_chunk_meta(self, limit: Optional[int] = None):
+        """A48.2 — a META-ONLY walk: yields {key, meta, created_at} WITHOUT the content column, so a
+        sweep that reads two meta fields to find its victims does not pread + hold every atom's body
+        (the 350k-decode that left ~110 MB resident). Lazy row-at-a-time, like iter_all_chunks."""
+        cols = "key, meta, created_at"
+        if limit is None:
+            cur = self.conn.execute("SELECT %s FROM chunks" % cols)
+        else:
+            cur = self.conn.execute("SELECT %s FROM chunks LIMIT ?" % cols, (int(limit),))
+        for r in cur:
+            yield dict(r)
 
     def get_all_links(self, rel_filter: Optional[str] = None,
                       limit: int = 5000) -> List[dict]:

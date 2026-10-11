@@ -323,11 +323,11 @@ Compound emotions (combinations of primary emotions):
 | `emo:despair` | sadness + fear | Complete loss of hope |
 | `emo:contempt` | anger + disgust | Contempt, looking down on |
 
-**`ontology/base1/emo.ak` — Extended Emotion Vocabulary**
+**`app/ontology/base1/emo.ak` — Extended Emotion Vocabulary**
 
 Fine-grained emotional states not present in the DNA are added here. Examples: `emo:anxiety`, `emo:calmness`, `emo:aesthetic` (aesthetic appreciation), `emo:craving`, `emo:entrancement`.
 
-**`ontology/base1/sense.ak` and `ontology/base1/dna.ak` — Sensory Experience**
+**`app/ontology/base1/sense.ak` and `app/ontology/base1/dna.ak` — Sensory Experience**
 
 Atoms representing the five senses and sensory experiences are defined here.
 
@@ -401,7 +401,7 @@ Logical relations are used in the graph's inference layer (advanced usage). For 
 
 ### @ rel — Domain-Specific Relations Used by the Ontology
 
-Domain-specific relation types are defined in the `.ak` files in `ontology/base1–3/` (the base packs). They are written with the `@` prefix.
+Domain-specific relation types are defined in the `.ak` files in `app/ontology/base1–3/` (the base packs). They are written with the `@` prefix.
 
 ```
 # vitamins support immunity
@@ -474,10 +474,10 @@ Terms such as `emo:awe`, `ref:before`, `sys:part_of`, and `set_op:intersection` 
 | `lib/akasha/dna.py` | `geo:` / `chrono:` | Spatiotemporal coordinate links |
 | `lib/akasha/dna.py` | `set_op:` | union / intersection / difference / complement / membership / subset |
 | `lib/akasha/ref_primitives.py` | `ref:` | Demonstratives, referents, logical connectives, quantifiers, ordering relations |
-| `ontology/base1/emo.ak` | `emo:` | Extended emotions (anxiety / calmness / aesthetic, etc.) |
-| `ontology/base1/sense.ak` | `sense:` | Sensory experience (warmth / brightness / smell_rain, etc.) |
-| `ontology/base1/dna.ak` | `dna:` | Colour, sound, scent, texture |
-| Each `.ak` file in `ontology/base1–3/` (the base packs) | `@` | Domain-specific relations (supports / prevents / enables, etc.) |
+| `app/ontology/base1/emo.ak` | `emo:` | Extended emotions (anxiety / calmness / aesthetic, etc.) |
+| `app/ontology/base1/sense.ak` | `sense:` | Sensory experience (warmth / brightness / smell_rain, etc.) |
+| `app/ontology/base1/dna.ak` | `dna:` | Colour, sound, scent, texture |
+| Each `.ak` file in `app/ontology/base1–3/` (the base packs) | `@` | Domain-specific relations (supports / prevents / enables, etc.) |
 
 ```
 # ref: namespace — demonstratives, quantifiers, logical connectives
@@ -771,12 +771,13 @@ topic, `node.sim` for structural role.
 node.sim nile
 ```
 
-> **Prerequisite.** `node.sim` needs a structural model, and — unlike the content model behind
-> `sim`/`search` (which the boot daemon trains automatically) — the structural model is **not**
-> built at boot. An admin must run **`node.learn` once** (it is numpy-gated: on a Cell without
-> numpy the structural model is unavailable and `node.sim` returns `-32002 no structural model —
-> run node.learn first`). After `node.learn`, re-run it whenever the graph has grown substantially.
-> `sim`/`search` need no such step.
+> **Prerequisite — the models are learned on demand on the seeds line.** `sim`/`search` rank by
+> a learned *content* model and `node.sim` by a learned *structural* model. On the seeds line
+> neither is trained at startup (the thesaurus line trains the content model at boot): until they
+> are learned, `sim` returns little and `node.sim` answers `-32002 no structural model — run
+> node.learn first`. Once the ontology load has finished (`onto.status`), an admin runs
+> **`semantic.learn`** (content) and **`node.learn`** (structure; numpy-gated — on a Cell without
+> numpy the structural model is unavailable). Re-run them whenever the graph has grown substantially.
 
 **`view` — the meaning of one Atom, in place.** Shows signposts (direct links), resonance
 (semantically-near Atoms two hops out), and the Atom's cosmos position + aura colour — **without**

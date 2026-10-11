@@ -1,0 +1,80 @@
+{
+  "metadata": {
+    "protocol": "akasha_capsule_v1.2",
+    "author": "system",
+    "timestamp": 1700000000.0,
+    "doc_type": "fieldnote",
+    "concept_id": "92e5618c0fc8ce816db67dca93886a91b22acb654553f29559056dee107e355f",
+    "extracted_since": 0.0,
+    "seed": {
+      "kind": "sample",
+      "title": "Sample: Urban Anthropology Notebook",
+      "order": 4,
+      "category": "anthropology",
+      "project": "Late Night City Rhythms",
+      "region": "Central Commercial District",
+      "season": "2026-Winter",
+      "locale": "en"
+    }
+  },
+  "atoms": {
+    "92e5618c0fc8ce816db67dca93886a91b22acb654553f29559056dee107e355f": "Sample: Urban Anthropology Notebook",
+    "29aa5fe3e1feb0d49fd0b4b3e9e04bc33cc458fa8d61dcca7f8014b0a26ac18f": "Convenience store seating area occupied mostly by solitary customers.",
+    "5d7aab68ed13ce0cca0793df09bc6ca9771f6b22cf6c3c61f3630cb619776ee9": "Customers linger longer near heated food shelves during rainfall.",
+    "af80e77e653e15b15867ee59e924f530e87518c5f6c2632fbe56a2016643aad8": "Store appears to function as temporary emotional shelter during late hours.",
+    "43970d7dd34bfdb0e1f0acb687ea50d296c61f99d2bd50e922fb805514f2c242": "Same individual observed across three consecutive nights reading at rear counter."
+  },
+  "links": [
+    {
+      "src": "92e5618c0fc8ce816db67dca93886a91b22acb654553f29559056dee107e355f",
+      "dst": "29aa5fe3e1feb0d49fd0b4b3e9e04bc33cc458fa8d61dcca7f8014b0a26ac18f",
+      "rel": "sys:top",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "29aa5fe3e1feb0d49fd0b4b3e9e04bc33cc458fa8d61dcca7f8014b0a26ac18f",
+      "dst": "5d7aab68ed13ce0cca0793df09bc6ca9771f6b22cf6c3c61f3630cb619776ee9",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "5d7aab68ed13ce0cca0793df09bc6ca9771f6b22cf6c3c61f3630cb619776ee9",
+      "dst": "af80e77e653e15b15867ee59e924f530e87518c5f6c2632fbe56a2016643aad8",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "af80e77e653e15b15867ee59e924f530e87518c5f6c2632fbe56a2016643aad8",
+      "dst": "43970d7dd34bfdb0e1f0acb687ea50d296c61f99d2bd50e922fb805514f2c242",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    }
+  ],
+  "atom_meta": {
+    "29aa5fe3e1feb0d49fd0b4b3e9e04bc33cc458fa8d61dcca7f8014b0a26ac18f": {
+      "role": "observation",
+      "confidence": 0.9,
+      "period": "22:00-23:00"
+    },
+    "5d7aab68ed13ce0cca0793df09bc6ca9771f6b22cf6c3c61f3630cb619776ee9": {
+      "role": "observation",
+      "confidence": 0.8,
+      "period": "Transit Corridor"
+    },
+    "af80e77e653e15b15867ee59e924f530e87518c5f6c2632fbe56a2016643aad8": {
+      "role": "interpretation",
+      "confidence": 0.6,
+      "period": "Social Function"
+    },
+    "43970d7dd34bfdb0e1f0acb687ea50d296c61f99d2bd50e922fb805514f2c242": {
+      "role": "trace",
+      "confidence": 0.7,
+      "period": "Repeated Pattern"
+    }
+  },
+  "telemetry": {}
+}

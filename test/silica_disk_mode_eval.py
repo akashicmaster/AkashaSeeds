@@ -131,6 +131,41 @@ def main():
           disk_mb < ram_mb, f"ram={ram_mb:.1f}MB disk={disk_mb:.1f}MB "
                              f"({100*(ram_mb-disk_mb)/ram_mb:.0f}% less)")
 
+    # ── D5 '@'-index routes keep values in RAM in disk mode → BULK enumeration does NOT pread ──
+    # Regression for the "concept shelf hangs 10+ min" jam: a full alias enumeration used to pread
+    # every alias value (millions of cold random seeks on a large store). '@'-routes now hold their
+    # small values in RAM, so enumerating the whole @ALIAS mega-route touches the disk ZERO times,
+    # while an atom BODY read still preads (bodies stay on disk).
+    from lib.akasha.backends import silica as _sil
+    os.environ["AKASHA_SILICA_VALUES"] = "disk"
+    base = tempfile.mkdtemp()
+    be = SilicaBackend(os.path.join(base, "nucleus.db"))
+    M = 3000
+    for i in range(M):
+        k = "%064x" % (i + 1)
+        be.put_chunk_raw(k, "body-" + str(i), "{}", "a", "active", 1.0)
+        be.put_alias(k, "concept:t%d" % i)
+    _orig = _sil.Wal.pread
+    cnt = {"n": 0}
+    def _counting(self, off, ln, _o=_orig):
+        cnt["n"] += 1; return _o(self, off, ln)
+    _sil.Wal.pread = _counting
+    try:
+        cnt["n"] = 0
+        rows = be.get_aliases_by_pattern("%")
+        enum_preads = cnt["n"]
+        cnt["n"] = 0
+        _ = be.get_chunk_raw("%064x" % 1)          # a body read must still pread
+        body_preads = cnt["n"]
+    finally:
+        _sil.Wal.pread = _orig
+        be.close(); shutil.rmtree(base, ignore_errors=True)
+    check("D5 alias enumeration preads NOTHING (@-route values in RAM)",
+          enum_preads == 0 and len(rows) >= M,
+          f"enum_preads={enum_preads} aliases={len(rows)} body_preads={body_preads}")
+    check("D5 atom body still on disk (preads on read)", body_preads >= 1,
+          f"body_preads={body_preads}")
+
     print()
     if _fails:
         print(f"FAIL — {len(_fails)}: {', '.join(_fails)}")

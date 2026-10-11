@@ -1,0 +1,80 @@
+{
+  "metadata": {
+    "protocol": "akasha_capsule_v1.2",
+    "author": "system",
+    "timestamp": 1700000000.0,
+    "doc_type": "fieldnote",
+    "concept_id": "7c0915f75ec879a13d36ba3ea432fb6eeffd42dedae73b5919869b570f4c0002",
+    "extracted_since": 0.0,
+    "seed": {
+      "kind": "sample",
+      "title": "Sample: Coastal Ecology Survey",
+      "order": 5,
+      "category": "ecology",
+      "project": "Intertidal Life Mapping",
+      "region": "Western Black Coast",
+      "season": "2026-Summer",
+      "locale": "en"
+    }
+  },
+  "atoms": {
+    "7c0915f75ec879a13d36ba3ea432fb6eeffd42dedae73b5919869b570f4c0002": "Sample: Coastal Ecology Survey",
+    "1b51284f5246c817a3ce64fe9dfde854b31b91c7cf0cbdc5ca67676eca835065": "Barnacle density increases sharply above algae-rich lower rocks.",
+    "09c01d015fa2713ae444e4953971219192c148f9934481f2437a51c3d7d30761": "Strong western wind with persistent salt spray throughout survey.",
+    "e0e26a580b5835f1b423f4aae0803dcee6f618085cb3cb6f26a253824ea66ee1": "Small octopus observed concealed beneath basalt shelf.",
+    "3c2e31977a8374059a9c009c495da05e2724e168d1791b9a4d9b03a45e4ee11c": "Wave exposure likely suppresses long-term algal settlement."
+  },
+  "links": [
+    {
+      "src": "7c0915f75ec879a13d36ba3ea432fb6eeffd42dedae73b5919869b570f4c0002",
+      "dst": "1b51284f5246c817a3ce64fe9dfde854b31b91c7cf0cbdc5ca67676eca835065",
+      "rel": "sys:top",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "1b51284f5246c817a3ce64fe9dfde854b31b91c7cf0cbdc5ca67676eca835065",
+      "dst": "09c01d015fa2713ae444e4953971219192c148f9934481f2437a51c3d7d30761",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "09c01d015fa2713ae444e4953971219192c148f9934481f2437a51c3d7d30761",
+      "dst": "e0e26a580b5835f1b423f4aae0803dcee6f618085cb3cb6f26a253824ea66ee1",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "e0e26a580b5835f1b423f4aae0803dcee6f618085cb3cb6f26a253824ea66ee1",
+      "dst": "3c2e31977a8374059a9c009c495da05e2724e168d1791b9a4d9b03a45e4ee11c",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    }
+  ],
+  "atom_meta": {
+    "1b51284f5246c817a3ce64fe9dfde854b31b91c7cf0cbdc5ca67676eca835065": {
+      "role": "observation",
+      "confidence": 1.0,
+      "period": "Mid-Tide Zone"
+    },
+    "09c01d015fa2713ae444e4953971219192c148f9934481f2437a51c3d7d30761": {
+      "role": "observation",
+      "confidence": 0.9,
+      "period": "Weather"
+    },
+    "e0e26a580b5835f1b423f4aae0803dcee6f618085cb3cb6f26a253824ea66ee1": {
+      "role": "find",
+      "confidence": 0.8,
+      "period": "Tidal Pool 4"
+    },
+    "3c2e31977a8374059a9c009c495da05e2724e168d1791b9a4d9b03a45e4ee11c": {
+      "role": "interpretation",
+      "confidence": 0.7,
+      "period": "Environmental Pressure"
+    }
+  },
+  "telemetry": {}
+}

@@ -1,0 +1,14 @@
+{
+  "label": "Basics 3 — The Canopy of Knowledge",
+  "description": "The canopy of knowledge: the professional food domain, the sciences and engineering, medicine & mind, the humanities and the arts, and the cross-cutting knowledge map that crowns them. Heaviest; loads last, in the background.",
+  "theme": "Basics 3 — The Canopy of Knowledge",
+  "license": "MIT (software and editorial content); WordNet 3.1 (word_core_*.ak — see LICENSE.md)",
+  "source": "internal + Princeton University WordNet 3.1",
+  "version": "1.0",
+  "data_files": [
+    "stylometry_matrix.jsonl",
+    "stylometry_iliad_matrix.jsonl",
+    "genealogy_ayurveda_matrix.jsonl"
+  ],
+  "_data_files": "The measurement matrices this pack's own .ak files tell the operator to load (`io.ingest model=sty into=<work> path=app/ontology/base3/<name>.jsonl`). They are NOT ontology — they are the inputs a shipped instruction names, and they are declared here because the packer ships .ak and .json by extension and would otherwise leave a deployed cell following an instruction to a missing file."
+}

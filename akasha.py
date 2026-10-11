@@ -13,6 +13,7 @@ Akasha — Single Entry Point.
 
 import sys
 import os
+import time
 
 # ── 1. Python version guard ────────────────────────────────────────────────────
 if sys.version_info < (3, 8):
@@ -28,6 +29,37 @@ if _is_cgi:
 
 # ── 3. Absolute path anchor ────────────────────────────────────────────────────
 _root = os.path.dirname(os.path.abspath(__file__))
+_PROC_T0 = time.time()          # A53 — process-start reference for the `up=<s>` daemon-leaving line
+# THE WRITER'S GIL SWITCH INTERVAL (frontend 09-28, needs platform 2). The writer daemon runs the
+# single write path (JCL worker ↔ WriteQueue, fsync, WAL I/O — threads that release the GIL tens of
+# times per step) beside the IPC pool's CPU-bound request threads. An I/O-bound thread that releases
+# the GIL waits up to one switch interval to get it back from each CPU-bound thread (the convoy
+# effect), so under a saturated IPC pool a 7 ms atom step took 1.4-1.7 s — 400 atoms in 990 s.
+# Measured on a 200-step atom job beside four CPU-bound threads: 5 ms (CPython's default) → 1,376
+# ms/step, 1 ms → 283 ms/step, while the CPU-bound threads lose ~10 %. 1 ms is the default here;
+# AKASHA_GIL_SWITCH_MS overrides it (0.05-50). The daemon only: it is the process with the writer.
+_GIL_SWITCH_WAS = None
+if "--daemon" in sys.argv[1:]:
+    try:
+        _gil_ms = float(os.environ.get("AKASHA_GIL_SWITCH_MS", "").strip() or 1.0)
+        if 0.05 <= _gil_ms <= 50.0:
+            _GIL_SWITCH_WAS = sys.getswitchinterval()
+            sys.setswitchinterval(_gil_ms / 1000.0)
+    except Exception:
+        _GIL_SWITCH_WAS = None
+
+
+def _log_gil_switch() -> None:
+    """One `[boot] gil switch_interval=…` line — called by the writer once it holds the boot lock."""
+    if _GIL_SWITCH_WAS is None:
+        return
+    import logging as _lg_gil
+    _lg_gil.getLogger("Akasha.Kernel").info(
+        "[boot] gil switch_interval=%.2fms (was %.2fms) — the writer's I/O-bound threads get the "
+        "GIL back from CPU-bound request threads this often (AKASHA_GIL_SWITCH_MS)",
+        sys.getswitchinterval() * 1000.0, _GIL_SWITCH_WAS * 1000.0)
+
+
 if _root not in sys.path:
     sys.path.insert(0, _root)
 
@@ -78,12 +110,32 @@ def _is_ios() -> bool:
 
 # ── 4. Infrastructure provisioning ────────────────────────────────────────────
 
+def _manifest_dirs(root: str) -> list:
+    """The directories a launch must ensure exist, DECLARED in the package manifests (`dirs`) —
+    the launcher names none of them (backend layout order 2026-09-20 §5). Falls back to the
+    heart's own list only if no manifest can be read (a partially-extracted tree), so a boot is
+    never blocked by a missing declaration."""
+    import glob as _glob
+    import json as _json
+    found = [os.path.join(root, "lib", "akasha", "MANIFEST.json")]
+    found += sorted(_glob.glob(os.path.join(root, "lib", "akasha", "*", "MANIFEST.json")))
+    found += sorted(_glob.glob(os.path.join(root, "*", "MANIFEST.json")))
+    dirs = []
+    for mp in dict.fromkeys(found):
+        try:
+            with open(mp, encoding="utf-8") as fh:
+                for rel in (_json.load(fh).get("dirs") or []):
+                    if isinstance(rel, str) and rel and not os.path.isabs(rel) and ".." not in rel.split("/"):
+                        if rel not in dirs:
+                            dirs.append(rel)
+        except (OSError, ValueError):
+            continue
+    return dirs or ["data", "data/cells", "data/central", "data/import", "data/export",
+                    "env/models", "logs", "assets"]
+
+
 def _ensure_dirs(root: str) -> None:
-    for rel in [
-        "data", "data/cells", "data/central",
-        "data/import", "data/export",
-        "env/models", "logs", "assets",
-    ]:
+    for rel in _manifest_dirs(root):
         os.makedirs(os.path.join(root, rel), exist_ok=True)
 
 
@@ -114,9 +166,15 @@ def _enable_faulthandler(root: str) -> None:
         pass
 
 
-def _setup_logging(root: str, is_cgi: bool) -> None:
+def _setup_logging(root: str, is_cgi: bool, arm_fault: bool = True) -> None:
     import logging
-    _enable_faulthandler(root)
+    # F27-9 — arm faulthandler only for LONG-LIVED roles (daemon / portal / interactive CLI /
+    # single-shot). A short guard `--tick` (the 5-min cron heal) converges and exits within a
+    # second and does no native weave, yet each invocation appended a "=== faulthandler armed ==="
+    # line — ~2050 lines/week of pure noise that buried any real dump. Skip arming for those runs;
+    # the daemon a guard tick may spawn is a SEPARATE process that arms its own faulthandler.
+    if arm_fault:
+        _enable_faulthandler(root)
     # Attach the system.log handler to the ROOT logger, not just "Harmonia".
     # Every subsystem uses its own named logger ("Akasha.Kernel", "Akasha.Vision",
     # "Harmonia", …). If the file handler lives only on "Harmonia", the sibling
@@ -141,11 +199,14 @@ def _setup_logging(root: str, is_cgi: bool) -> None:
     # VPS disk and take the single writer down. Handler-level filtering drops DEBUG at the sink, so
     # loggers may still be DEBUG-capable for an attached debugger without flooding the file.
     _lvl = getattr(logging, os.environ.get("AKASHA_LOG_LEVEL", "INFO").strip().upper(), logging.INFO)
-    fh = logging.FileHandler(os.path.join(root, "logs", "system.log"), encoding="utf-8")
-    fh.setLevel(_lvl)
-    fh.setFormatter(logging.Formatter(
-        "%(asctime)s | %(name)-20s | %(levelname)-8s | %(message)s"
-    ))
+    # R9 — system.log is bounded (50 MB × 5), so a DEBUG flood or a long-lived writer can never fill a
+    # tight VPS disk and take the single writer down. Rotation announces itself with a `[log] rotated`
+    # line (see lib/harmonia/logger.py).
+    from lib.harmonia import logger as _hlog
+    os.makedirs(os.path.join(root, "logs"), exist_ok=True)
+    fh = _hlog.rotating_handler(
+        os.path.join(root, "logs", "system.log"), _lvl,
+        logging.Formatter("%(asctime)s | %(name)-20s | %(levelname)-8s | %(message)s"))
     fh._akasha_syslog = True          # idempotence marker (avoid duplicate handlers on re-call)
     rootlog.addHandler(fh)
 
@@ -219,6 +280,19 @@ def _pid_is_akasha_process(pid: int) -> bool:
     return any(tok in cmd for tok in _AKASHA_PROC_TOKENS)
 
 
+def _log_reap(action: str, pid: int, caller: str, grace_s: float) -> None:
+    """F60 §3.3 / A13(c) — the KILLER writes the record. Log one `[reap] <action> pid= caller= grace=`
+    line via the process logger, and — when the killer is the serve-only PORTAL (a watchdog revive /
+    replace sweep) — mirror it to system.log, because the portal's own logger writes web-portal.log
+    so a watchdog-driven kill of the writer would otherwise be absent from the writer's log."""
+    import logging as _lg
+    line = "[reap] %s pid=%d caller=%s grace=%.1fs" % (action, pid, caller, grace_s)
+    _log = _lg.getLogger("Harmonia.Boot")
+    (_log.warning if action == "SIGKILL" else _log.info)(line)
+    if os.environ.get("AKASHA_SERVE_ONLY", "").strip().lower() in ("1", "yes", "true", "on"):
+        _system_log_append(_root, line)
+
+
 def _stop_recorded_portal(pid_path: str, wait: bool = True, grace_ticks: int = 40):
     """Stop a previously-detached process recorded in *pid_path* (web portal or Cell
     daemon).
@@ -259,6 +333,11 @@ def _stop_recorded_portal(pid_path: str, wait: bool = True, grace_ticks: int = 4
         except OSError: pass
         return None
     try:
+        _caller = sys._getframe(1).f_code.co_name
+    except Exception:
+        _caller = "?"
+    _grace_s = max(0, grace_ticks) * 0.1
+    try:
         os.kill(pid, 15)                       # SIGTERM — graceful
     except ProcessLookupError:
         try: os.remove(pid_path)
@@ -266,6 +345,9 @@ def _stop_recorded_portal(pid_path: str, wait: bool = True, grace_ticks: int = 4
         return None
     except PermissionError:
         return None
+    # A13(c) — this path (operator `stop`, both launcher replace sweeps) killed directly, bypassing
+    # _terminate_pid, so no [reap] line was ever written. Emit it here too; the killer writes the record.
+    _log_reap("SIGTERM", pid, _caller, _grace_s)
     if wait:                                    # let it release the port, then be firm
         for _ in range(grace_ticks):
             _t.sleep(0.1)
@@ -274,7 +356,9 @@ def _stop_recorded_portal(pid_path: str, wait: bool = True, grace_ticks: int = 4
             except ProcessLookupError:
                 break
         else:
-            try: os.kill(pid, 9)               # SIGKILL if it won't go
+            try:
+                os.kill(pid, 9)               # SIGKILL if it won't go
+                _log_reap("SIGKILL", pid, _caller, _grace_s)
             except ProcessLookupError: pass
     try: os.remove(pid_path)
     except OSError: pass
@@ -284,12 +368,24 @@ def _stop_recorded_portal(pid_path: str, wait: bool = True, grace_ticks: int = 4
 def _terminate_pid(pid: int, wait: bool = True, grace_ticks: int = 40) -> bool:
     """SIGTERM (then SIGKILL if it won't go within grace_ticks×0.1s) a pid. True if signalled.
     A writer daemon needs a longer grace than a portal so it can checkpoint before the SIGKILL —
-    pass a larger grace_ticks for those (e.g. 500 ≈ 50s)."""
-    import time as _t
+    pass a larger grace_ticks for those (e.g. 500 ≈ 50s).
+
+    F60 §3.3 — the KILLER writes the record (the victim cannot): each SIGTERM and any SIGKILL
+    escalation logs to system.log with the caller's name, so a daemon's disappearance is always
+    attributable to who reaped it rather than looking like a silent crash."""
+    import time as _t, sys as _sys
+    try:
+        _caller = _sys._getframe(1).f_code.co_name
+    except Exception:
+        _caller = "?"
+    _grace_s = max(1, grace_ticks) * 0.1
     try:
         os.kill(pid, 15)
     except (ProcessLookupError, PermissionError):
         return False
+    # F60 §3.3 / A13(a) — the killer writes the record; _log_reap mirrors to system.log when the
+    # killer is the serve-only portal (a watchdog revive) so the writer's own log shows it.
+    _log_reap("SIGTERM", pid, _caller, _grace_s)
     if wait:
         for _ in range(max(1, grace_ticks)):
             _t.sleep(0.1)
@@ -297,8 +393,11 @@ def _terminate_pid(pid: int, wait: bool = True, grace_ticks: int = 40) -> bool:
                 os.kill(pid, 0)
             except ProcessLookupError:
                 return True
-        try: os.kill(pid, 9)
-        except ProcessLookupError: pass
+        try:
+            os.kill(pid, 9)
+            _log_reap("SIGKILL", pid, _caller, _grace_s)
+        except ProcessLookupError:
+            pass
     return True
 
 
@@ -492,7 +591,7 @@ def _code_build_id(root: str) -> str:
     top = os.path.join(root, "akasha.py")
     if os.path.isfile(top):
         files.append(top)
-    for sub in ("lib", "api"):
+    for sub in ("lib", "api", "services", "remote"):   # the whole behaviour-defining + served tree
         d = os.path.join(root, sub)
         if not os.path.isdir(d):
             continue
@@ -520,8 +619,83 @@ def _code_build_id(root: str) -> str:
 
 def _resolve_build_id(root: str) -> str:
     """The build id to advertise/compare: an operator/seed-supplied AKASHA_BUILD_ID wins (a
-    seed may stamp its own payload fingerprint), else the on-disk code fingerprint."""
+    seed may stamp its own payload fingerprint), else the on-disk code fingerprint. This is the
+    BANNER id (may carry a git SHA); the daemon-replace HANDSHAKE uses `_handshake_build_id`."""
     return (os.environ.get("AKASHA_BUILD_ID") or "").strip() or _code_build_id(root)
+
+
+def _handshake_build_id(root: str) -> str:
+    """D1 — the build identity for the daemon-replace HANDSHAKE, advertised by the daemon
+    (AKASHA_HANDSHAKE_BUILD) AND computed disk-side by the launcher so both sides agree. A seed's
+    baked `content_fingerprint` (a sha256 over the WHOLE payload manifest — code + ontology + config
+    + static) when present, so a redeploy that changed only an .ak / config / asset (which the
+    .py-only `_code_build_id` would miss) still replaces the running daemon; else the on-disk .py
+    code fingerprint (dev checkout). Read DIRECTLY from akasha_build.json (not via akasha_build_stamp,
+    which prefers live git and would never surface the seed's baked id on a checkout). Deliberately
+    independent of AKASHA_BUILD_ID — that banner id can carry a git SHA / operator value that differs
+    across launch paths and would thrash a current daemon (see the AKASHA_HANDSHAKE_BUILD note)."""
+    try:
+        import json as _json
+        with open(os.path.join(root, "akasha_build.json"), encoding="utf-8") as _fh:
+            _fp = (dict(_json.load(_fh)).get("content_fingerprint") or "").strip()
+        if _fp:
+            return _fp
+    except Exception:
+        pass
+    return _code_build_id(root)
+
+
+def _should_replace_daemon(running, disk_build) -> bool:
+    """The one authoritative decision, shared by the client (_run_cell_client) and server
+    (--serve/--daemon) attach paths: should THIS launch (carrying the on-disk code) STOP the
+    already-answering Cell daemon and take over as the writer?
+
+    F60 §4.1 — `running` is now the tri-state from `cell_ipc.ping_build`:
+      ("ok", <build>)     — answered with a fingerprint → replace ONLY on a different build;
+      ("no-build", None)  — answered but pre-handshake (strictly older) → replace;
+      ("silent", None)    — no answer (timeout/refused) → do NOT replace. A busy or slow daemon must
+                            not be killed on a missed ping; wait heartbeat-gated and leave the verdict
+                            to the watchdog's advancing probe. (The old rule replaced a silent daemon,
+                            conflating 'timed out' with 'no build' — that could evict a healthy writer.)
+    Back-compat: a legacy string/None is still accepted (None/'' = no-build, a string = ok), so the
+    existing decision eval and any older caller keep their contract. We still require disk_build to be
+    known (a launcher that cannot fingerprint its own tree never evicts — no false takeover), and an
+    identical build never replaces (no needless reload / thrash loop)."""
+    if isinstance(running, tuple):
+        status, running_build = (tuple(running) + (None, None))[:2]
+    elif running:
+        status, running_build = "ok", running
+    else:
+        status, running_build = "no-build", None
+    if not disk_build:
+        return False                         # unknown own build → never evict
+    if status == "silent":
+        return False                         # did not answer → not replaced (watchdog decides)
+    if status == "no-build":
+        return True                          # pre-handshake ⇒ strictly older ⇒ replace
+    return running_build != disk_build       # ok ⇒ replace only on a different build
+
+
+def _replace_decision(running, disk_build):
+    """F60 §4.2 — the (should_replace, one-line decision string) for the log, so both replace paths
+    record WHY they replaced / attached / waited. `running` is ping_build's tri-state tuple."""
+    if isinstance(running, tuple):
+        status, rbuild = (tuple(running) + (None, None))[:2]
+    elif running:
+        status, rbuild = "ok", running
+    else:
+        status, rbuild = "no-build", None
+    replace = _should_replace_daemon(running, disk_build)
+    if replace:
+        verdict, reason = "replace", ("no-build" if status == "no-build" else "fingerprint")
+    elif status == "silent":
+        verdict, reason = "wait", "silent"
+    else:
+        verdict, reason = "attach", ("same-build" if status == "ok" else "unknown-disk")
+    running_desc = rbuild if status == "ok" else status
+    line = ("[seed] replace decision: running=%s disk=%s → %s reason=%s"
+            % (running_desc or "?", disk_build or "?", verdict, reason))
+    return replace, line
 
 
 _HELD_BOOT_LOCK = None   # keeps the boot-lock fd alive for this process's lifetime
@@ -536,6 +710,12 @@ _HELD_BOOT_LOCK = None   # keeps the boot-lock fd alive for this process's lifet
 # during boot: once the IPC socket answers, sys.ping is the liveness signal and the file is cleared,
 # so "heartbeat fresh" is an exact synonym for "actively booting".
 _BOOT_HEARTBEAT_STALE_S = float(os.environ.get("AKASHA_BOOT_HEARTBEAT_STALE", "").strip() or 20)
+# Absolute upper bound (seconds) on how long a still-ADVANCING but heartbeat-stale daemon boot is
+# allowed to run before it is reaped anyway. A legitimately slow B/C-scale load on a swap-thrashing
+# VPS can starve the boot-heartbeat thread for minutes while genuinely progressing (CPU/major-fault
+# advancing); we keep waiting on it rather than reaping into an infinite respawn storm — but a
+# truly pathological boot must still terminate, so cap the advancing-wait generously (15 min).
+_BOOT_HARD_CEILING_S = float(os.environ.get("AKASHA_BOOT_HARD_CEILING", "").strip() or 900)
 
 def _boot_heartbeat_path(base_dir: str) -> str:
     return os.path.join(base_dir, "central", "boot.heartbeat")
@@ -667,6 +847,106 @@ def _daemon_process_alive(base_dir: str):
     return pid
 
 
+def _daemon_serve_loop(portal_proc, log, poll_interval: float = 2.0) -> str:
+    """A53 item 1 — the Cell daemon's MAIN-thread serve loop: park on the LIFECYCLE shutdown Event,
+    NEVER on the boot portal's Popen.wait().
+
+    The regression this fixes: the old code did `portal_proc.wait()` here, so when a SIBLING thread
+    (the Supervisor health tick) reaped/replaced that first portal, wait() returned, main() returned,
+    and atexit tore the WRITER down — the single nucleus writer vanished with no log line and the
+    whole cell rebooted (振り出しに戻る). The writer's life is bound to a real shutdown signal, not to
+    any one portal it happened to spawn. So we WATCH the boot portal with poll() (its exit is logged,
+    Supervisor owns the respawn) but only the shutdown Event releases the loop. Returns the leave
+    reason for the single `[Cell] daemon leaving` line. Extracted so it is unit-testable (item 7a)."""
+    from lib.akasha import lifecycle as _ls_daemon
+    portal_pid = getattr(portal_proc, "pid", None)
+    watched = portal_proc is not None
+    try:
+        while not _ls_daemon.wait_or_shutdown(poll_interval):
+            if watched and portal_proc is not None:
+                rc = portal_proc.poll()
+                if rc is not None:
+                    log.info("[Cell] boot portal pid=%s exited status=%s — Supervisor owns its "
+                             "respawn", portal_pid, rc)
+                    watched = False               # stop polling a dead handle; do NOT exit
+        return "stop rpc"                          # the Event was set by begin_shutdown / a stop
+    except (KeyboardInterrupt, EOFError):
+        return "signal:SIGINT"
+
+
+def _pidfile_state(base_dir: str) -> str:
+    """A53 item 6a — classify the Cell-daemon pidfile for a watchdog revive line: `missing` (no
+    cell.pid), `stale` (a pid recorded but its /proc is gone / foreign / not a --daemon), or `live`
+    (a real akasha --daemon). Lets the revive line name exactly WHAT it saw, so a revive is never a
+    bare verdict. Never raises."""
+    try:
+        with open(_cell_pid_path(base_dir)) as fh:
+            pid = int((fh.read() or "0").strip() or 0)
+    except (OSError, ValueError):
+        return "missing"
+    if not pid:
+        return "missing"
+    return "live" if _daemon_process_alive(base_dir) else "stale"
+
+
+def _proc_progress_sample(pid: int):
+    """(cpu_ticks, major_faults) for `pid` from /proc/<pid>/stat, or None if unreadable.
+
+    cpu_ticks = utime+stime (fields 14+15); major_faults = majflt (field 12) — the count of page
+    faults that required disk/swap I/O. Robust to a `comm` containing spaces/parens: fields after
+    the last ')' are space-split, so utime/stime/majflt are indexed from there. Linux /proc only."""
+    try:
+        with open(f"/proc/{pid}/stat", "rb") as fh:
+            data = fh.read()
+    except OSError:
+        return None
+    try:
+        rparen = data.rfind(b")")
+        rest = data[rparen + 2:].split()            # fields from #3 (state) onward
+        # post-')' index: field N → rest[N-3]. majflt=#12→9, utime=#14→11, stime=#15→13
+        majflt = int(rest[9])
+        cpu = int(rest[11]) + int(rest[13])
+        return cpu, majflt
+    except (ValueError, IndexError):
+        return None
+
+
+def _daemon_advancing(pid: int, window: float = 2.5) -> bool:
+    """True only if `pid` POSITIVELY advances over `window` seconds — CPU time increases OR major
+    page-faults increase. This distinguishes a daemon that is SLOW-BUT-WORKING (a big index rebuild
+    thrashing on swap, whose separate boot-heartbeat thread is starved so the heartbeat file looks
+    stale) from one that is genuinely WEDGED (GIL deadlock / dead — no CPU, no faults). Reaping the
+    former restarts a progressing boot and, because the replacement meets the same memory pressure,
+    spins an infinite reap→respawn storm that itself exhausts RAM. Unknown (non-Linux / unreadable
+    /proc) → False, preserving the prior ceiling behaviour where progress cannot be measured."""
+    import time as _t
+    a = _proc_progress_sample(pid)
+    if a is None:
+        return False
+    _t.sleep(window)
+    b = _proc_progress_sample(pid)
+    if b is None:
+        return False
+    return b[0] > a[0] or b[1] > a[1]
+
+
+def _daemon_serving_from_files(base_dir: str):
+    """R1.1 (F28a) — FILESYSTEM-ONLY aliveness: return the live daemon pid iff files alone prove a
+    daemon is SERVING this data dir (its recorded pid is a live akasha `--daemon` process AND it has
+    published a bound socket endpoint), else None. NO ping — a swap-thrashing live writer misses the
+    3 s ping window, and treating that miss as death is what spawned the ~40 ram-mode `series=seeds`
+    clones. The endpoint descriptor is removed on a clean stop but survives a crash, so it is paired
+    with the live-pid check (a crashed daemon fails the pid check → None → the caller cold-boots). A
+    'serving (possibly busy)' verdict means DEFER; wedge-reaping is the watchdog's authority alone."""
+    from api.portals import cell_ipc
+    pid = _daemon_process_alive(base_dir)
+    if pid is None:
+        return None
+    if cell_ipc.daemon_endpoint(base_dir) is None:
+        return None
+    return pid
+
+
 def _reap_stale_local(base_dir: str, quiet: bool = True) -> int:
     """The `stop` collection, folded into the START path so a plain `python akasha.py` (or a seed
     re-extract) is SELF-SUFFICIENT — the operator never needs a separate `python akasha.py stop`
@@ -675,9 +955,12 @@ def _reap_stale_local(base_dir: str, quiet: bool = True) -> int:
     Called only when NO healthy daemon is being attached to (cold start, or after a hung/mismatched
     daemon was cleared), so reaping is always safe — it never touches a daemon a client is about to
     attach to. Collects, in order: a stale/hung recorded Cell daemon (dead pid → no-op; hung →
-    SIGTERM then SIGKILL), a stale recorded web portal, and EVERY orphaned portal for this data dir
-    (re-parented to init when its daemon crashed, still holding its port + ~1 GB RAM — the leak an
-    operator used to have to pkill). Returns the count reaped. Never raises."""
+    SIGTERM then SIGKILL), a stale recorded web portal, EVERY orphaned portal for this data dir, and
+    EVERY orphaned WRITER (Cell) daemon for this data dir (re-parented to init when its predecessor
+    crashed, still holding its nucleus + the live-telemetry feed-poll thread — the leak that made a
+    reinstall/restart leave an OLD feed daemon running even without `stop`). The recorded writer is
+    reaped first (graceful, full checkpoint grace) so the orphan sweep only ever finds true strays.
+    Returns the count reaped. Never raises."""
     reaped = 0
     try:
         if _stop_recorded_portal(_cell_pid_path(base_dir), grace_ticks=400):
@@ -686,6 +969,14 @@ def _reap_stale_local(base_dir: str, quiet: bool = True) -> int:
             reaped += 1
         _orphans = _reap_leaked_portals(base_dir)
         reaped += len(_orphans or [])
+        # Symmetric with the portal sweep, for the process that carries the feed poller: any
+        # `akasha.py --daemon` writer for this data dir that survives here is a stale/orphan
+        # predecessor (the recorded one is already gone), so reaping it is what folds the writer
+        # side of `stop` into the START path — a plain re-run/reinstall no longer leaves an old
+        # feed daemon behind. Safe: this function runs only when there is no healthy daemon to
+        # attach to.
+        _orphd = _reap_leaked_daemons(base_dir)
+        reaped += len(_orphd or [])
         if reaped and not quiet:
             print(f"  [~] Cleaned {reaped} leftover process(es) from a prior run "
                   f"(no `stop` needed).", flush=True)
@@ -694,7 +985,8 @@ def _reap_stale_local(base_dir: str, quiet: bool = True) -> int:
     return reaped
 
 
-def _wait_for_daemon_socket(base_dir: str, deadline_s: float = None) -> bool:
+def _wait_for_daemon_socket(base_dir: str, deadline_s: float = None,
+                            progress: bool = False) -> bool:
     """Block until an alive-but-booting Cell daemon binds its socket and answers sys.ping. Returns
     True as soon as one answers; False if the booting daemon dies, or goes WEDGED (boot heartbeat
     stale AND still no ping) — the caller then reaps + respawns.
@@ -702,23 +994,54 @@ def _wait_for_daemon_socket(base_dir: str, deadline_s: float = None) -> bool:
     Heartbeat-gated (R4): while the boot heartbeat is FRESH the daemon is progressing, so it is
     NEVER timed out — this removes the RC4 false-positive of reaping a healthy-but-slow B-scale
     load on a slow VPS disk. The fixed ceiling (AKASHA_BOOT_WAIT, default 90 s) applies only as a
-    fallback when no heartbeat file exists (an older daemon build that predates the heartbeat)."""
+    fallback when no heartbeat file exists (an older daemon build that predates the heartbeat).
+
+    progress=True prints a status line during the wait (the interactive attach path) so the brief
+    pre-heartbeat spawn gap + the longer index-rebuild are never a silent pause — mirroring the
+    spawn path's progress. Off by default so quiet / non-interactive callers stay silent."""
     import time as _t
     from api.portals import cell_ipc
     if deadline_s is None:
         deadline_s = float(os.environ.get("AKASHA_BOOT_WAIT", "").strip() or 90)
-    end = _t.time() + deadline_s
+    start = _t.time()
+    end = start + deadline_s
+    said_spawning = False
+    last_progress = start
     while True:
         if cell_ipc.ping(base_dir, timeout=2.0):
             return True
         if _daemon_process_alive(base_dir) is None:
             return False                            # it died while booting → caller respawns
         if _boot_heartbeat_fresh(base_dir):
+            if progress and _t.time() - last_progress >= 15:
+                last_progress = _t.time()
+                print("  [*] Cell daemon is booting — rebuilding the memory index from disk "
+                      "(%ds; a large store takes a few minutes)…" % int(_t.time() - start),
+                      flush=True)
             _t.sleep(0.5)                           # progressing boot → wait, no ceiling-kill
             continue
-        # No fresh heartbeat → either an old daemon (no file) or a wedged one. Honour the fixed
-        # ceiling as a fallback; once it passes, report 'not answering' so the caller reaps.
+        # No fresh heartbeat yet → the pre-touch spawn gap (interpreter start, imports, opening the
+        # store) before the boot heartbeat begins. Say so once (~2 s in) so it never looks frozen.
+        if progress and not said_spawning and (_t.time() - start) >= 2.0:
+            said_spawning = True
+            print("  [*] Cell daemon is spawning — loading the engine (a moment)…", flush=True)
+        # Fixed ceiling reached with a STALE heartbeat. Before reporting 'not answering' (→ the caller
+        # reaps + respawns), confirm the daemon is genuinely WEDGED and not merely slow: under heavy
+        # memory pressure the boot-heartbeat THREAD is starved by swap-thrash while the daemon is
+        # still doing real work, and reaping it there restarts a progressing boot into an infinite
+        # reap→respawn storm. A process burning CPU or faulting pages in is WORKING — keep waiting,
+        # bounded by a generous hard cap so a truly-stuck daemon is still reaped eventually.
         if _t.time() >= end:
+            pid = _daemon_process_alive(base_dir)
+            if (pid is not None and (_t.time() - start) < _BOOT_HARD_CEILING_S
+                    and _daemon_advancing(pid)):
+                if progress and _t.time() - last_progress >= 15:
+                    last_progress = _t.time()
+                    print("  [*] Cell daemon still loading under memory pressure "
+                          "(%ds; heartbeat starved by swap, but the process is advancing)…"
+                          % int(_t.time() - start), flush=True)
+                end = _t.time() + deadline_s          # extend while it keeps advancing
+                continue
             return False
         _t.sleep(0.5)
 
@@ -760,7 +1083,7 @@ def _converge_daemon(root: str, base_dir: str, args, *, spawn: bool, quiet: bool
     alive = _daemon_process_alive(base_dir)
     if alive:
         _say(f"[*] A Cell daemon is starting up (PID {alive}) — attaching once it is ready…")
-        if _wait_for_daemon_socket(base_dir, wait_ceiling):
+        if _wait_for_daemon_socket(base_dir, wait_ceiling, progress=not quiet):
             _say("[+] Cell daemon online.")
             return "answering"
         # Alive but not answering and no fresh boot heartbeat → WEDGED. Clean up after ourselves
@@ -821,6 +1144,150 @@ def _reap_leaked_portals(base_dir: str, keep_pids=()):
             try: os.kill(pid, 9)
             except (ProcessLookupError, PermissionError): pass
     return signalled
+
+
+def _akasha_daemon_pids(base_dir: str):
+    """(pid, cmdline) for every RUNNING Akasha WRITER (Cell) daemon bound to THIS data dir.
+
+    The writer daemon is `python …/akasha.py --daemon …` (see _spawn_cell_daemon); it OWNS the
+    nucleus WriteQueue AND hosts the live-telemetry feed-poll thread. Scoped to this deployment by
+    the daemon's EFFECTIVE data dir — AKASHA_DATA_DIR from its /proc environ, else its cwd/data — so
+    it can NEVER match a foreign cell or a different data dir on the same host; matched on
+    `akasha.py --daemon` so it never touches a serve-only portal (that is _akasha_portal_pids) or a
+    thin CLI client. Feed-poll threads live ONLY in a writer, so scanning these is the ONLY way to
+    find an ORPHANED poller: a respawn-race or pre-reinstall writer that the run-dir no longer
+    tracks (its pid is not the recorded svc:cell) keeps its feed thread running but is invisible to
+    the run-dir cascade. Linux /proc only; [] elsewhere (best-effort, never fatal)."""
+    out = []
+    base_abs = os.path.abspath(base_dir)
+    try:
+        pids = [p for p in os.listdir("/proc") if p.isdigit()]
+    except OSError:
+        return out
+    me = os.getpid()
+    for pid_s in pids:
+        pid = int(pid_s)
+        if pid == me:
+            continue
+        try:
+            with open(f"/proc/{pid_s}/cmdline", "rb") as fh:
+                raw = fh.read()
+        except OSError:
+            continue
+        args = [a for a in raw.decode("utf-8", "replace").split("\x00") if a]
+        if not args:
+            continue
+        # Precise, TOKEN-based match (not a substring): argv[0] is a python interpreter running a
+        # script whose path ends in akasha.py, WITH a `--daemon` argument. This deliberately excludes
+        # a `ps|grep "akasha.py --daemon"` (one quoted token, no python argv[0], no `--daemon` token)
+        # and a `timeout … python akasha.py --daemon` wrapper (argv[0] is `timeout`, not python) — we
+        # want the real writer process, never its launcher or an onlooker.
+        if "python" not in os.path.basename(args[0]).lower():
+            continue
+        if "--daemon" not in args or not any(a.endswith("akasha.py") for a in args):
+            continue
+        cmd = " ".join(args)
+        # Effective data dir of THAT process: explicit AKASHA_DATA_DIR wins, else <cwd>/data —
+        # exactly how base_dir itself is derived, so the comparison is apples-to-apples.
+        eff = None
+        try:
+            with open(f"/proc/{pid_s}/environ", "rb") as ef:
+                for kv in ef.read().decode("utf-8", "replace").split("\x00"):
+                    if kv.startswith("AKASHA_DATA_DIR="):
+                        v = kv.split("=", 1)[1].strip()
+                        if v:
+                            eff = os.path.abspath(v)
+                        break
+        except OSError:
+            pass
+        if eff is None:
+            try:
+                eff = os.path.join(os.path.realpath(f"/proc/{pid_s}/cwd"), "data")
+            except OSError:
+                eff = None
+        if eff is not None and eff != base_abs:
+            continue                                    # a different cell / data dir → not ours
+        out.append((pid, cmd.strip()))
+    return out
+
+
+def _reap_leaked_daemons(base_dir: str, keep_pids=(), grace_s: float = 8.0):
+    """SIGTERM→(grace)→SIGKILL every Akasha WRITER daemon for THIS data dir except `keep_pids`
+    (and self). The counterpart of _reap_leaked_portals for the process that carries the feed
+    poller: it kills an ORPHANED writer — hence its orphaned poll thread — that the run-dir no
+    longer tracks (a respawn-race survivor, or a pre-reinstall daemon). That orphan is the route by
+    which `stop` / restart / reinstall used to leave an old feed daemon running (public nucleus
+    frozen while the orphan wrote to a private cell).
+
+    Unlike a serve-only portal, a writer holds nucleus write state, so each gets a GRACEFUL SIGTERM
+    first (its handler runs begin_shutdown → checkpoint) and a generous SHARED grace before any
+    SIGKILL — crash-stop is preserved (only an in-flight write can ever be lost). Returns the pids
+    stopped. Best-effort; never raises."""
+    import time as _t
+    keep = set(keep_pids) | {os.getpid()}
+    targets = [pid for pid, _cmd in _akasha_daemon_pids(base_dir) if pid not in keep]
+    if not targets:
+        return []
+    signalled = []
+    for pid in targets:                              # phase 1: SIGTERM all orphans at once
+        try:
+            os.kill(pid, 15)
+            signalled.append(pid)
+        except (ProcessLookupError, PermissionError):
+            pass
+    deadline = _t.time() + max(1.0, grace_s)         # phase 2: ONE shared checkpoint grace window
+    while _t.time() < deadline:
+        if not any(_pid_alive(p) for p in signalled):
+            break
+        _t.sleep(0.1)
+    for pid in signalled:                            # phase 3: SIGKILL any straggler
+        if _pid_alive(pid):
+            try: os.kill(pid, 9)
+            except (ProcessLookupError, PermissionError): pass
+    return signalled
+
+
+def _reap_orphans(base_dir: str, keep_pids=()) -> list:
+    """The SHARED daemon-reclamation both `stop` AND a writer boot run: reclaim every ORPHANED
+    Akasha process for this data dir — leaked serve-only PORTALS and leaked WRITER DAEMONS (respawn-
+    race survivors, pre-reinstall processes the run-dir no longer tracks) — via graceful SIGTERM→
+    grace→SIGKILL on /proc-scanned pids, EXCLUDING self (and `keep_pids`, e.g. a healthy daemon we
+    are deferring to). Entirely code-side: NEVER a shell `pkill`/`killall`. This is why the operator
+    is never asked to kill anything — a boot cleans up leaked predecessors exactly as `stop` does,
+    closing the 'old daemon not killed → manual pkill' gap where a boot swept only portals, not the
+    writer daemon that carries the feed poller + its ~GB engine. Returns the pids stopped."""
+    reaped = list(_reap_leaked_portals(base_dir, keep_pids=keep_pids))
+    reaped += list(_reap_leaked_daemons(base_dir, keep_pids=keep_pids))
+    return reaped
+
+
+def _reclaim_orphans_on_start(base_dir: str) -> list:
+    """Auto-reclaim leaked predecessors at the start of ANY akasha launch, so the operator NEVER
+    runs a Linux command (stop / pkill / ps / kill) — merely starting akasha cleans up.
+
+    Reaps orphan WRITER daemons + orphan PORTALS for this data dir (respawn-race / pre-reinstall
+    survivors the run-dir no longer tracks), but SPARES the currently-recorded daemon (cell.pid) and
+    portal (web-portal.pid): convergence decides defer/replace/reap for THAT one, and a healthy
+    daemon we are about to attach to must not be killed. Everything else same-data-dir is a genuine
+    leak (a second writer / a re-parented portal) and is graceful-SIGTERM→grace→SIGKILL reclaimed —
+    code-side, never a shell pkill. Instant when there are no orphans (nothing to signal). Returns
+    the pids reclaimed. This is what makes 'attach to a healthy daemon' also clean up, not only a
+    fresh writer boot."""
+    # Stand down while ANY daemon is actively booting (fresh boot heartbeat): a mid-boot daemon may
+    # not have recorded its cell.pid yet, so it is not in `keep` — reaping here would kill a healthy
+    # boot. Convergence is the heartbeat-aware owner of the in-progress-boot case; let it run.
+    if _boot_heartbeat_fresh(base_dir):
+        return []
+    keep = set()
+    for _pp in (_cell_pid_path(base_dir), os.path.join(base_dir, "web-portal.pid")):
+        try:
+            with open(_pp) as _fh:
+                _p = int((_fh.read() or "0").strip() or 0)
+            if _p:
+                keep.add(_p)
+        except (OSError, ValueError):
+            pass
+    return _reap_orphans(base_dir, keep_pids=keep)
 
 
 def _pid_alive(pid: int) -> bool:
@@ -892,8 +1359,8 @@ def _build_arg_parser():
     )
     parser.add_argument(
         "--portal", metavar="MODE",
-        nargs="?", const="archives", default=None,
-        help=argparse.SUPPRESS,  # hidden: force a portal mode (e.g. 'archives')
+        nargs="?", const="pages", default=None,
+        help=argparse.SUPPRESS,  # hidden: force a portal mode ('pages' — the application's pages root)
     )
     parser.add_argument(
         "cmd", nargs=argparse.REMAINDER,
@@ -904,6 +1371,80 @@ def _build_arg_parser():
 
 def _cell_pid_path(base_dir: str) -> str:
     return os.path.join(base_dir, "central", "cell.pid")
+
+
+# ── F36 / F47-6.3 — manual-restart marker (stop/start must not race the guard tick) ──────────
+# `stop` takes the daemon down, then the operator (or the seed) starts a fresh one. In that gap the
+# 5-min guard tick can see "no daemon answering" and cold-spawn its OWN — colliding with the manual
+# start (two writers, the F12 double-death class). The `stop` handler drops this fsync'd marker; the
+# guard tick DEFERS while it is fresh, and the daemon CLEARS it the moment it has booted. If the
+# operator stops and never restarts, the marker TTLs out and the guard resumes its normal duty.
+def _manual_restart_marker_path(base_dir: str) -> str:
+    return os.path.join(base_dir, "central", "manual.restart")
+
+
+def _manual_restart_ttl() -> float:
+    try:
+        return max(10.0, float(os.environ.get("AKASHA_MANUAL_RESTART_TTL", "120")))
+    except (TypeError, ValueError):
+        return 120.0
+
+
+def _arm_manual_restart(base_dir: str) -> None:
+    """Drop a fresh manual-restart marker (fsync'd) so a concurrent guard tick defers."""
+    p = _manual_restart_marker_path(base_dir)
+    try:
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w") as fh:
+            fh.write(str(time.time()))
+            fh.flush()
+            os.fsync(fh.fileno())
+    except OSError:
+        pass
+
+
+def _manual_restart_active(base_dir: str) -> bool:
+    """True if a manual restart was armed within the TTL window (the guard should stand down)."""
+    p = _manual_restart_marker_path(base_dir)
+    try:
+        with open(p) as fh:
+            ts = float((fh.read() or "0").strip() or "0")
+    except (OSError, ValueError):
+        return False
+    if time.time() - ts <= _manual_restart_ttl():
+        return True
+    try:
+        os.remove(p)                                    # stale → clear so the guard resumes duty
+    except OSError:
+        pass
+    return False
+
+
+def _clear_manual_restart(base_dir: str) -> None:
+    try:
+        os.remove(_manual_restart_marker_path(base_dir))
+    except OSError:
+        pass
+
+
+def _silica_store_bytes(base_dir: str) -> int:
+    """Total on-disk size (bytes) of the nucleus silica store — WAL logs + value files.
+
+    Used to gate the embedded-CLI fallback: a multi-GB store must NOT be loaded into the CLI
+    process when the daemon is unreachable (that OOMs and feeds the crash-loop). Best-effort;
+    any error (missing dir, race) returns 0 so the gate simply does not trip."""
+    total = 0
+    silica_dir = os.path.join(base_dir, "central", "nucleus.db.silica")
+    try:
+        for root, _dirs, files in os.walk(silica_dir):
+            for name in files:
+                try:
+                    total += os.path.getsize(os.path.join(root, name))
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    return total
 
 
 def _recorded_daemon_pid(base_dir: str):
@@ -933,6 +1474,42 @@ def _supervisor_health_tick(base_dir: str, interval: float = 15.0) -> None:
             pass
 
 
+def _restart_portal_after_content_load(base_dir: str) -> None:
+    """F25b (primary): the serve-only portal opens its store snapshot + builds its IAM cache ONCE at
+    daemon-start — there is no cross-process refresh. On a FRESH install, everything the writer commits
+    after that open (the whole ontology load, and the Genesis admin's IAM record) is invisible to the
+    portal: guest reads see an empty space and a correctly-signed login still 401s. Once the boot load
+    has settled, restart the portal ONCE so it re-opens on the populated store (terminate → wait →
+    respawn, with the F12b memory stagger — Supervisor.restart handles it).
+
+    Guarded by a durable marker so it fires only on the boot that actually LOADS content (a fresh
+    install's first successful load), never on subsequent boots — on those the data pre-dates the
+    portal open, so its snapshot is already correct and no restart is needed."""
+    import logging as _lg
+    log = _lg.getLogger("Harmonia.Boot")
+    marker = os.path.join(base_dir, "central", "sentinels", "portal_hydrated.done")
+    try:
+        if os.path.exists(marker):
+            return
+        from lib.harmonia import supervisor as _sv
+        if not _sv.read_unit(base_dir, "svc:web-portal"):
+            return                      # no serve-only portal to refresh (stdio / mcp / embedded)
+        log.info("[Boot] first content load settled — restarting the serve-only portal once so it "
+                 "reads the freshly-loaded store + IAM (F25b).")
+        _sv.Supervisor(base_dir).restart("svc:web-portal")
+    except Exception as exc:
+        log.debug("[Boot] portal hydrate-restart skipped: %s", exc)
+    finally:
+        # Mark it handled either way: a failed restart still self-heals on the next boot (the data now
+        # pre-dates the portal), and the marker guarantees we never double-restart.
+        try:
+            os.makedirs(os.path.dirname(marker), exist_ok=True)
+            with open(marker, "w", encoding="utf-8") as fh:
+                fh.write("done\n")
+        except Exception:
+            pass
+
+
 def _onto_load_watcher(gw, base_dir: str) -> None:
     """Mount the ontology load onto the Supervisor plane as `job:onto-load`, so it appears in
     the unified `svc` / units view alongside the service processes. Daemon-side: a read-only
@@ -941,6 +1518,14 @@ def _onto_load_watcher(gw, base_dir: str) -> None:
     completion or shutdown."""
     from lib.akasha import lifecycle as _lc
     from lib.harmonia import supervisor as _sv
+    # F29-R11 — a job:onto-load must NEVER render "Active … PID=None" for weeks. It settles when the
+    # load is fully complete OR when the CORE graph is done (relations loaded) but a pack is stuck
+    # pending and no longer advancing (the "1/26 packs" ghost). Track the last packs_loaded and stamp
+    # the job terminal once progress stalls, so a long-running daemon that never reboots still shows a
+    # finished job rather than a perpetual Active row (the boot reconcile only fixes it at next boot).
+    _last_loaded = None
+    _stall = 0
+    _STALL_LIMIT = 12                                   # ~1 min of no forward progress (12 × 5 s)
     while not _lc.is_shutting_down():
         load = None
         try:
@@ -952,17 +1537,112 @@ def _onto_load_watcher(gw, base_dir: str) -> None:
         except Exception:
             load = None
         if load:
-            state = "complete" if load.get("complete") else "running"
+            _loaded = load.get("packs_loaded")
+            if _loaded == _last_loaded:
+                _stall += 1
+            else:
+                _stall = 0
+                _last_loaded = _loaded
+            # F57 §3 / F56-A5 — the loader finishing its LAST pack settles the unit as `complete`.
+            # onto.status derives complete = (relations_done AND not pending); on a cell where the
+            # global `_relations_*.done` sentinel is absent (the daemon's own relations-ready gate
+            # uses a different signal — the semcache replan proved relations ready) that flag can
+            # stay False for hours even though all 31 packs physically loaded, pinning the unit at
+            # "31/31 packs Active". `packs_present` is the FULL registry count from the very first
+            # poll (not a growing discovery), so "every present pack loaded, none pending" is an
+            # unambiguous final-pack-landed signal with no transient-low race — treat it as complete.
+            _present = load.get("packs_present")
+            _all_packs = (_loaded is not None and _present is not None and _present > 0
+                          and _loaded >= _present and not load.get("packs_pending"))
+            _done = bool(load.get("complete")) or _all_packs
+            # stuck ghost: core relations done but a pack stays pending past the stall window
+            # (the "1/26 packs" case) — settle it too, marked as WHY (a stuck pack, not a clean load).
+            _settled_stuck = (bool(load.get("relations_done")) and not load.get("complete")
+                              and not _all_packs and _stall >= _STALL_LIMIT)
+            state = "complete" if (_done or _settled_stuck) else "running"
             _sv.record_job(base_dir, "job:onto-load", state, {
-                "packs_loaded":  load.get("packs_loaded"),
+                "packs_loaded":  _loaded,
                 "packs_present": load.get("packs_present"),
                 "packs_pending": load.get("packs_pending"),
                 "atoms":         load.get("atoms"),
+                # mark WHY it terminated so svc.ls / reconcile read a truthful state: a stuck pack is
+                # "core loaded, N pack(s) unresolved", not a clean full completion.
+                "settled_stuck": _settled_stuck or None,
             })
             if state == "complete":
+                if not _settled_stuck:
+                    # F25b: a genuine full completion — refresh the serve-only portal's stale snapshot
+                    # ONCE (guarded so only a fresh install's first load triggers it).
+                    _restart_portal_after_content_load(base_dir)
+                else:
+                    import logging as _lg
+                    _lg.getLogger("Harmonia.Boot").info(
+                        "[onto-load] core graph loaded; %s pack(s) still pending after stall — "
+                        "marking job settled so it stops rendering Active (they reload next boot).",
+                        load.get("packs_pending"))
                 return
         if _lc.wait_or_shutdown(5.0):
             return
+
+
+# ── Zombie reaper (fix B) ─────────────────────────────────────────────────────────
+# A spawned Cell daemon is a DIRECT child of the launcher (Popen + start_new_session, no double-fork
+# to init). Normally the launcher exits right after spawning, so the daemon re-parents to init and
+# init reaps it when it dies. But an INTERACTIVE launcher (a CLI / a seed session) that stays open
+# across a daemon REPLACEMENT outlives the daemon it spawned and never waitpid()s it — so the dead
+# daemon lingers as a <defunct> zombie under that session (the "1 zombie process" seen after a
+# redeploy). This tiny reaper poll()s each spawned-daemon child (poll() is the subprocess-native reap:
+# waitpid WNOHANG, ECHILD-safe) so a replaced daemon is reaped within seconds, no zombie. It never
+# touches other subprocesses (only its own tracked Popen objects). The full root fix — detach the
+# daemon to init at spawn (double-fork) so NO launcher ever parents it — is deferred to a later turn.
+import threading as _threading_reap
+_TRACKED_DAEMON_PROCS = []
+_TRACKED_DAEMON_LOCK = _threading_reap.Lock()
+_DAEMON_REAPER_STARTED = False
+
+
+def _reap_tracked_daemons() -> int:
+    """One reap pass: poll each tracked spawned-daemon child; a dead one is reaped by poll() and
+    dropped from tracking. Returns how many were reaped this pass. Testable; safe to call repeatedly."""
+    with _TRACKED_DAEMON_LOCK:
+        procs = list(_TRACKED_DAEMON_PROCS)
+    reaped = 0
+    for p in procs:
+        try:
+            dead = p.poll() is not None            # poll() reaps a dead child (no zombie), None if alive
+        except Exception:
+            dead = True                            # already reaped elsewhere (ECHILD) — drop it
+        if dead:
+            with _TRACKED_DAEMON_LOCK:
+                if p in _TRACKED_DAEMON_PROCS:
+                    _TRACKED_DAEMON_PROCS.remove(p)
+            reaped += 1
+    return reaped
+
+
+def _track_daemon_proc(proc) -> None:
+    """Track a spawned Cell-daemon Popen so the reaper waitpid()s it if it dies while this launcher is
+    still alive. Starts the reaper thread once (daemon thread → dies with the launcher, at which point
+    any surviving daemon re-parents to init anyway)."""
+    global _DAEMON_REAPER_STARTED
+    if proc is None:
+        return
+    with _TRACKED_DAEMON_LOCK:
+        _TRACKED_DAEMON_PROCS.append(proc)
+        if _DAEMON_REAPER_STARTED:
+            return
+        _DAEMON_REAPER_STARTED = True
+
+    def _loop():
+        import time as _t
+        while True:
+            _t.sleep(5)
+            try:
+                _reap_tracked_daemons()
+            except Exception:
+                pass
+
+    _threading_reap.Thread(target=_loop, name="daemon-reaper", daemon=True).start()
 
 
 def _spawn_cell_daemon(root: str, base_dir: str, args, quiet: bool = False) -> bool:
@@ -1016,14 +1696,28 @@ def _spawn_cell_daemon(root: str, base_dir: str, args, quiet: bool = False) -> b
         cmd += ["--portal", args.portal]
 
     log_path = os.path.join(root, "logs", "cell-daemon.log")
+    # F60 §1 — a WRITER is never serve-only. Build the child env with _writer_env() (portal-role keys
+    # stripped, deployment.env re-applied) so a revive spawned from the portal (watchdog / health-tick)
+    # never inherits AKASHA_SERVE_ONLY. §4.3 — stamp who spawned it so the child's boot [seed] line
+    # can say spawned_by=…; a portal-role parent (SERVE_ONLY in its own env) means a watchdog revive.
+    _wenv = _writer_env(root)
+    _portal_hosted = os.environ.get("AKASHA_SERVE_ONLY", "").strip().lower() in ("1", "yes", "true", "on")
+    _wenv["AKASHA_SPAWNED_BY"] = "watchdog" if _portal_hosted else "launcher"
     try:
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        from lib.harmonia import logger as _hlog
+        _hlog.rotate_if_big(log_path)     # R9 — bound the daemon redirect at each (re)launch
         fh = open(log_path, "a")
         proc = _sp.Popen(cmd, stdout=fh, stderr=_sp.STDOUT, cwd=root,
-                         start_new_session=True)
+                         start_new_session=True, env=_wenv)
     except Exception as exc:
         log.error("[Cell] failed to spawn daemon: %s", exc)
+        if _portal_hosted:                       # §3.2 — a portal-hosted spawn logs to web-portal.log;
+            _system_log_append(root, f"[Cell] failed to spawn writer daemon: {exc}")   # mirror to system.log
         return False
+    if _portal_hosted:
+        _system_log_append(root, "[Cell] spawned writer daemon (from portal/watchdog) pid=%d argv=%s"
+                           % (proc.pid, " ".join(cmd[1:])))
 
     _say("[*] Starting Cell daemon (backend) — owns the engine and its jobs…")
     # Heartbeat-gated spawn wait (F1 — the R4 gate applied to the ONE loop every spawn goes
@@ -1035,15 +1729,18 @@ def _spawn_cell_daemon(root: str, base_dir: str, args, quiet: bool = False) -> b
     # daemon build, or the brief pre-touch startup gap). F4: a progress line every ~15 s so a long
     # legitimate wait on a VPS is not mistaken for a hang.
     _ceiling = float(os.environ.get("AKASHA_BOOT_WAIT", "").strip() or 90)
-    _end = _t.time() + _ceiling
+    _start = _t.time()
+    _end = _start + _ceiling
     _proc_gone_since = None
     _last_progress = _t.time()
+    _said_spawning = False
     _gave_up = False
     while True:
         # Check the SOCKET first: attach to whichever daemon binds it, not necessarily the one WE
         # spawned. A restart can spawn a daemon that correctly DEFERS to a sibling already booting.
         if cell_ipc.ping(base_dir, timeout=2.0):
             _say("[+] Cell daemon online.")
+            _track_daemon_proc(proc)   # reap it if it later dies while THIS launcher stays alive (no zombie)
             return True
         # A FRESH heartbeat (from our proc OR a sibling we deferred to) means the boot is
         # progressing → wait with NO ceiling. Checked BEFORE the proc-exit grace so a deferred-to
@@ -1051,8 +1748,9 @@ def _spawn_cell_daemon(root: str, base_dir: str, args, quiet: bool = False) -> b
         if _boot_heartbeat_fresh(base_dir):
             if _t.time() - _last_progress >= 15:
                 _last_progress = _t.time()
-                _say("[*] Cell daemon is booting (heartbeat advancing) — a large ontology can "
-                     "take several minutes…")
+                _elapsed = int(_t.time() - (_end - _ceiling))
+                _say(f"[*] Cell daemon is booting — rebuilding the memory index from disk "
+                     f"({_elapsed}s; a large store takes a few minutes)…")
             _t.sleep(0.5)
             continue
         if proc.poll() is not None:
@@ -1070,8 +1768,30 @@ def _spawn_cell_daemon(root: str, base_dir: str, args, quiet: bool = False) -> b
                 break
             _t.sleep(0.5)
             continue
-        # Alive, not answering, and NO fresh heartbeat → apply the fallback ceiling.
+        # Alive, not answering, and NO fresh heartbeat yet → the pre-touch startup gap: the daemon
+        # process is spawning (interpreter start, imports, opening the store) BEFORE it begins the
+        # boot heartbeat + index rebuild. Say so once (~2 s in) so this brief silent pause shows a
+        # status line instead of looking frozen; the "rebuilding the memory index" progress takes
+        # over as soon as the heartbeat goes live.
+        if not _said_spawning and (_t.time() - _start) >= 2.0:
+            _said_spawning = True
+            _say("[*] Cell daemon is spawning — loading the engine (a moment)…")
         if _t.time() >= _end:
+            # Ceiling reached with a STALE heartbeat. Do NOT reap a daemon that is still ADVANCING
+            # (CPU / major-faults progressing) — under memory pressure the heartbeat thread is
+            # starved by swap-thrash while the boot genuinely progresses, and reaping it restarts a
+            # working boot into an infinite reap→respawn storm. Keep waiting while it advances,
+            # bounded by a generous hard cap so a truly-stuck boot is still reaped.
+            _pid = _daemon_process_alive(base_dir)
+            if (_pid is not None and (_t.time() - _start) < _BOOT_HARD_CEILING_S
+                    and _daemon_advancing(_pid)):
+                if _t.time() - _last_progress >= 15:
+                    _last_progress = _t.time()
+                    _say("[*] Cell daemon still loading under memory pressure "
+                         "(%ds; heartbeat starved by swap, but the process is advancing)…"
+                         % int(_t.time() - _start))
+                _end = _t.time() + _ceiling           # extend while it keeps advancing
+                continue
             log.error("[Cell] daemon did not answer within the startup timeout and its boot "
                       "heartbeat is stale — treating it as wedged.")
             _gave_up = True
@@ -1105,18 +1825,63 @@ def _run_cell_client(root: str, base_dir: str, args, interactive: bool) -> bool:
     from api.portals import cell_ipc
     log = _lg.getLogger("Harmonia.Boot")
 
-    if cell_ipc.ping(base_dir):
+    # CLEAN SLATE ON BUILD CHANGE (no operator step): if the code on disk changed since the daemon
+    # that owns this data dir last started — a fresh seed was extracted — the OLD world (a possibly
+    # crash-looping daemon, its portal, and any guardian-respawned orphans) must be swept BEFORE we
+    # bring up the new writer, or the survivors fight it (the two-writers crash). This uses the
+    # persisted running-build marker, so it works even when the old daemon is DEAD and cannot be
+    # pinged — closing the gap where a crash-loop kept the old code alive across a redeploy. The
+    # version handshake below still covers a healthy old daemon that is answering.
+    try:
+        _disk_now = _handshake_build_id(root)
+        _mk = os.path.join(base_dir, "central", "running_build")
+        _prev_build = None
+        try:
+            with open(_mk) as _mf:
+                # running_build is "<fp> <pid>" (F60 §4.3 added the pid); the fp is the first token.
+                # Back-compat: an old fp-only file has just the one token.
+                _prev_build = (_mf.read().strip().split() or [""])[0]
+        except OSError:
+            _prev_build = None
+        if _prev_build and _prev_build != _disk_now:
+            print("  [~] A newer build is on disk — sweeping the previous Cell daemon(s) + portal(s) "
+                  "so this code runs cleanly (no manual stop needed)…", flush=True)
+            _reap_leaked_daemons(base_dir)
+            _reap_leaked_portals(base_dir)
+            _reap_stale_daemon(base_dir)          # clear the recorded (now-dead) descriptor too
+            try:
+                os.remove(_mk)                    # the fresh daemon rewrites it on boot
+            except OSError:
+                pass
+    except Exception as _sweep_exc:
+        log.debug("[Cell] build-change sweep skipped: %s", _sweep_exc)
+
+    # F27-3 — attach with a LONGER ping timeout + one retry before concluding the daemon is
+    # absent/booting. A fully-online daemon under a heavy boot I/O storm can miss a short (3 s)
+    # probe; falling straight into the convergence path then prints a false "booting" line and can
+    # spawn a redundant daemon that then defers. If the pid file names a LIVE process but the ping
+    # times out, say what is actually true (up but slow) and retry, instead of treating it as gone.
+    _attached = cell_ipc.ping(base_dir, timeout=5.0)
+    if not _attached and _daemon_process_alive(base_dir) is not None:
+        print("  [*] Cell daemon is up but slow to respond (heavy I/O?) — retrying…", flush=True)
+        _attached = cell_ipc.ping(base_dir, timeout=5.0)
+    if _attached:
         # A daemon ANSWERS. VERSION HANDSHAKE: a re-extracted seed / pulled repo boots akasha.py
         # argument-less and lands HERE — it would otherwise attach to the running daemon and run
         # its tests on that daemon's (possibly OLD) code. If the on-disk build differs, REPLACE
         # the daemon so the new code becomes the writer; if it matches, fast-attach as before
         # (no needless ontology reload — the requirement is 'replace on code change', not
-        # 'reload on every run'). A daemon too old to report a build (build=None) is left alone.
-        _disk_build = _code_build_id(root)          # compare CODE CONTENT, not the git-SHA banner label
+        # 'reload on every run'). A daemon that answers but reports NO build predates the handshake
+        # (strictly older) and is ALSO replaced — see _should_replace_daemon (closes the no-build
+        # permanent trap that left a pre-handshake writer un-replaceable by any git pull/reinstall).
+        _disk_build = _handshake_build_id(root)      # D1: full-payload fingerprint on a seed, else code content
         _running_build = cell_ipc.ping_build(base_dir)
-        if _running_build and _disk_build and _running_build != _disk_build:
-            log.info("[Cell] daemon build %s != on-disk build %s — replacing the daemon.",
-                     _running_build, _disk_build)
+        _replace, _decision = _replace_decision(_running_build, _disk_build)
+        # §4.2 into system.log; A12 — the attach (same-build) case fires every cron-heal tick
+        # (~5 min, ~288/day of pure noise), so keep the line but demote attach to DEBUG; a replace
+        # or a wait (silent daemon) stays INFO.
+        (log.info if (_replace or "→ wait" in _decision) else log.debug)("%s", _decision)
+        if _replace:
             print("  [~] A newer build is on disk — replacing the running Cell daemon so this "
                   "code runs (one-time ontology reload)…", flush=True)
             _stop_recorded_portal(_cell_pid_path(base_dir), grace_ticks=500)   # old daemon: 45s+ grace
@@ -1124,6 +1889,11 @@ def _run_cell_client(root: str, base_dir: str, args, interactive: bool) -> bool:
             # _bind_unix already unlinks a stale IPC socket).
             _stop_recorded_portal(os.path.join(base_dir, "web-portal.pid"))
             _reap_leaked_portals(base_dir)
+            # CLEAN SLATE on a build change (no operator step): sweep EVERY Akasha writer daemon for
+            # this data dir, not just the recorded one. A crash-looping / guardian-respawned OLD
+            # daemon (orphan pid) would otherwise survive the upgrade and fight the new writer (the
+            # two-writers crash). The new seed must one-shot the old world; reap them all now.
+            _reap_leaked_daemons(base_dir)
             # F3 — we have already STOPPED the healthy old daemon, so falling back to embedded here
             # is the worst option: a SECOND writer beside the still-booting replacement AND a
             # minutes-long foreground load (the VPS "idle at startup" report). With F1 the false
@@ -1156,7 +1926,12 @@ def _run_cell_client(root: str, base_dir: str, args, interactive: bool) -> bool:
     from api.portals.stdio import run_cli, run_single_shot
     if not interactive:
         try:
-            print(run_single_shot(" ".join(args.cmd), gw))
+            # QUOTE each argv token before joining: nargs=REMAINDER hands us the shell's already-split
+            # tokens, but run_single_shot re-parses the string with shlex. A bare " ".join then re-splits
+            # a value containing spaces (e.g. fixture_policy="no synthetic artworks; …" → truncated to
+            # "no"). shlex.quote makes the round-trip lossless. (CLI-first: single-shot == interactive.)
+            import shlex as _shlex
+            print(run_single_shot(" ".join(_shlex.quote(t) for t in args.cmd), gw))
         finally:
             gw.close()
         return True
@@ -1261,11 +2036,36 @@ def _guard_write_crontab(text: str) -> bool:
 
 def _guard_tick(root: str, base_dir: str, daemon_flags) -> int:
     """Run convergence ONCE and exit — the cron guardian's periodic action. Logs a heal line only
-    when it actually revived something (convergence 'spawned', not 'answering')."""
+    when it actually revived something (convergence 'spawned', not 'answering').
+
+    Fully-automatic upgrade (principle: everything from the seed, zero operator steps): if a daemon
+    is answering but its RUNNING build differs from the ON-DISK build — a newer seed was extracted —
+    replace it here, so the guardian brings the NEW code up on its next 5-min tick WITHOUT anyone
+    re-running the seed or touching the process. Mirrors the CLI-client version handshake
+    (_run_cell_client); the shared reap paths carry the writer's checkpoint grace."""
+    # F36/F47-6.3 — an operator stop/start is in flight: stand down so we don't race a second daemon
+    # into the gap. The manual start (or a later tick, once the marker ages out) brings it up.
+    if _manual_restart_active(base_dir):
+        _guard_log(root, "manual restart in progress — guard tick deferring")
+        return 0
     try:
         args = _build_arg_parser().parse_args(["--daemon"] + list(daemon_flags))
     except SystemExit:
         args = _build_arg_parser().parse_args(["--daemon"])   # bad passthrough → bare daemon
+    try:
+        from api.portals import cell_ipc as _cipc
+        if _cipc.ping(base_dir, timeout=5.0):
+            _disk = _handshake_build_id(root)
+            _running = _cipc.ping_build(base_dir)
+            if _should_replace_daemon(_running, _disk):
+                _guard_log(root, f"newer build on disk ({_disk}) — replacing daemon "
+                                 f"(was {_running or 'pre-handshake'})")
+                _stop_recorded_portal(_cell_pid_path(base_dir), grace_ticks=500)  # 45s+ checkpoint grace
+                _stop_recorded_portal(os.path.join(base_dir, "web-portal.pid"))
+                _reap_leaked_portals(base_dir)
+                # → falls into convergence(spawn=True) below, which cold-spawns the NEW code.
+    except Exception as _upx:                                 # a build-check hiccup must never
+        _guard_log(root, f"build-replace check skipped: {_upx}")   # skip the heal tick itself
     state = _converge_daemon(root, base_dir, args, spawn=True, quiet=True)
     if state == "spawned":
         _guard_log(root, "revived cell daemon (convergence: spawned)")
@@ -1370,6 +2170,161 @@ def _run_guard(argv, root: str, base_dir: str) -> int:
     return 1
 
 
+def _raise_fd_limit():
+    """R2.1 (F28b) — raise the open-file soft limit to min(hard, 65536) at start. The guest pool
+    (up to 128 slots) each opens a PRIVATE silica cortex store, and a silica store is a MULTI-FILE
+    directory (one WAL per bank + a coordinator log ⇒ ~10–25 FDs each). At ~50–60 concurrent guests
+    that blows a default 1024 ulimit — the live `Errno 24 Too many open files` at `guest:pool:56`
+    cell open. Reclaim is clean, so this is concurrency headroom, not a leak. Best-effort and never
+    fatal: non-POSIX / a refused raise leaves the process running on the inherited limit. Returns
+    (soft_before, soft_after) or None."""
+    try:
+        import resource
+    except Exception:
+        return None
+    try:
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        target = hard if hard != resource.RLIM_INFINITY else 65536
+        target = min(target, 65536)
+        if soft != resource.RLIM_INFINITY and (target == resource.RLIM_INFINITY or soft < target):
+            resource.setrlimit(resource.RLIMIT_NOFILE, (target, hard))
+            new_soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
+            return (soft, new_soft)
+    except (ValueError, OSError):
+        return None
+    return (soft, soft)
+
+
+def _set_oom_score_adj(value: int) -> bool:
+    """F31-2/F44-A3 — bias the Linux OOM killer's victim selection for THIS process. The writer
+    daemon owns the single WriteQueue + the whole engine; if a kill ever comes it must take a
+    RESTARTABLE process (a portal, a guest subprocess) instead. So the daemon sets a PROTECTIVE
+    (negative) adj and the portals a SACRIFICIAL (positive) one. dmesg showed the writer killed at
+    oom_score_adj 0 — never biased. Best-effort: a negative value needs privilege (root on the VPS);
+    if the write is refused (non-root, non-Linux) it is a silent no-op. Returns True if it stuck."""
+    try:
+        with open("/proc/self/oom_score_adj", "w") as f:
+            f.write(str(int(value)))
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+# F60 §1 — env keys the PORTAL spawn injects (akasha.py :3085–3090 / :3114 + web_worker) that mark a
+# process as serve-only / portal-role. A WRITER (cell daemon) must NEVER inherit them: a writer spawned
+# FROM a portal (watchdog revive, health-tick respawn) would otherwise boot with AKASHA_SERVE_ONLY set
+# and run crippled — no health heartbeat, no replan (the daemon-#2 incident).
+_PORTAL_ROLE_ENV_KEYS = ("AKASHA_SERVE_ONLY", "AKASHA_DAEMON_ARGV")
+
+
+def _system_log_append(root: str, msg: str) -> None:
+    """F60 §3.2 — append one line to system.log directly, bypassing the process's own logging config.
+    Used so a watchdog/health-tick spawn running INSIDE the serve-only portal (whose logger writes
+    web-portal.log, not system.log) still records its [Cell] lifecycle lines where the writer's own
+    log delivery will show them. Best-effort, never raises."""
+    import time as _tl
+    try:
+        p = os.path.join(root, "logs", "system.log")
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        stamp = _tl.strftime("%Y-%m-%d %H:%M:%S", _tl.localtime())
+        with open(p, "a", encoding="utf-8") as fh:
+            fh.write(f"{stamp} | Harmonia.Boot        | INFO     | {msg}\n")
+    except OSError:
+        pass
+
+
+def _scrub_daemon_serve_only(is_daemon: bool, log=None) -> bool:
+    """F60 §1.2 — a `--daemon` process is a WRITER; a writer is NEVER serve-only. If AKASHA_SERVE_ONLY
+    leaked into its env, clear it BEFORE the kernel is built so the writer-role gates see a writer.
+    Returns True if it cleared one. Extracted from main() so it is unit-testable (A13(b))."""
+    if is_daemon and os.environ.get("AKASHA_SERVE_ONLY", "").strip().lower() in ("1", "yes", "true", "on"):
+        if log is not None:
+            log.error("[Boot] --daemon started with AKASHA_SERVE_ONLY set — a writer is never "
+                      "serve-only; clearing it")
+        os.environ.pop("AKASHA_SERVE_ONLY", None)
+        return True
+    return False
+
+
+def _writer_env(root: str) -> dict:
+    """The environment for a WRITER (cell daemon) spawn: os.environ MINUS every portal-role key,
+    then the canonical deployment.env re-applied exactly as the launcher applies it (setdefault). Use
+    this for every writer spawn — launcher, watchdog revive, health-tick respawn — so a writer is
+    never accidentally serve-only because the process that spawned it was a portal (F60 §1)."""
+    env = os.environ.copy()
+    for k in _PORTAL_ROLE_ENV_KEYS:
+        env.pop(k, None)
+    _load_deployment_env(root, target=env)          # re-apply canonical config onto the stripped env
+    return env
+
+
+def _load_deployment_env(root: str, target: dict = None) -> list:
+    """R1.2 (F28a) — SINGLE env source. Read `<root>/env/deployment.env` (KEY=VALUE, `#`
+    comments, optional `export `) into os.environ at the very start of every launch, so cron /
+    manual / systemd starters can NEVER diverge again. The divergence was concrete: the VPS
+    logs showed ~40 clones each tagged `series=seeds` with no AKASHA_SERIES and no value-mode env —
+    a cron/guard heal line that ran akasha WITHOUT the deployment's env, so it booted the wrong
+    series (and all-RAM values) beside the real writer.
+
+    Semantics: `setdefault` — an EXPLICITLY-exported var still wins (a one-off override is
+    honoured), but a starter with an empty environment inherits the deployment's canonical
+    values. Best-effort and never fatal: a missing file is normal (a plain checkout), a malformed
+    line is skipped. Returns the list of keys it set (for a one-line boot log)."""
+    tgt = os.environ if target is None else target      # F60 §1 — apply onto a stripped writer env too
+    path = os.path.join(root, "env", "deployment.env")
+    set_keys = []
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            for raw in fh:
+                line = raw.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if line.startswith("export "):
+                    line = line[len("export "):].lstrip()
+                if "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                k = k.strip()
+                v = v.strip().strip('"').strip("'")
+                if not k:
+                    continue
+                if k not in tgt:
+                    tgt[k] = v
+                    set_keys.append(k)
+    except (FileNotFoundError, OSError):
+        return set_keys
+    return set_keys
+
+
+def _deployment_env_names(root: str) -> list:
+    """Every KEY `<root>/env/deployment.env` sets, whether or not it was applied (an exported var
+    wins over the file, so `_load_deployment_env`'s list can be shorter). [] with no file."""
+    names = []
+    try:
+        with open(os.path.join(root, "env", "deployment.env"), "r", encoding="utf-8") as fh:
+            for raw in fh:
+                line = raw.strip()
+                if line.startswith("export "):
+                    line = line[len("export "):].lstrip()
+                if line and not line.startswith("#") and "=" in line:
+                    k = line.split("=", 1)[0].strip()
+                    if k and k not in names:
+                        names.append(k)
+    except OSError:
+        pass
+    return names
+
+
+def _env_refused(file_names: list) -> list:
+    """The purge order §4.5 — every AKASHA_* variable set for this process (exported, or in
+    `env/deployment.env`) that NO manifest declares. A declared variable is a deployment fact; an
+    undeclared one is a switch nothing reads or a name a package forgot to declare, and both are
+    refused by name rather than silently ignored. [] when every name is declared."""
+    from lib.akasha.api import manifest as _mf
+    names = {k for k in os.environ if k.startswith(_mf.ENV_PREFIX)} | set(file_names or [])
+    return _mf.env_undeclared(names)
+
+
 # ── 8. Main ───────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -1384,15 +2339,47 @@ def main() -> None:
         sys.stderr.write(f"[CRITICAL] Infrastructure init failed: {exc}\n")
         sys.exit(1)
 
-    _setup_logging(_root, _is_cgi)
+    # R1.2 — load the single deployment env source BEFORE any env-dependent decision (series,
+    # backend, index mode), so a cron/guard/systemd starter cannot diverge from the operator's
+    # canonical config. Best-effort; explicit env still wins (setdefault).
+    _dep_env_keys = _load_deployment_env(_root)
+
+    # R2.1 — raise the open-file limit up front (before the guest pool opens any private silica
+    # cortex) so concurrent guests cannot hit `Errno 24 Too many open files`. Safe everywhere.
+    _fd_raise = _raise_fd_limit()
+
+    # A short-lived guard/stop run defers-and-exits — do not arm faulthandler for it (F27-9).
+    _short_lived = (not _is_cgi and len(sys.argv) >= 2 and sys.argv[1] in ("guard", "stop"))
+    _setup_logging(_root, _is_cgi, arm_fault=not _short_lived)
     log = logging.getLogger("Harmonia.Boot")
-    log.info("Akasha boot sequence initiated.")
+    # F60 §3.4 — carry pid + argv so a DOUBLE invocation (two boot lines seconds apart) is visible in
+    # the log, and each boot is attributable to its process.
+    log.info("Akasha boot sequence initiated. pid=%d argv=%s",
+             os.getpid(), " ".join(sys.argv[1:]) or "(none)")
+    _dep_env_names = _deployment_env_names(_root)
+    if _dep_env_keys or _dep_env_names:
+        log.info("[env] deployment.env applied %d var(s): %s",
+                 len(_dep_env_keys), ", ".join(sorted(_dep_env_keys)))
+    # §4.5 — refuse an undeclared AKASHA_* variable BY NAME, before anything reads the environment.
+    # `stop` still runs: an operator must always be able to halt a cell.
+    _refused = _env_refused(_dep_env_names)
+    if _refused and not (len(sys.argv) >= 2 and sys.argv[1] == "stop"):
+        for _n in _refused:
+            log.error("[env] refused name=%s — no manifest declares it (docs/deployment.md lists "
+                      "every declared variable); unset it, or declare it in its package's manifest", _n)
+        sys.exit(3)
+    if _fd_raise and _fd_raise[0] != _fd_raise[1]:
+        log.info("[fd] raised RLIMIT_NOFILE soft %s → %s (guest-cell FD headroom)",
+                 _fd_raise[0], _fd_raise[1])
 
     # ── `stop` — halt a detached web portal (no kernel boot needed) ───
     # Simple counterpart to the "exit leaves the server running" behaviour, so an
     # operator never needs a pkill/ps incantation.
     if not _is_cgi and len(sys.argv) >= 2 and sys.argv[1] == "stop":
         _base = os.environ.get("AKASHA_DATA_DIR", "").strip() or os.path.join(_root, "data")
+        # F36/F47-6.3 — arm the manual-restart marker FIRST, so a guard tick that fires during this
+        # stop (and the operator's follow-up start) stands down instead of racing in its own daemon.
+        _arm_manual_restart(_base)
         # Unified stop: cascade over the Supervisor run-dir in reverse-dependency order
         # (dependents — the web portal — before their dependency, the Cell daemon), each
         # with its own grace. The daemon is the writer: its 45 s grace lets it finish the
@@ -1403,11 +2390,31 @@ def main() -> None:
             from lib.harmonia import supervisor as _sv
             _sup = _sv.Supervisor(_base)
             _svc_units = [u for u in _sv.list_units(_base) if u.get("kind") == _sv.KIND_SERVICE]
+            _inproc = []
             for _u in _sv._reverse_dep_order(_svc_units):
                 _r = _sup.stop(_u["id"], grace_s=_u.get("grace_s"))
-                if _r.get("status") == "stopped":
+                _st = _r.get("status")
+                if _st == "stopped":
                     _any = True
                     print(f"  [+] Stopped {_u['id']} (PID {_u.get('pid')}).")
+                elif _st == "host-managed":
+                    # An in-process THREAD unit (e.g. svc:feed-poll): it has NO OS process of its
+                    # own — it runs INSIDE its host writer and stops WITH it, so `stop()` must not
+                    # signal the shared host pid (that would take the whole daemon down early). It is
+                    # not skipped: we acknowledge it here, and scrub its now-stale descriptor in a
+                    # second pass once the host is actually down (below).
+                    _dep = (_u.get("deps") or ["svc:cell"])[0]
+                    print(f"  [+] {_u['id']} (in-process poller) — stopped with its host {_dep}.")
+                    _inproc.append(_u["id"])
+                    _any = True
+            # Second pass: the hosts are down now, so re-stop the in-process units — with the host pid
+            # dead, stop() removes their leftover descriptors (belt-and-suspenders for a SIGKILLed host
+            # whose lifecycle closer never ran, so `svc ls` is clean immediately, not only next boot).
+            for _uid in _inproc:
+                try:
+                    _sup.stop(_uid)
+                except Exception:
+                    pass
         except Exception as _stop_exc:
             logging.getLogger("Harmonia.Boot").debug("[stop] cascade: %s", _stop_exc)
         # Legacy pid-file fallback (idempotent — a already-stopped pid is a no-op).
@@ -1425,6 +2432,15 @@ def main() -> None:
         _orph = _reap_leaked_portals(_base)
         if _orph:
             print(f"  [+] Swept {len(_orph)} orphaned portal(s): PID {', '.join(map(str, _orph))}.")
+            _any = True
+        # Sweep any ORPHANED WRITER daemon for this data dir too — the process that carries the
+        # feed-poll thread. The run-dir cascade + cell.pid only cover the ONE recorded writer, so a
+        # respawn-race survivor or a pre-reinstall daemon (its pid no longer the recorded svc:cell)
+        # keeps its poller running and is missed by `stop`. This is the "old feed daemon not killed"
+        # route. Graceful (SIGTERM → checkpoint) with a shared grace, then SIGKILL any straggler.
+        _orphd = _reap_leaked_daemons(_base)
+        if _orphd:
+            print(f"  [+] Swept {len(_orphd)} orphaned writer daemon(s): PID {', '.join(map(str, _orphd))}.")
             _any = True
         if not _any:
             print("  [!] Nothing running to stop.")
@@ -1447,6 +2463,14 @@ def main() -> None:
     # deployment, and lets a test point the daemon at a scratch cell). The client and
     # daemon share it — the daemon inherits this env when spawned.
     base_dir = os.environ.get("AKASHA_DATA_DIR", "").strip() or os.path.join(_root, "data")
+    # §4.4 — a directory holding a store in another data format stops HERE, before anything below
+    # takes a lock, touches a heartbeat or writes a marker in it. One line; nothing written.
+    from lib.akasha import data_format as _df
+    try:
+        _df.check(base_dir)
+    except _df.DataFormatMismatch as _dfx:
+        print(str(_dfx), file=sys.stderr)
+        sys.exit(3)
 
     # ── Backend memory in the tree — so `python akasha.py` (direct) matches the seed ──────
     # The storage engine is set by the seed's sprout header (native seeds export
@@ -1513,6 +2537,12 @@ def main() -> None:
     # CGI has no argv; it always runs the in-process fast-path below.
     args = None if _is_cgi else _build_arg_parser().parse_args()
 
+    # F60 §1.2 — a `--daemon` process is a WRITER; clear a leaked AKASHA_SERVE_ONLY (a portal that
+    # spawned the revive without the writer-env scrub, an operator export, a stale systemd unit)
+    # BEFORE the kernel is built so the writer-role gates all see a writer. Last-line defense behind
+    # _writer_env(); extracted to _scrub_daemon_serve_only for unit coverage (A13(b)).
+    _scrub_daemon_serve_only(args is not None and getattr(args, "daemon", False), log)
+
     # ── Cell client mode (the default) ────────────────────────────────
     # Restore front=client / backend=server: unless we are explicitly the daemon,
     # embedded, CGI, or a pure --stdio session, attach to the persistent Cell daemon
@@ -1524,10 +2554,9 @@ def main() -> None:
     # against one store is what lost genesis between launches. Collapse to ONE embedded process:
     # act like `--stdio` (embedded engine + interactive CLI, no daemon, no socket, no portal
     # subprocess) and pick a journal mode without -wal/-shm sidecars, which iCloud Drive does not
-    # reliably persist. An explicit --serve/--daemon still overrides. Env override: AKASHA_IOS=0.
-    if args is not None and not (args.serve or args.daemon) \
-            and os.environ.get("AKASHA_IOS", "").strip().lower() not in ("0", "no", "false", "off") \
-            and (_is_ios() or os.environ.get("AKASHA_IOS", "").strip().lower() in ("1", "yes", "true", "on")):
+    # reliably persist. An explicit --serve/--daemon still overrides. The platform is detected, never
+    # declared by a switch (the purge order §4.5).
+    if args is not None and not (args.serve or args.daemon) and _is_ios():
         # iOS collapses to ONE embedded process (no daemon/socket/subprocess). The web portal,
         # however, was previously an IN-PROCESS thread and worked here; it regressed only when the
         # portal became subprocess-only (EBADF on spawn under the sandbox) AND this branch forced
@@ -1547,19 +2576,17 @@ def main() -> None:
         # next open even though other banks (ontology atoms) survive. That is exactly why the
         # iOS path uses a single-file store. So on an iCloud data dir, fall back to the durable
         # single-file SQLite store. To exercise Silica on iOS, run from a LOCAL folder (not
-        # ~cloud) — it is honoured there — or force it with AKASHA_FORCE_SILICA=1.
+        # ~cloud) — it is honoured there.
         _ap = os.path.abspath(base_dir).lower()
         _icloud = any(_m in _ap for _m in ("mobile documents", "com~apple~clouddocs",
                                            "clouddocs", "icloud"))
-        _force_silica = os.environ.get("AKASHA_FORCE_SILICA", "").strip().lower() in (
-            "1", "yes", "true", "on")
         if (os.environ.get("AKASHA_BACKEND", "sqlite").strip().lower() == "silica"
-                and _icloud and not _force_silica and not _has_sil):   # never orphan an existing Silica cell
+                and _icloud and not _has_sil):   # never orphan an existing Silica cell
             os.environ["AKASHA_BACKEND"] = "sqlite"
             print("  [i] iOS/iPadOS — the native (Silica) store is multi-file and iCloud does not "
                   "reliably persist it across launches (genesis/writes reappear lost). Using the "
                   "single-file SQLite store here so data survives. To test Silica, run from a LOCAL "
-                  "folder (e.g. ~/Documents), not ~cloud — or set AKASHA_FORCE_SILICA=1.", flush=True)
+                  "folder (e.g. ~/Documents), not ~cloud.", flush=True)
         _store_desc = ("native Silica store" if os.environ.get(
             "AKASHA_BACKEND", "sqlite").strip().lower() == "silica" else "single-file SQLite store")
         print(f"  [i] iOS/iPadOS detected — running as a single embedded process "
@@ -1570,6 +2597,17 @@ def main() -> None:
         _embedded = (args.embedded or args.stdio
                      or os.environ.get("AKASHA_EMBEDDED", "").strip().lower()
                      in ("1", "yes", "true", "on"))
+        # Auto-reclaim leaked predecessors on EVERY start (principle: the operator is NEVER asked to
+        # run a Linux command — no stop/pkill/ps). Reap orphan writer daemons + portals for this data
+        # dir, sparing the recorded daemon/portal (convergence handles that one). This covers the
+        # attach-to-a-healthy-daemon path too — which never boots a new daemon — so simply launching
+        # akasha cleans up a crash/respawn-race survivor. Instant when there are none; embedded (iOS
+        # single-process) has no daemon to reclaim.
+        if not _is_cgi and not _embedded:
+            _reclaimed = _reclaim_orphans_on_start(base_dir)
+            if _reclaimed:
+                print(f"  [+] Reclaimed {len(_reclaimed)} orphaned Akasha process(es) from a prior "
+                      f"run: PID {', '.join(map(str, _reclaimed))}.", flush=True)
         # Server/daemon SINGLETON + VERSION guard. The IPC listener unlinks + rebinds its socket
         # unconditionally, so a second daemon silently STEALS the endpoint and the first keeps
         # running as a zombie nucleus writer — two writers into one nucleus, the single-writer
@@ -1581,12 +2619,41 @@ def main() -> None:
         # A crash/hung daemon does not answer, so a genuine restart still proceeds either way.
         if _server_mode and not _embedded:
             from api.portals import cell_ipc as _cipc_guard
+            # R1.1 (F28a) — FILESYSTEM-FIRST aliveness. Before any ping-gated decision, defer to a
+            # daemon that is demonstrably SERVING from files alone: its recorded pid is a live
+            # akasha --daemon process AND it has published a bound socket endpoint. Under memory
+            # pressure a live writer misses the 3 s ping window; the old guard then fell through to
+            # the boot path and — from a cron/guard heal line that lacked the deployment env — built
+            # a full ram-mode series=seeds kernel beside it (the ~40-clone storm in the 8/26–8/27
+            # logs), re-opening the two-writer socket-steal. Ping here is used ONLY to LOG
+            # responsiveness (bounded retry); it never gates the boot decision and never reaps. Wedge
+            # authority is the watchdog's alone (dual-pid, reaps a confirmed-dead pid before any new
+            # boot, F2 unchanged); a start never reaps a live serving daemon on a ping miss. A newer
+            # on-disk build is still replaced deliberately — but on the RESPONSIVE-ping path below
+            # (where the build is readable) or the client-attach handshake, never here where a swap
+            # blip could reap the live writer.
+            _live_pid_fs = _daemon_serving_from_files(base_dir)
+            if _live_pid_fs is not None and not _cipc_guard.ping(base_dir):
+                _resp = any(_cipc_guard.ping(base_dir, timeout=10.0) for _ in range(3))
+                print("  [i] A Cell daemon (PID %d) is already serving this data dir%s — deferring "
+                      "(a ping miss under load is not death; the watchdog owns wedge recovery, and a "
+                      "second writer into one nucleus is unsafe)."
+                      % (_live_pid_fs, "" if _resp else "; currently slow to respond under load"),
+                      flush=True)
+                return
             if _cipc_guard.ping(base_dir):
                 _running_build = _cipc_guard.ping_build(base_dir)
-                _disk_build = _code_build_id(_root)          # code content, not the git-SHA banner label
-                if _running_build and _disk_build and _running_build != _disk_build:
+                _disk_build = _handshake_build_id(_root)     # D1: full-payload fingerprint on a seed, else code content
+                # Replace an OLDER-or-no-build answering daemon (a no-build daemon predates the
+                # handshake ⇒ strictly older ⇒ must be superseded, not deferred to — the same rule
+                # as the client path, _should_replace_daemon; closes the reinstall no-replace trap).
+                _replace, _decision = _replace_decision(_running_build, _disk_build)
+                # §4.2 into system.log; A12 — demote the same-build attach case to DEBUG (cron-heal
+                # runs this every ~5 min); a replace or a wait stays INFO.
+                (log.info if (_replace or "→ wait" in _decision) else log.debug)("%s", _decision)
+                if _replace:
                     print("  [~] Replacing an OLDER running Cell daemon with this build "
-                          f"({_running_build} → {_disk_build})…", flush=True)
+                          f"({_decision})…", flush=True)
                     _stop_recorded_portal(_cell_pid_path(base_dir), grace_ticks=500)
                     _stop_recorded_portal(os.path.join(base_dir, "web-portal.pid"))
                     _reap_leaked_portals(base_dir)
@@ -1630,6 +2697,16 @@ def main() -> None:
                 print("  [~] Reaped a wedged boot-lock holder — taking over as the Cell daemon.",
                       flush=True)
                 # fall through with the lock now held → record pid + continue booting.
+            # We now hold the boot lock ⇒ WE are the writer. Run the SAME orphan reclamation `stop`
+            # runs, so a boot cleans up leaked predecessors (a respawn-race survivor or pre-reinstall
+            # writer daemon the run-dir no longer tracks, plus any orphaned portal) exactly as `stop`
+            # does — code-side, never a manual `pkill`. The recorded predecessor was already stopped
+            # above (replace path / wedge reap); this closes the gap where a boot swept only portals
+            # and left an orphaned WRITER daemon holding the feed poller + its ~GB engine.
+            _swept = _reap_orphans(base_dir)
+            if _swept:
+                print(f"  [+] Reclaimed {len(_swept)} orphaned Akasha process(es) left by a prior "
+                      f"run: PID {', '.join(map(str, _swept))}.", flush=True)
             # Record our pid from the START of boot — NOT late (svc:cell registers only after the
             # whole ontology load). A restart during the multi-second load window must be able to
             # FIND and reap this daemon (_reap_stale_daemon reads cell.pid); writing it late left a
@@ -1640,6 +2717,16 @@ def main() -> None:
                     _pf.write(str(os.getpid()))
             except OSError:
                 pass
+            # F31-2/F44-A3 — WE are the writer: bias the OOM killer AWAY from us (a kill here loses
+            # the WriteQueue + engine). A restartable portal/guest subprocess should be the victim
+            # instead. Protective value is env-tunable; needs privilege for a negative value (root on
+            # the VPS), else a silent no-op.
+            try:
+                _oom = int(os.environ.get("AKASHA_DAEMON_OOM_SCORE_ADJ", "-500"))
+            except (TypeError, ValueError):
+                _oom = -500
+            if _set_oom_score_adj(_oom):
+                print(f"  [+] Writer OOM-protected (oom_score_adj={_oom}).", flush=True)
         # MCP stdio transport (local LLM route): attach to the daemon (shared memory) and
         # serve MCP over stdin/stdout. Falls through to an embedded MCP server below if the
         # daemon can't be reached. Never starts the web portal (the CLI stdout is the pipe).
@@ -1651,6 +2738,17 @@ def main() -> None:
             if not args.cmd:                             # interactive REPL
                 if _run_cell_client(_root, base_dir, args, interactive=True):
                     return
+                # _run_cell_client returned False → the daemon could not be reached (it wedged, or
+                # was reaped). For a LARGE silica store, do NOT fall through to the embedded engine:
+                # loading a multi-GB store in the CLI process exhausts memory (OOM) and FEEDS the
+                # crash-loop (each failed boot reloads the whole store in-process and dies). Exit
+                # cleanly so the operator simply retries, instead of the box thrashing itself down.
+                if _silica_store_bytes(base_dir) > (1 << 30):     # > 1 GB
+                    print("  [!] The Cell daemon could not start, and this store is too large to run "
+                          "in an embedded CLI engine (that would exhaust memory and worsen the "
+                          "outage).\n      Retry:  python akasha.py stop ; python akasha.py\n"
+                          "      Persisting? See logs/cell-daemon.log for the boot error.", flush=True)
+                    sys.exit(3)
             else:                                        # single-shot one-off command
                 # R1/R2: converge to a live daemon BEFORE ever running embedded. A one-off command
                 # used to run silently EMBEDDED next to a wedged daemon (RC2) — a second nucleus
@@ -1670,9 +2768,20 @@ def main() -> None:
                           "unsafe).\n      Recover with:  python akasha.py stop   then retry.",
                           flush=True)
                     sys.exit(3)
-                # Genuinely no daemon process: run embedded (built below), but say so plainly, and
-                # remember to exit non-zero if a daemon was EXPECTED (a recorded pid existed) so
-                # cron/scripts can react to the daemon being down.
+                # Genuinely no daemon process. Before embedding, apply the same large-store guard as
+                # the interactive path: a multi-GB silica store loaded into a one-off CLI process
+                # OOMs and FEEDS the crash-loop (a cron `sys.ping` probe would repeatedly build the
+                # whole store in-process and die). Refuse and exit non-zero so the outage surfaces
+                # cleanly instead of the box thrashing itself down.
+                if _silica_store_bytes(base_dir) > (1 << 30):     # > 1 GB
+                    print("  [!] No daemon reachable and this store is too large to run in an "
+                          "embedded CLI engine (that would exhaust memory and worsen the outage).\n"
+                          "      Retry:  python akasha.py stop ; python akasha.py\n"
+                          "      Persisting? See logs/cell-daemon.log for the boot error.", flush=True)
+                    sys.exit(3)
+                # Small store: run embedded (built below), but say so plainly, and remember to exit
+                # non-zero if a daemon was EXPECTED (a recorded pid existed) so cron/scripts can
+                # react to the daemon being down.
                 print("  [!] No daemon reachable — running this command in an embedded engine; the "
                       "persistent daemon/portal are NOT running.", flush=True)
                 args._embedded_singleshot_expected = _recorded_daemon_pid(base_dir) is not None
@@ -1723,6 +2832,12 @@ def main() -> None:
 
     _gw_module.gateway = live_gw
     log.info("Kernel online. Gateway singleton wired.")
+    # The GIL line is the WRITER's, and the writer is the process whose kernel started the writer-role
+    # daemons — not merely a `--daemon` that took the boot lock. Logged at logging setup it was written
+    # by every cron-heal probe (directive 10-02 §4); logged at the lock it was still written twice per
+    # deploy, by the `--daemon` launcher and by the cell (directive 10-03 item 5).
+    if getattr(getattr(live_gw, "kernel_client", None), "_writer_daemons_started", False) is True:
+        _log_gil_switch()
 
     # Graceful shutdown for the non-interactive exit paths (SIGTERM, server stop, EOF):
     # stop the background daemons + close SQLite connections before the interpreter tears
@@ -1759,6 +2874,14 @@ def main() -> None:
                 _signal.signal(_signal.SIGHUP, _signal.SIG_IGN)
 
             def _on_sigterm(_signum, _frame):
+                # A53 item 2 — SIGTERM never returns to main(), so log the ONE leaving line HERE,
+                # before begin_shutdown, so a systemd/`kill` stop of the writer is always attributed
+                # (never a silent disappearance).
+                try:
+                    log.info("[Cell] daemon leaving: reason=signal:SIGTERM pid=%d up=%.0fs",
+                             os.getpid(), time.time() - _PROC_T0)
+                except Exception:
+                    pass
                 try:
                     _lifecycle.begin_shutdown()
                 finally:
@@ -1797,7 +2920,7 @@ def main() -> None:
         # SIGTERM/SIGKILL-replace a perfectly-current daemon (even mid-load → the silent, no-trace
         # daemon death + boot loop). AKASHA_HANDSHAKE_BUILD is ALWAYS the code-content fingerprint,
         # so the handshake matches whenever the code matches, regardless of how it was launched.
-        os.environ["AKASHA_HANDSHAKE_BUILD"] = _code_build_id(_root)
+        os.environ["AKASHA_HANDSHAKE_BUILD"] = _handshake_build_id(_root)
         try:
             from api.portals.cell_ipc import CellIPCServer
             _ipc = CellIPCServer(live_gw, base_dir)
@@ -1806,6 +2929,48 @@ def main() -> None:
             os.makedirs(os.path.join(base_dir, "central"), exist_ok=True)
             with open(_cell_pid_path(base_dir), "w") as _pf:
                 _pf.write(str(os.getpid()))
+            # F36/F47-6.3 — the daemon is up and listening: the manual-restart window is over, so clear
+            # the marker and let the guard tick resume its normal watch on this fresh daemon.
+            _clear_manual_restart(base_dir)
+            # Persist the running-build fingerprint so a LATER launch can detect a code change (a
+            # fresh seed was extracted) and sweep this now-old daemon automatically — even if it has
+            # since crashed and can no longer be pinged (clean-slate-on-deploy, no operator step).
+            # A9 (D1 visibility) — the replace/keep decision otherwise prints to the launcher's STDOUT
+            # only, so a system.log delivery alone cannot prove a redeploy swept the old daemon. Read
+            # the previous fingerprint (the outgoing daemon wrote it here) and mirror the transition
+            # into system.log at boot, so D1 is provable from the log: a changed fingerprint = replaced.
+            try:
+                _rb_path = os.path.join(base_dir, "central", "running_build")
+                _new_hs = os.environ.get("AKASHA_HANDSHAKE_BUILD", "") or "?"
+                _bid = os.environ.get("AKASHA_BUILD_ID", "") or "?"
+                _spawned_by = os.environ.get("AKASHA_SPAWNED_BY", "").strip() or "launcher"
+                _mypid = os.getpid()
+                _old_hs, _old_pid = "", ""
+                try:
+                    with open(_rb_path) as _rbr:
+                        _parts = (_rbr.read().strip().split() + ["", ""])
+                        _old_hs, _old_pid = _parts[0], _parts[1]
+                except OSError:
+                    _old_hs, _old_pid = "", ""
+                if _old_hs and _old_hs != _new_hs:
+                    log.info("[seed] replaced daemon at boot — build %s  fp %s → %s  spawned_by=%s",
+                             _bid, _old_hs, _new_hs, _spawned_by)
+                elif not _old_hs:
+                    log.info("[seed] fresh daemon at boot — build %s  fp %s  spawned_by=%s",
+                             _bid, _new_hs, _spawned_by)
+                elif _old_pid != str(_mypid):
+                    # §4.3 — same fingerprint but a NEW pid = a RESPAWN (crash/wedge revive), not a
+                    # no-op boot. Name it as such and who spawned it, so the log distinguishes a
+                    # recovery from a plain restart.
+                    log.info("[seed] respawned daemon at boot — build %s  fp %s (unchanged)  "
+                             "spawned_by=%s", _bid, _new_hs, _spawned_by)
+                else:
+                    log.info("[seed] daemon build unchanged — build %s  fp %s  spawned_by=%s",
+                             _bid, _new_hs, _spawned_by)
+                with open(_rb_path, "w") as _rbf:              # "<fp> <pid>" (F60 §4.3)
+                    _rbf.write("%s %d" % (os.environ.get("AKASHA_HANDSHAKE_BUILD", ""), _mypid))
+            except OSError:
+                pass
         except Exception as _ipc_exc:
             log.warning("[Cell] local IPC socket failed to start (%s) — "
                         "the web portal will fall back to read-only serving.", _ipc_exc)
@@ -1836,31 +3001,16 @@ def main() -> None:
             except Exception as _sx:
                 log.warning("[Cell] could not share the session secret (%s) — guest tokens "
                             "may mismatch across the portal split; set AKASHA_SECRET.", _sx)
-
-        # Provision the Concept Laboratory research client. The clab projection surface
-        # (archives/labo/concept) carries Radu Tulai's unpublished research as DISPLAY data;
-        # it is private to one account until his paper is out. Create the `radu` user ONLY on
-        # a deployment that actually ships that surface (thesaurus/enterprise archives) and
-        # only here on the writer. Idempotent — never overwrites an existing (possibly rotated)
-        # password. Passphrase from AKASHA_RADU_PASS, else a baked default (rotate via sys.passwd).
+        # F48-2.1 — also persist the resolved secret to a 0600 file under the shared base_dir, so a
+        # portal that did NOT inherit AKASHA_SECRET (spawn-ordering gap) can still sign F16 pulse
+        # emits the daemon will verify — closing the silent pulse-capture loss (seen>0 emit=0 rej>0).
         try:
-            _labo_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                     "archives", "labo", "concept")
-            if os.path.isdir(_labo_dir):
-                _iam = live_gw.kernel_client.iam
-                _n = _iam._nucleus()
-                _exists = bool(_n and _n.vault_retrieve("iam", "user:radu"))
-                if not _exists:
-                    import hashlib as _hl
-                    from lib.akasha.identity import Role as _Role
-                    _rpw = os.environ.get("AKASHA_RADU_PASS") or "Radu-PrimaryExamples-2026"
-                    _iam.register_client("radu", _Role.USER,
-                                         passphrase_hash=_hl.sha256(_rpw.encode("utf-8")).hexdigest(),
-                                         created_by="system",
-                                         display_name="Radu Tulai · Concept Laboratory")
-                    log.info("[Cell] provisioned the Concept Laboratory research client 'radu'.")
-        except Exception as _rx:
-            log.warning("[Cell] could not provision the 'radu' research client: %s", _rx)
+            from api.portals.cell_ipc import write_elevation_secret as _wes
+            _es = os.environ.get("AKASHA_SECRET")
+            if _es:
+                _wes(base_dir, _es)
+        except Exception as _wex:
+            log.debug("[Cell] elevation-secret file write skipped: %s", _wex)
 
         # Register this process as the Supervisor root (svc:cell) and reconcile the
         # run-dir (scrub descriptors whose pid died in a prior crash). The writer is
@@ -1890,6 +3040,43 @@ def main() -> None:
                 host=os.environ.get("AKASHA_HOST", ""), grace_s=45.0)
             _lifecycle.register_closer(
                 lambda: _sv.remove_unit(base_dir, "svc:cell"))
+            # Single-writer convergence: now that WE hold svc:cell (and the boot lock — so no
+            # concurrent writer can be booting), evict any OTHER `--daemon` writer for this data dir.
+            # Such an orphan is a respawn-race survivor or a PRE-REINSTALL daemon whose feed poller
+            # is still running and writing to the wrong (private) cell — the run-dir cascade misses
+            # it because its pid is no longer the recorded svc:cell. This makes restart/reinstall
+            # self-heal to exactly ONE writer (hence one feed poller). Guarded on the boot lock so a
+            # (flock-prevented) concurrent boot could never mutual-kill; keep_pids={self}. Graceful.
+            if _HELD_BOOT_LOCK is not None and not os.environ.get("AKASHA_SERVE_ONLY"):
+                try:
+                    _oldw = _reap_leaked_daemons(base_dir, keep_pids={os.getpid()})
+                    if _oldw:
+                        log.info("[Boot] evicted %d orphaned writer daemon(s) (stale feed poller): %s",
+                                 len(_oldw), ", ".join(map(str, _oldw)))
+                        print(f"  [~] Evicted {len(_oldw)} orphaned writer daemon(s) left by a prior "
+                              f"run (PID {', '.join(map(str, _oldw))}).", flush=True)
+                except Exception as _rw_exc:
+                    log.debug("[Boot] orphan-writer eviction skipped: %s", _rw_exc)
+            # Mount the live-telemetry poller as a managed unit (svc:feed-poll) — SEPARATE from the
+            # ontology boot loader, and only NOW that svc:cell (the single nucleus writer) is recorded,
+            # so the poller mounts as a managed unit tied to the writer (heartbeat + managed stop). The
+            # poller is DEFAULT-ON (opt out via a persisted `feed.poll off`);
+            # _schedule_feed_poll gates on that. Write id is system.librarian → telemetry publishes to
+            # the shared nucleus, guests read it. Runtime-controllable via `feed.poll on|off|status`.
+            # Every host-bound THREAD unit the packages declare (svc:feed-poll, broadcast-relay,
+            # svc:news-broadcast, …) starts here through the kernel, in manifest order; the launcher
+            # names none of them (backend layout order 2026-09-20). Each starter is idempotent and
+            # gates on its own declared state (a persisted `feed.poll off`, say).
+            try:
+                live_gw.kernel_client._start_thread_units()
+            except Exception as _tu_exc:
+                log.debug("[Boot] thread units not started: %s", _tu_exc)
+            # F22: the thread-unit guard — re-creates a feed-poll/station/relay thread that actually
+            # dies (only this interpreter can restart its own threads; the Supervisor correctly cannot).
+            try:
+                live_gw.kernel_client._schedule_thread_guard()
+            except Exception as _tg_exc:
+                log.debug("[Boot] thread-guard not started: %s", _tg_exc)
             # Mount the ontology load onto the plane as job:onto-load (visibility only).
             threading.Thread(target=_onto_load_watcher, args=(live_gw, base_dir),
                              name="onto-load-watcher", daemon=True).start()
@@ -1937,6 +3124,18 @@ def main() -> None:
                 scope="[NLP]", feature="Natural Language Processing (SpaCy)",
             )
 
+        # Thesaurus-tier: pre-load the non-English (Latin-script) SpaCy language dictionaries at boot,
+        # so original-language (原言語) analysis is ready without an on-first-use download. seeds tiers
+        # support the same models but do NOT auto-install — they stay on-demand and degrade to the
+        # tokenizer floor when absent. (CJK is intentionally not in the model map yet.)
+        if _series and not _series.startswith("seeds") and _series != "dev" \
+                and not os.environ.get("AKASHA_SKIP_AUTOINSTALL"):
+            try:
+                from lib.harmonia.plugins.nlp import MultiLocaleNLP as _MLNLP
+                _MLNLP().ensure_models()      # non-CJK (all of model_map); no-op if spaCy absent
+            except Exception as _nlp_exc:
+                log.warning("[NLP] model pre-load skipped: %s", _nlp_exc)
+
     # ── CGI fast-path ────────────────────────────────────────────────
     if _is_cgi:
         log.info("CGI environment detected.")
@@ -1950,7 +3149,10 @@ def main() -> None:
     # ── Headless single-shot (embedded — no daemon was running) ───────
     if args.cmd:
         from api.portals.stdio import run_single_shot
-        print(run_single_shot(" ".join(args.cmd), live_gw))
+        import shlex as _shlex
+        # shlex.quote each token (see the note at the other run_single_shot site): a REMAINDER value
+        # with spaces must survive the shlex re-parse intact.
+        print(run_single_shot(" ".join(_shlex.quote(t) for t in args.cmd), live_gw))
         # R2: if a daemon was EXPECTED (a recorded pid existed) but we ran embedded because it was
         # unreachable, exit non-zero so a cron/script probe reflects that the daemon is down —
         # rather than reporting success from a masking embedded run.
@@ -1962,10 +3164,11 @@ def main() -> None:
     # On the mother machine (full repo): reproductor/ is present, so
     # the --portal flag is the only way to enable the archives portal;
     # the default is always the seeds portal (services/static).
-    _archives_path    = os.path.join(_root, "archives")
+    from lib.akasha.api import reserved as _reserved
+    _archives_path    = _reserved.root("pages")
     _archives_index   = os.path.join(_archives_path, "index.html")
     _is_dev           = os.path.isdir(os.path.join(_root, "reproductor"))
-    if args.portal == "archives":
+    if args.portal == "pages":
         _has_archives = True
     elif _is_dev:
         _has_archives = False          # dev default: seeds portal
@@ -2072,29 +3275,29 @@ def main() -> None:
                      or (80 if _has_archives else _free_port(8000, _web_host)))
 
         # Static dirs for ASGI
-        # The archives series ships its OWN cosmos instance (archives/cosmos/) —
-        # a separate copy with the Archives door back into "/". The seeds series
-        # uses the bundled services/static/cosmos (no archives door). Pick the
-        # archives instance when this deployment is an archives.
-        _archives_cosmos = os.path.join(_archives_path, "cosmos")
-        _cosmos_static   = (_archives_cosmos
-                            if _has_archives and os.path.isdir(_archives_cosmos)
-                            else os.path.join(_root, "services", "static", "cosmos"))
         _services_static = os.path.join(_root, "services", "static")
         _docs_path       = os.path.join(_root, "docs")
 
         # Build mount list: most-specific paths first, "/" last.
-        # Archives sub-apps (word sphere, field gallery, …) are mounted
-        # individually so they are reachable from both portals.
         _asgi_static_dirs = []
-        if os.path.isdir(_cosmos_static):
-            _asgi_static_dirs.append(("/cosmos", _cosmos_static))
         if os.path.isdir(_docs_path):
             _asgi_static_dirs.append(("/docs", _docs_path))
-        for _app in ("word", "field"):
-            _app_path = os.path.join(_archives_path, _app)
-            if os.path.isdir(_app_path):
-                _asgi_static_dirs.append((f"/{_app}", _app_path))
+        # F25c: shared local assets (plotly + the world-GDP dataset) live under services/static/lib, so
+        # the flagship rooms work offline. Mount /lib from that ONE copy for the archives portal too
+        # (the seeds httpd already serves it natively from its docroot).
+        _lib_static = os.path.join(_services_static, "lib")
+        if os.path.isdir(_lib_static):
+            _asgi_static_dirs.append(("/lib", _lib_static))
+        # THE ROOMS A PACKAGE DECLARES (`static` in its manifest — archives' `/cosmos`, `/word`,
+        # `/field`). The launcher used to name all three here (group 4, 4.9). A declared mount whose
+        # directory is not on this cell is skipped with a line: a seeds cell ships no archives tree,
+        # and its root mount already serves services/static/, cosmos included.
+        from lib.akasha.api import manifest as _manifest
+        for _mnt, _dir in sorted(_manifest.declared_static().items()):
+            if os.path.isdir(_dir):
+                _asgi_static_dirs.append((_mnt, _dir))
+            else:
+                log.info("[portal] static mount %s skipped: %s is not on this cell", _mnt, _dir)
 
         if _has_archives:
             _asgi_static_dirs.append(("/", _archives_path))
@@ -2155,13 +3358,14 @@ def main() -> None:
             # Serve-only: THIS process is the sole nucleus writer (boot-load + autolearn);
             # the portal only serves reads. Two writers into one nucleus is a single-writer
             # violation that kills the worker on first boot ("Dead").
-            env["AKASHA_NO_AUTOLEARN"] = "1"
-            env["AKASHA_SERVE_ONLY"] = "1"
+            env["AKASHA_SERVE_ONLY"] = "1"          # the serve-only role also skips autolearn
             # R5: hand the portal this daemon's launch args so its self-watchdog can spawn an
             # IDENTICAL replacement (same --server/--host/--port/--portal) if the writer wedges.
             import json as _json_argv
             env["AKASHA_DAEMON_ARGV"] = _json_argv.dumps(sys.argv[1:])
             try:
+                from lib.harmonia import logger as _hlog
+                _hlog.rotate_if_big(log_path)    # R9 — bound the portal redirect at each (re)launch
                 log_fh = open(log_path, "a")
                 # start_new_session: own session so an SSH SIGHUP on disconnect does not kill
                 # the portal — it keeps serving after `exit` on a public deploy.
@@ -2183,7 +3387,7 @@ def main() -> None:
             try:
                 _portal_recipe = _sv_mod.build_process_spec(
                     argv=cmd, cwd=_root,
-                    env_add={"PYTHONUNBUFFERED": "1", "AKASHA_NO_AUTOLEARN": "1",
+                    env_add={"PYTHONUNBUFFERED": "1",
                              "AKASHA_SERVE_ONLY": "1",
                              "AKASHA_DAEMON_ARGV": _json_argv.dumps(sys.argv[1:])},
                     log=log_path, base_dir=base_dir)
@@ -2200,10 +3404,15 @@ def main() -> None:
             # worker answers sys.ping promptly even under a heavy crawler read, but a generous
             # timeout × the 3-fail threshold (≈45 s) means only a truly wedged worker is replaced —
             # a brief stall no longer triggers a respawn whose memory spike can OOM the daemon.
-            _portal_health = ({"kind": "http",
-                               "target": f"{scheme}://127.0.0.1:{int(_web_port)}/api/rpc",
+            # F27-10 — build the probe URL from the SAME scheme/port this portal is being launched
+            # with (single source: `scheme` + `_web_port`, the exact values in `cmd` above), so a
+            # future port/TLS move can never silently leave a probe that can never pass (a permanent
+            # respawn loop). One registration line makes the pairing visible at boot, not at the
+            # first respawn storm.
+            _probe_url = (f"{scheme}://127.0.0.1:{int(_web_port)}/api/rpc") if _web_port else None
+            _portal_health = ({"kind": "http", "target": _probe_url,
                                "method": "sys.ping", "timeout": 10.0}
-                              if _web_port else None)
+                              if _probe_url else None)
             # F9 — a B-scale serve-only worker takes ~45-60 s to load its substrate before it binds
             # its port; give it a generous readiness grace so the health tick never respawns it
             # mid-boot (the worker ends the grace early by stamping ready_at once it serves).
@@ -2214,6 +3423,10 @@ def main() -> None:
                 spec=_portal_recipe, trust="network", serve_only=True,
                 health=_portal_health, boot_grace_s=_portal_boot_grace, log_fd=log_fh)
             log.info(f"[Boot] Web portal ({engine}) PID {proc.pid} on {_web_host}:{_web_port}")
+            if _probe_url:
+                log.info("[Boot] svc:web-portal probe = %s (tls=%s) — derived from the portal's own "
+                         "scheme/port, so a port/TLS change moves the probe in lockstep",
+                         _probe_url, "on" if scheme == "https" else "off")
             from services.http_gateway import portal_banner
             for _line in portal_banner(_web_host, _web_port, scheme=scheme):
                 print("  " + _line, flush=True)
@@ -2291,7 +3504,7 @@ def main() -> None:
             else:
                 _launch_http_portal()
 
-        _mode_label = "archives/uvicorn" if _has_archives else _web_engine
+        _mode_label = "pages/uvicorn" if _has_archives else _web_engine
         if not _skip_portal:
             log.info(f"Web portal ({_mode_label}) starting on {_web_host}:{_web_port}.")
 
@@ -2307,14 +3520,9 @@ def main() -> None:
         log.info("[Boot] %s mode (no CLI).", _tag)
         print(f"  [+] {_tag} — engine + portal serving; the local socket accepts a "
               f"CLI client. Stop: python akasha.py stop\n", flush=True)
-        _portal_proc = _supervisor.get_proc("svc:web-portal")
-        try:
-            if _portal_proc is not None:
-                _portal_proc.wait()          # portal subprocess (httpd or uvicorn)
-            else:
-                threading.Event().wait()     # no portal handle — block here
-        except (KeyboardInterrupt, EOFError):
-            pass
+        _leave_reason = _daemon_serve_loop(_supervisor.get_proc("svc:web-portal"), log)
+        _up = time.time() - _PROC_T0
+        log.info("[Cell] daemon leaving: reason=%s pid=%d up=%.0fs", _leave_reason, os.getpid(), _up)
         return
 
     # ── MCP stdio transport (embedded fallback — no daemon was reachable) ──

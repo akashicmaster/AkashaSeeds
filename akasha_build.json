@@ -1,7 +1,8 @@
 {
-  "series": "seeds12",
-  "commit": "d9410e7bf8ad27155e7e522cd115a291be37b8a3",
-  "commit_short": "d9410e7bf8",
-  "commit_date": "2026-08-12T01:24:43+00:00",
-  "dirty": false
+  "series": "seeds13",
+  "commit": "36321b5b43da9c47635e5bc051cf5d2ab1a2c87b",
+  "commit_short": "36321b5b43",
+  "commit_date": "2026-10-11T15:33:27+00:00",
+  "dirty": false,
+  "content_fingerprint": "2d9e3697a2486955"
 }

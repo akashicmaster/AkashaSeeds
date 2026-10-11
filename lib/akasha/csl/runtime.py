@@ -60,13 +60,14 @@ def _get_registry(discover_path: Optional[str] = None):
             if _root_dir not in sys.path:
                 sys.path.insert(0, _root_dir)
 
-            from lib.akasha.concepts.registry import ConceptRegistry
-            reg = ConceptRegistry()
-            concepts_dir = discover_path or os.path.join(_akasha_dir, "concepts")
-            reg.discover(concepts_dir, module_prefix="lib.akasha.concepts")
-            # Session-layer models (SpaceConcept → instance.*) live in a sibling dir. The
-            # kernel discovers both; CSL must too, or instance.* runs as an unknown command.
-            reg.discover(os.path.join(_akasha_dir, "session"), module_prefix="lib.akasha.session")
+            # The Concept Model router comes from the manifests through the API — CSL never
+            # imports the concepts package (backend layout order 2026-09-20 §1.3). The router
+            # discovers both layers itself (concepts/ and the session instance layer), so
+            # instance.* runs here exactly as it does in the kernel.
+            from lib.akasha import api as _api
+            reg = (_api.discover_routers() or [None])[0]
+            if reg is None:
+                return None
             _REGISTRY_CACHE = reg
             return reg
         except Exception as exc:
@@ -90,11 +91,18 @@ class CslRuntime:
         only ConceptRegistry dispatch is attempted.
     """
 
-    def __init__(self, session: Any, dispatcher: Any = None) -> None:
+    def __init__(self, session: Any, dispatcher: Any = None,
+                 transport_trust: Any = None) -> None:
         self.session    = session
         # Optional kernel dispatcher: allows CSL to call kernel-level methods
         # (define, link.create, set.add, …) when running inside _handle_csl.
         self._dispatcher = dispatcher
+        # The transport trust the CSL script was admitted with (G4 macro facility): sub-calls run at
+        # the SAME trust — never higher — so a script run by the local operator / the JCL worker
+        # (INTERNAL) or by a signed agent reaches the methods it is entitled to, instead of being
+        # re-authenticated over NETWORK (which demands a fresh token). None = the previous behaviour
+        # (the kernel's default NETWORK), so existing csl.run callers are unaffected.
+        self._trust = transport_trust
         self._vars: Dict[str, Any] = {}
         self._registry = _get_registry()
 
@@ -190,18 +198,19 @@ class CslRuntime:
         role = getattr(self.session, "role", None)
         if iam is None or role is None:
             return
-        try:
-            from lib.akasha.kernel_methods import METHOD_TO_ACTION
-            action = METHOD_TO_ACTION.get(method, method)
-            allowed = iam.authorize(role, action, params)
-        except PermissionError:
-            raise
-        except Exception:
-            return  # authorize unavailable / signature mismatch — don't wedge execution
-        if not allowed:
-            raise PermissionError(
-                f"CSL: capability denied for '{method}' "
-                f"(role {getattr(role, 'value', role)})")
+        # THE GATE, not a second copy of the policy. A CSL step is a method call, so it asks
+        # the same function the dispatcher asks, about the same identity — and gets the same
+        # answer. `iam.authorize` is gone; a step that was allowed here and refused at dispatch
+        # (or the reverse) was two gates disagreeing, which is what this order removes.
+        from lib.akasha.api import gate as _gate
+        from lib.akasha.kernel_methods import METHOD_TO_ACTION
+        action = METHOD_TO_ACTION.get(method)
+        if action is None:
+            return                     # no capability mapping: stage-gated, or not over RPC
+        _who = getattr(self.session, "client_id", "")
+        _ok, _why = _gate.gate(_who, action)
+        if not _ok:
+            raise PermissionError("CSL: %s for '%s'" % (_why, method))
 
     def _dispatch(self, method: str, params: Dict[str, Any]) -> Any:
         """
@@ -238,6 +247,11 @@ class CslRuntime:
         if _disp is not None:
             import uuid
             rid = str(uuid.uuid4())
+            # When dispatching via the injected KERNEL dispatcher, propagate the script's transport
+            # trust so sub-calls run at the trust the script was admitted with (never higher). Dispatch
+            # via the session object keeps its own trust handling.
+            _pass_trust = (self._trust is not None and _disp is self._dispatcher
+                           and hasattr(_disp, "dispatch"))
             # _skip_history: suppress ctx.stream() inside _authenticated_dispatch.
             # History context ($0, $N) is never needed for batch CSL/JCL writes;
             # skipping the DB fetch eliminates one SELECT per command during boot load.
@@ -255,7 +269,8 @@ class CslRuntime:
                 },
                 "id": rid,
             }
-            response = _disp.dispatch(payload)
+            response = (_disp.dispatch(payload, self._trust) if _pass_trust
+                        else _disp.dispatch(payload))
             return self._unwrap_response(method, response)
 
         # 3. Try calling method directly on session (duck-typed fallback)

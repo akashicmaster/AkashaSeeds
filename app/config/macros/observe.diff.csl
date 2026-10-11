@@ -1,0 +1,17 @@
+# observe.diff (G4 §3 macro, Part D T7) — the change between two readings of the same target, per item
+# and in sum. A PURE macro over Set operations: the two run-membership Sets
+# (set:vlab:run:<before>:observations and …:<after>:…) ARE "the observations of run <before>/<after>"
+# (§4.1), so lens.compare joins them by the observed item and compares the top predicted label — no
+# bench.diff op, no scan. `truth=` reads the target's answer-key field (never read by an observer) to
+# score agreement before vs after. One aggregate atom wb:<bench>:diff:<before>:<after> is stored and
+# linked bench:compares → both runs, so the Source Viewer shows the summary without re-running.
+#
+# The seminar read-comparison writes the same thing with lens … within=:
+#   lens src=role:target follow=vis:observes within=set:vlab:run:<before>:observations
+# lens.compare consumes the run membranes directly, which is the same Set intersection.
+#
+#!params bench,before,after,truth=label
+lens.compare a="set:vlab:run:$before:observations" b="set:vlab:run:$after:observations" key="vis:observes" field="label" truth="$truth" result="wb:$bench:diff:$before:$after"
+# `lens.compare` returns the stored key and files it nowhere: the macro files it where `learning.runs` reads it.
+set.add name="set:vlab:compares" id="wb:$bench:diff:$before:$after"
+set.add name="set:wb:$bench:diffs" id="wb:$bench:diff:$before:$after"

@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AKASHA — Reference</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { min-height: 100%; }
+    body {
+      font-family: Georgia, 'Times New Roman', serif;
+      background: radial-gradient(1100px 700px at 50% -8%, #1c130a 0%, #0c0803 62%, #070502 100%);
+      color: #e8c67a; padding: 4vh 5vw 8vh;
+    }
+    header { max-width: 1000px; margin: 0 auto 1.6rem; }
+    .back { font-size: .62rem; letter-spacing: 2.5px; text-transform: uppercase;
+            color: rgba(200,146,58,.7); text-decoration: none; }
+    .back:hover { color: #e8c67a; }
+    h1 { font-weight: 400; font-size: clamp(1.7rem, 4vw, 2.4rem); color: #f0d99a;
+         margin: .9rem 0 .3rem; letter-spacing: 1px; }
+    .sub { font-size: .82rem; color: rgba(232,198,122,.6); letter-spacing: .5px; }
+
+    main { max-width: 1000px; margin: 0 auto; }
+
+    /* ── A–Z letter tabs (browse one letter at a time) ─────────────────── */
+    .letters { position: sticky; top: 0; z-index: 5;
+      display: flex; flex-wrap: wrap; gap: 4px;
+      padding: .7rem 0 .9rem; margin-bottom: 1.2rem;
+      background: linear-gradient(to bottom, rgba(12,8,3,.96) 70%, rgba(12,8,3,0));
+      border-bottom: 1px solid rgba(170,100,24,.18);
+    }
+    .ltr {
+      font-family: inherit; cursor: pointer;
+      min-width: 1.9rem; padding: .28rem .1rem;
+      font-size: .82rem; color: rgba(200,146,58,.8);
+      background: transparent; border: 1px solid rgba(170,100,24,.28); border-radius: 3px;
+      transition: color .15s, border-color .15s, background .15s;
+    }
+    .ltr:hover { color: #f0d99a; border-color: rgba(200,146,58,.7); }
+    .ltr.on { color: #1c130a; background: #e8c67a; border-color: #e8c67a; font-weight: bold; }
+
+    /* ── Prefix search box (jump anywhere in the glossary) ─────────────── */
+    .toolbar { margin: 0 0 .8rem; }
+    .jump {
+      width: 100%; max-width: 460px; box-sizing: border-box;
+      padding: .55rem .8rem; font-family: inherit; font-size: .92rem;
+      color: #f0d99a; background: rgba(30,20,8,.6);
+      border: 1px solid rgba(170,100,24,.4); border-radius: 5px; outline: none;
+    }
+    .jump::placeholder { color: rgba(200,146,58,.5); }
+    .jump:focus { border-color: rgba(200,146,58,.8); background: rgba(40,26,10,.7); }
+
+    .active-letter { font-size: 1.5rem; color: #c8923a; font-weight: 400;
+      border-bottom: 1px solid rgba(170,100,24,.25); padding-bottom: .3rem; margin-bottom: .5rem;
+      display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap; }
+    .crumb-up { font-size: .7rem; letter-spacing: 1.5px; text-transform: uppercase;
+      color: rgba(200,146,58,.75); cursor: pointer; background: transparent;
+      border: 1px solid rgba(170,100,24,.3); border-radius: 3px; padding: .15rem .5rem; }
+    .crumb-up:hover { color: #f0d99a; border-color: rgba(200,146,58,.6); }
+    .crumb-hint { font-size: .72rem; color: rgba(200,180,140,.55); letter-spacing: .3px; }
+
+    /* ── Second-level sub-index (drill A → Ac → Aci when a bucket overflows) ── */
+    .subletters { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 1rem; }
+    .subltr { font-family: inherit; cursor: pointer; min-width: 2.1rem;
+      padding: .22rem .3rem; font-size: .74rem; color: rgba(200,146,58,.65);
+      background: transparent; border: 1px solid rgba(170,100,24,.22); border-radius: 3px;
+      transition: color .15s, border-color .15s, background .15s; }
+    .subltr:hover { color: #f0d99a; border-color: rgba(200,146,58,.6); }
+    .subltr.has { color: #e8c67a; border-color: rgba(200,146,58,.5); }
+    .subltr.on { color: #1c130a; background: #e8c67a; border-color: #e8c67a; font-weight: bold; }
+
+    .terms { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 4px 18px; }
+    .term { color: rgba(232,198,122,.9); text-decoration: none; padding: 3px 0;
+            font-size: .95rem; border-bottom: 1px solid transparent; }
+    .term:hover { color: #fff2cf; border-color: rgba(200,146,58,.4); }
+    .note { color: rgba(200,180,140,.6); font-size: .85rem; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="back" href="/hall/">← reading hall</a>
+    <h1>Reference</h1>
+    <div class="sub">glossary of concepts · browse by letter</div>
+  </header>
+  <main>
+    <div class="toolbar">
+      <input id="jump" class="jump" type="search" autocomplete="off" autocapitalize="off"
+             autocorrect="off" spellcheck="false"
+             placeholder="jump to a prefix — e.g. acq, wine, tokyo" aria-label="Search the glossary by prefix">
+    </div>
+    <div class="letters" id="letters"></div>
+    <div class="active-letter" id="active-letter">A</div>
+    <div class="subletters" id="subletters"></div>
+    <div id="terms"><p class="note">Loading…</p></div>
+  </main>
+
+  <script>
+  (function () {
+    'use strict';
+    function rpc(method, params) {
+      return fetch('/rpc', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', method: method, params: params, id: method }) })
+        .then(function (r) { return r.json(); })
+        .then(function (j) { if (j.error) throw new Error(j.error.message || 'rpc error'); return j.result; });
+    }
+    var _tok = null, _exp = 0, _p = null, KEY = 'akasha_guest_token', SKEW = 30000;
+    // A guest binding token (gbk:) has a FIXED lifetime (<=30 min) and is NOT renewed by
+    // activity, so a token cached in localStorage goes stale. Reusing a stale token made every
+    // read return -32001 and the page render empty on each reload — the real cause of the
+    // "references appear/disappear" intermittency. So: remember the token's expiry, never reuse
+    // a (near-)expired one, and mint a fresh token before the old one dies.
+    function _readTokCache() {
+        try {
+            var raw = localStorage.getItem(KEY); if (!raw) return null;
+            if (raw.charAt(0) === '{') { var o = JSON.parse(raw); return (o && o.key) ? o : null; }
+            return { key: raw, exp: 0 };                 // legacy plain-string token: expiry unknown
+        } catch (e) { return null; }
+    }
+    function _mintTok() {
+        _p = rpc('session.guest.create', {}).then(function (g) {
+            _p = null; _tok = g.binding_key;
+            _exp = (g && g.expires_at) ? g.expires_at * 1000 : (Date.now() + 25 * 60000);
+            try { localStorage.setItem(KEY, JSON.stringify({ key: _tok, exp: _exp })); } catch (e) {}
+            return _tok;
+        }).catch(function (e) { _p = null; throw e; });
+        return _p;
+    }
+    function getToken() {
+        var now = Date.now();
+        if (_tok && _exp - now > SKEW) return Promise.resolve(_tok);
+        if (_p) return _p;
+        if (!_tok) { var c = _readTokCache(); if (c && c.exp - now > SKEW) { _tok = c.key; _exp = c.exp; return Promise.resolve(_tok); } }
+        return _mintTok();                             // no token, or (near-)expired → mint fresh
+    }
+    function freshToken() { _tok = null; _exp = 0; _p = null; try { localStorage.removeItem(KEY); } catch (e) {} return getToken(); }
+    function isSessionErr(m) { m = (m || '').toLowerCase(); return m.indexOf('session') >= 0 || m.indexOf('token') >= 0 || m.indexOf('expired') >= 0 || m.indexOf('denied') >= 0; }
+    function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+    function atomHref(ref) { return '/a/' + encodeURIComponent(ref).replace(/%3A/gi, ':'); }
+
+    var LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+    var SUB = 'abcdefghijklmnopqrstuvwxyz'.split('');
+    var LIMIT = 1000, SCAN = 50000;
+    // A glossary letter can hold thousands of concepts, more than one page. The index is
+    // therefore a PREFIX drill-down: `active` is a prefix ("A", "AC", "ACQ"), fetched with
+    // initial=<prefix>. When a prefix's page is truncated (total > shown), a second-level a–z
+    // row lets the reader narrow one more character — recursively — so every entry is reachable;
+    // the search box jumps straight to any prefix. Each cache entry: {entries, total}.
+    var cache = {};
+    var active = 'A';
+
+    function renderTabs() {
+      var first = active.charAt(0);
+      document.getElementById('letters').innerHTML = LETTERS.map(function (l) {
+        return '<button class="ltr' + (l === first ? ' on' : '') + '" data-l="' + l + '">' + l + '</button>';
+      }).join('');
+    }
+    function termsHtml(entries) {
+      if (!entries.length) return '<p class="note">No entries under ' + esc(active) + '.</p>';
+      return '<div class="terms">' + entries.map(function (e) {
+        var ref = (e.target && e.target.ref) || e.ref;
+        return '<a class="term" href="' + atomHref(ref) + '">' + esc(e.slug || e.title || ref) + '</a>';
+      }).join('') + '</div>';
+    }
+    // Breadcrumb: the active prefix, with an "up" button when we've drilled past one letter.
+    function renderCrumb(total, shown) {
+      var el = document.getElementById('active-letter'), h = esc(active);
+      if (active.length > 1) {
+        h += ' <button class="crumb-up" data-up="1">↑ ' + esc(active.slice(0, -1)) + '</button>';
+      }
+      if (total != null && total > shown) {
+        h += ' <span class="crumb-hint">' + shown + ' of ' + total +
+             ' — pick a letter below or type to narrow</span>';
+      } else if (total != null) {
+        h += ' <span class="crumb-hint">' + total + (total === 1 ? ' entry' : ' entries') + '</span>';
+      }
+      el.innerHTML = h;
+    }
+    // Second-level a–z drill row — shown only when the current prefix overflowed a page.
+    // Letters already visible in this (truncated) page are marked `.has`; the rest stay
+    // clickable so entries past the cut are still reachable by tap.
+    function renderSub(entries, truncated) {
+      var el = document.getElementById('subletters');
+      if (!truncated) { el.innerHTML = ''; return; }
+      var pos = active.length, present = {};
+      entries.forEach(function (e) {
+        var t = (e.slug || e.title || ((e.target && e.target.ref) || e.ref) || '');
+        var ch = String(t).charAt(pos).toLowerCase();
+        if (ch >= 'a' && ch <= 'z') present[ch] = 1;
+      });
+      el.innerHTML = SUB.map(function (c) {
+        return '<button class="subltr' + (present[c] ? ' has' : '') + '" data-sub="' + c + '">' +
+               esc(active + c) + '</button>';
+      }).join('');
+    }
+
+    function select(prefix, isRetry) {
+      prefix = (prefix || 'A').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (!prefix) prefix = 'A';
+      active = prefix;
+      renderTabs();
+      try { if (('#' + prefix) !== location.hash) history.replaceState(null, '', '#' + prefix); } catch (e) {}
+      var main = document.getElementById('terms');
+      var c = cache[prefix];
+      if (c) { renderCrumb(c.total, c.entries.length); renderSub(c.entries, c.total > c.entries.length); main.innerHTML = termsHtml(c.entries); return; }
+      document.getElementById('active-letter').textContent = prefix;
+      document.getElementById('subletters').innerHTML = '';
+      main.innerHTML = '<p class="note">Loading ' + esc(prefix) + ' …</p>';
+      getToken()
+        .then(function (tok) { return rpc('archives.reference', { session_token: tok, initial: prefix.toLowerCase(), limit: LIMIT, scan: SCAN }); })
+        .then(function (r) {
+          var es = (r && r.entries) || [];
+          var total = (r && typeof r.total === 'number') ? r.total : es.length;
+          cache[prefix] = { entries: es, total: total };
+          if (active !== prefix) return;
+          var trunc = total > es.length;
+          renderCrumb(total, es.length);
+          renderSub(es, trunc);
+          main.innerHTML = termsHtml(es);
+        })
+        .catch(function (err) {
+          var msg = err && err.message ? err.message : '';
+          if (!isRetry && isSessionErr(msg)) { freshToken().then(function () { select(prefix, true); }).catch(function () {}); return; }
+          if (active === prefix) main.innerHTML = '<p class="note">Could not load ' + esc(prefix) + '. ' + esc(msg) + '</p>';
+        });
+    }
+
+    document.getElementById('letters').addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('.ltr') : null;
+      if (b) { var jb = document.getElementById('jump'); if (jb) jb.value = ''; select(b.getAttribute('data-l'), false); }
+    });
+    document.getElementById('subletters').addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('.subltr') : null;
+      if (b) select(active + b.getAttribute('data-sub'), false);
+    });
+    document.getElementById('active-letter').addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('.crumb-up') : null;
+      if (b) select(active.slice(0, -1) || 'A', false);
+    });
+    // Search box: type any prefix → jump straight to it (debounced). Empty → back to 'A'.
+    var jump = document.getElementById('jump'), _t = null;
+    jump.addEventListener('input', function () {
+      clearTimeout(_t);
+      _t = setTimeout(function () {
+        var v = jump.value.trim();
+        select(v || 'A', false);
+      }, 220);
+    });
+
+    window.addEventListener('hashchange', function () {
+      var p = (location.hash || '').replace('#', '').toUpperCase();
+      if (p && p !== active) select(p, false);
+    });
+
+    var initial = (location.hash || '').replace('#', '').toUpperCase();
+    select(initial || 'A', false);
+  }());
+  </script>
+<!-- pulse beacon (F18) — fire-and-forget access analytics; never breaks the page -->
+<script>
+(function () {
+  try {
+    var prev = ''; try { prev = sessionStorage.getItem('pulse_prev') || ''; } catch (e) {}
+    var concept = 'site:archives_reference';
+    var payload = { concept: concept, surface: 'reference', prev: prev,
+                    page_referrer: document.referrer || '' };
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon('/pulse', new Blob([JSON.stringify(payload)],
+                                              { type: 'application/json' }));
+    }
+    try { sessionStorage.setItem('pulse_prev', concept); } catch (e) {}
+  } catch (e) { /* analytics must never break a page */ }
+})();
+</script>
+</body>
+</html>

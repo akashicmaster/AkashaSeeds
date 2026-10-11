@@ -1,0 +1,7 @@
+{
+  "label": "Akasha Station — programme state vocabulary",
+  "description": "The vocabulary a station programme's STATE is spoken in: the four states a registered programme is always in (warming up / on air / rebroadcast / standing by) and the reasons a standing-by or a skipped airing carries (fresh / llm_pool / provider 429). A value the code compares against is vocabulary: each is one atom in the `station` namespace, joined to `set:station:state:<state>` at mint, and the code uses the id — never a free string. Registry surfaces (station:studios / station:show:*) are minted by the station itself and are not declared here.",
+  "license": "MIT",
+  "source": "internal",
+  "version": "1.0"
+}

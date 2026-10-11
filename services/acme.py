@@ -27,7 +27,7 @@ STAGING (untrusted certs, high rate limits) — set true FIRST on a new VPS, the
 false for a real cert. See config/tls.json.example for a template.
 
 Environment variables still work and OVERRIDE the file (back-compat / secrets manager):
-  AKASHA_TLS_DOMAINS · AKASHA_TLS_EMAIL · AKASHA_ACME_STAGING ·
+  AKASHA_TLS_DOMAINS · AKASHA_TLS_EMAIL ·
   AKASHA_ACME_DIRECTORY (override directory URL) · AKASHA_ACME_RENEW_DAYS (default 30).
 
 Running the flow constitutes agreement to the ACME provider's Terms of Service
@@ -38,7 +38,7 @@ be loaded the function degrades to a no-op and the portal serves plain HTTP.
 
 NOTE: the live ACME handshake talks to Let's Encrypt over the network and cannot
 be exercised in a restricted CI sandbox — verify on the target VPS with
-AKASHA_ACME_STAGING=1 first. All *local* crypto (account key, JWK thumbprint,
+`"staging": true` in the TLS file first. All *local* crypto (account key, JWK thumbprint,
 key-authorization, CSR SANs, cert-expiry decision) is unit-tested.
 """
 import os
@@ -153,9 +153,7 @@ def _directory_url(data_dir: str = None) -> str:
     override = os.environ.get("AKASHA_ACME_DIRECTORY", "").strip()
     if override:
         return override
-    staging = os.environ.get("AKASHA_ACME_STAGING", "").strip() in ("1", "true", "yes")
-    if not staging and data_dir is not None:
-        staging = bool(_load_tls_file(data_dir).get("staging", False))
+    staging = bool(_load_tls_file(data_dir).get("staging", False)) if data_dir is not None else False
     return LETSENCRYPT_STAGING if staging else LETSENCRYPT_PROD
 
 
@@ -541,7 +539,7 @@ def ensure_certificate(data_dir, start_responder=True):
         # The cert is current — but if akasha manages it (not operator-supplied)
         # and its CA no longer matches this run's environment (a staging cert
         # while now configured for PRODUCTION, or vice versa), re-issue. Otherwise
-        # `unset AKASHA_ACME_STAGING` would keep serving the untrusted staging cert.
+        # turning `staging` off would keep serving the untrusted staging cert.
         if operator_supplied:
             return "current"
         _cs = _cert_is_staging(certfile)

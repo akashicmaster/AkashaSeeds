@@ -444,7 +444,7 @@ add a `region` field to one record later, it appears as a column automatically o
 
 ### Complete page for this section
 
-Save this as `fruit_records.html` in `archives/` (or see section 0-5 for why that matters).
+Save this as `fruit_records.html` in `app/archives/` (or see section 0-5 for why that matters).
 
 ```html
 <!doctype html>
@@ -700,11 +700,11 @@ open your HTML file from disk as usual. The `*` CORS policy allows it.
 
 **Option 2 — Serve your HTML from the Akasha server itself (same origin, no CORS at all).**
 
-Place your HTML file inside the `archives/` directory:
+Place your HTML file inside the `app/archives/` directory:
 
 ```
 AkashicTree/
-  archives/
+  app/archives/
     index.html          ← the built-in portal
     fruit_records.html  ← your file goes here
 ```
@@ -739,13 +739,13 @@ served from — so the code works regardless of which port Akasha started on.
 
 ### The archives portal as a reference
 
-The `archives/` directory already contains a production-level frontend built entirely on
+The `app/archives/` directory already contains a production-level frontend built entirely on
 the same `/rpc` endpoint. It implements the public thesaurus reader, the Cosmos graph viewer,
 and the admin console — all using `fetch()` calls in plain JavaScript, with no frameworks or
 build pipeline beyond what ships with the HTML files themselves.
 
 If you want to understand how a more complete interface handles authentication state,
-error display, and progressive enhancement, reading `archives/index.html` and the companion
+error display, and progressive enhancement, reading `app/archives/index.html` and the companion
 scripts is the most direct reference available.
 
 ---
@@ -759,7 +759,7 @@ Over this chapter you have:
 - Written atoms from a form and read them back with their link neighbourhood
 - Created structured `rec:fruit` records with named numeric attributes and displayed them
   as a live-updating HTML table
-- Understood why CORS matters and how to avoid it by serving your page from `archives/`
+- Understood why CORS matters and how to avoid it by serving your page from `app/archives/`
 
 ### Quick reference: method names used in this chapter
 

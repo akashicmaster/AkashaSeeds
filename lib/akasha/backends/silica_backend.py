@@ -23,9 +23,12 @@ test/silica_backend_eval.py (parity vs SQLiteBackend) + the engine's crash/rollb
 guarantees.
 """
 
+from lib.akasha import owned_fields as _owned
 import os
 import re
 import json
+import time
+import logging
 import hashlib
 import fnmatch
 import threading
@@ -34,6 +37,21 @@ from typing import Optional, List, Dict, Any
 from lib.akasha.backends.base import AkashaBackend
 from lib.akasha.backends.silica import SilicaStore
 from lib.akasha.dna import get_primal_sequence
+
+logger = logging.getLogger("Akasha.Silica")
+_sb_scan_warn_seen = {}
+
+
+def _sb_scan_warn(caller: str) -> None:
+    """A48.2 — one throttled WARNING per uncapped full-store walk (the F33/F50 access-degree guard)."""
+    try:
+        now = time.time()
+        if now - _sb_scan_warn_seen.get(caller, 0.0) >= 300.0:
+            _sb_scan_warn_seen[caller] = now
+            logger.warning("[scan] O(store) walk caller=%s (uncapped iter_all_chunks; "
+                           "prefer a membership set or iter_chunk_meta)", caller)
+    except Exception:
+        pass
 
 # ── ISO-639-1 language codes (mirror SQLiteBackend for lang: derivation) ──────
 _ISO_639_1 = {
@@ -108,8 +126,21 @@ class SilicaBackend(AkashaBackend):
         # Value residency (AKASHA_SILICA_VALUES): "ram" (default) keeps values in the index —
         # fast, but the whole dataset must fit in RAM; "disk" keeps only a (offset,len) location
         # and preads values from the WAL on demand, so a large ontology (e.g. the full thesaurus)
-        # no longer has to be RAM-resident. Same on-disk format either way.
-        value_store = os.environ.get("AKASHA_SILICA_VALUES", "ram").strip().lower()
+        # no longer has to be RAM-resident. Same on-disk format either way. This is the ONE
+        # residency lever (F33): the index itself is ALWAYS RAM — the set-algebra structure must be
+        # memory-resident (that is the paid-for invariant); only per-atom Operand BODIES go to disk.
+        # Auto-detect the VALUE mode from the store's persisted "store.mode" marker so a disk-value
+        # store reopened by the bare entrypoint (no env) does NOT fall back to ram-value and try to
+        # load the whole store into RAM. This is the footgun worth auto-correcting.
+        _marker = {}
+        try:
+            import json
+            with open(os.path.join(self._dir, "store.mode"), "r") as _mf:
+                _marker = json.load(_mf) or {}
+        except (OSError, ValueError):
+            _marker = {}
+        value_store = (os.environ.get("AKASHA_SILICA_VALUES")
+                       or _marker.get("values") or "ram").strip().lower()
         self._store = SilicaStore(self._dir, banks=banks, sync=sync, value_store=value_store)
         self._seq_lock = threading.Lock()
         self._unfold_dna()
@@ -123,7 +154,17 @@ class SilicaBackend(AkashaBackend):
 
     def _unfold_dna(self) -> None:
         """Seed the primal DNA atoms (boot parity with SQLiteBackend): each DNA
-        alias → a universal-scoped atom + its derived leaf:/ns:/lang: collections."""
+        alias → a universal-scoped atom + its derived leaf:/ns:/lang: collections.
+
+        Serve-only guard (single-writer invariant): the read-only portal subprocess
+        (AKASHA_SERVE_ONLY) must NEVER write the shared nucleus — that is the primary
+        writer's job. An initialized store already carries all DNA, so this is a no-op
+        there anyway; but if a DNA atom were missing, a serve-only process must NOT
+        write it into the shared store (that would make the portal a second writer,
+        the exact failure this invariant forbids). Parity with SQLiteBackend, whose
+        _migrate_tables early-returns under the same flag."""
+        if os.environ.get("AKASHA_SERVE_ONLY", "").strip().lower() in ("1", "yes", "true", "on"):
+            return
         for alias, text in get_primal_sequence().items():
             if self.get_key_by_alias(alias):
                 continue
@@ -148,6 +189,7 @@ class SilicaBackend(AkashaBackend):
 
     # ══ Atom CRUD ══════════════════════════════════════════════════════════════
     def put_chunk_raw(self, key, content, meta_str, author, status, ts) -> None:
+        _owned.check(self, key, meta_str)          # engine-owned fields (purge order §1.4)
         rec = {"content": content, "meta": meta_str, "created_at": str(ts),
                "author": author, "status": status, "seq": self._store.next_id()}
         self._write((self._rk(key), _SUB_CHUNK, _j(rec)),
@@ -162,6 +204,7 @@ class SilicaBackend(AkashaBackend):
         same bundle is several separate commits (a torn atom on crash); here the
         memory-management unit IS one primitive.  Composite may call this instead of
         put_chunk_raw + put_chunk_access + update_meta."""
+        _owned.check(self, key, meta_str)
         rk = self._rk(key)
         seq = self._store.next_id()
         rec = {"content": content, "meta": meta_str, "created_at": str(ts),
@@ -175,14 +218,15 @@ class SilicaBackend(AkashaBackend):
         self._write(*ops)
 
     def update_chunk_status(self, key, status, content=None) -> None:
-        cur = self._store.get(self._rk(key), _SUB_CHUNK)
-        if cur is None:
-            return
-        rec = _u(cur)
-        rec["status"] = status
-        if content is not None:
-            rec["content"] = content
-        self._write((self._rk(key), _SUB_CHUNK, _j(rec)))
+        def _f(cur):
+            if cur is None:
+                return None
+            rec = _u(cur)
+            rec["status"] = status
+            if content is not None:
+                rec["content"] = content
+            return _j(rec)
+        self._store.update(self._rk(key), _SUB_CHUNK, _f)
 
     def get_chunk_raw(self, key) -> Optional[dict]:
         rec = _u(self._store.get(self._rk(key), _SUB_CHUNK))
@@ -192,12 +236,45 @@ class SilicaBackend(AkashaBackend):
                 "status": rec["status"], "author": rec["author"]}
 
     def update_meta(self, key, meta_dict) -> None:
-        cur = self._store.get(self._rk(key), _SUB_CHUNK)
-        if cur is None:
-            return
-        rec = _u(cur)
-        rec["meta"] = json.dumps(meta_dict)
-        self._write((self._rk(key), _SUB_CHUNK, _j(rec)))
+        # Replaced inside the store's atomic update: the owned-field check sees the record this
+        # write replaces (not a copy read earlier), and a concurrent status / content change to the
+        # same record is not overwritten by this one's stale copy of it.
+        who, cols = _owned.context(self, key, meta_dict)
+        payload = json.dumps(meta_dict)
+
+        def _f(cur):
+            if cur is None:
+                return None
+            rec = _u(cur)
+            _owned.check(self, key, meta_dict, old_meta=rec.get("meta"), who=who, cols=cols)
+            rec["meta"] = payload
+            return _j(rec)
+        self._store.update(self._rk(key), _SUB_CHUNK, _f)
+
+    def merge_meta(self, key, updates) -> Optional[dict]:
+        who, cols = _owned.context(self, key, updates if isinstance(updates, dict) else None)
+        out = {}
+
+        def _f(cur):
+            if cur is None:
+                return None
+            rec = _u(cur)
+            try:
+                old = json.loads(rec["meta"]) if rec.get("meta") else {}
+            except (TypeError, ValueError):
+                old = {}
+            if not isinstance(old, dict):
+                old = {}
+            new = dict(old)
+            new.update((updates(dict(old)) if callable(updates) else updates) or {})
+            out["meta"] = new
+            if new == old:
+                return None
+            _owned.check(self, key, new, old_meta=old, who=who, cols=cols)
+            rec["meta"] = json.dumps(new)
+            return _j(rec)
+        self._store.update(self._rk(key), _SUB_CHUNK, _f)
+        return out.get("meta")
 
     def drop_chunk(self, key) -> None:
         rk = self._rk(key)
@@ -275,10 +352,20 @@ class SilicaBackend(AkashaBackend):
         # Dual-index the normalised forms so case-insensitive / compound-normalised
         # resolution is O(1), not an O(N) scan of the whole alias table (the weave
         # hot path — resolving a proto-word MISS degrades to O(N) per call otherwise).
-        self._write((_R_ALIAS, self._rk(alias), rk),
-                    (rk, _PFX_ALIAS + self._rk(alias), b"1"),
-                    (_R_ALIAS_LC, lc.encode("utf-8"), rk),
-                    (_R_ALIAS_CPT, cpt.encode("utf-8"), rk))
+        ops = [(_R_ALIAS, self._rk(alias), rk),
+               (rk, _PFX_ALIAS + self._rk(alias), b"1"),
+               (_R_ALIAS_LC, lc.encode("utf-8"), rk),
+               (_R_ALIAS_CPT, cpt.encode("utf-8"), rk)]
+        # A REBIND moves the reverse entry too (D16). The forward row is single-valued and was
+        # overwritten, but the previous key's `<key>/@alias:<alias>` row was left behind, so the
+        # old key still answered `get_aliases_by_key` with a name that no longer pointed at it —
+        # and the reconcile, retiring that old key, deleted the name from under the NEW one. One
+        # write, so the two indexes cannot be seen disagreeing. (SQLite's alias table is one row
+        # per alias, so it never had a second reverse entry; this makes Silica the same.)
+        cur = self._store.get(_R_ALIAS, self._rk(alias))
+        if cur is not None and cur != rk:
+            ops.append((cur, _PFX_ALIAS + self._rk(alias), None))
+        self._write(*ops)
         return alias
 
     def delete_alias(self, alias) -> None:
@@ -671,35 +758,82 @@ class SilicaBackend(AkashaBackend):
         self._write((_R_VAULT + self._rk(cat), self._rk(ident), None))
 
     # ══ Streaming & export ═══════════════════════════════════════════════════════════
-    def _all_chunk_recs(self):
-        # ONE bounded scan of the chunk-key index (not scan_all over every route).
-        for keyb, _seq in self._store.scan(_R_CHUNKS):
+    def _all_chunk_recs(self, key_limit=None):
+        # Snapshot the chunk-key index (keys only — NO value read), then point-get + decode ONE
+        # value at a time OUTSIDE the lock. `key_limit` caps the KEY snapshot too (F50): a
+        # get_all_chunks(limit=K) snapshots ≤K keys, so even the (key, seq) index list stays
+        # O(K) — not a ~600 MB transient of every key on a multi-million-atom store. A filtering
+        # caller (get_recent_atom_hashes / status filter) passes no cap and snapshots all keys.
+        for keyb in self._store.scan_keys(_R_CHUNKS, limit=key_limit):
             rec = _u(self._store.get(keyb, _SUB_CHUNK))
             if rec is not None:
                 yield keyb.decode(), rec
 
+    # INVARIANT (F50 — F33's access-degree rule applied to recency): a "newest/sample K"
+    # read is O(K) in memory and O(K) in JSON decodes, NEVER O(store). The @CHUNKS index
+    # is a RAM route whose entries are (key, seq) with NO value read; the top-K by seq is
+    # a bounded heap over those tiny tuples. Only after the K winners are chosen do we
+    # point-get + decode their K values. The old form materialized ~10 M (seq, key, rec)
+    # tuples — a full JSON decode of the whole store to return `limit` rows — and was the
+    # +3 GB boot/search allocation site. If a surface ever needs true store-wide recency
+    # ordering cheaper than this index walk, pay at WRITE time with a recency membrane
+    # (a bounded ring set) — never at read time by re-sorting the store.
     def fetch_stream(self, limit=10) -> List[dict]:
-        pairs = []
-        for keyb, seqb in self._store.scan(_R_CHUNKS):
+        if limit is None or limit <= 0:
+            return []
+        # Pass 1: STREAM the @CHUNKS index (route value = the atom's seq, RAM-resident on an
+        # '@'-route so there is no pread and no chunk-content JSON decode), keeping only a
+        # bounded top-`limit` heap of (chunk-key, seq). `scan_route_topk` holds O(limit) — it
+        # never materializes the store-wide list the way scan()+sort did.
+        top = self._store.scan_route_topk(_R_CHUNKS, limit, key_fn=lambda seqb: int(seqb))
+        # Pass 2: point-get + decode ONLY the selected `limit` chunk records (O(limit) decodes).
+        out = []
+        for keyb, _seqb in top:
             rec = _u(self._store.get(keyb, _SUB_CHUNK))
             if rec is not None:
-                pairs.append((int(seqb), keyb.decode(), rec))
-        pairs.sort(key=lambda t: t[0], reverse=True)
-        return [{"key": k, "content": r["content"], "created_at": r["created_at"],
-                 "meta": r["meta"], "author": r["author"], "status": r["status"]}
-                for _s, k, r in pairs[:limit]]
+                out.append({"key": keyb.decode(), "content": rec["content"],
+                            "created_at": rec["created_at"], "meta": rec["meta"],
+                            "author": rec["author"], "status": rec["status"]})
+        return out
 
     def get_all_chunks(self, limit=None) -> List[dict]:
-        # `_all_chunk_recs()` is a generator that preads ONE value at a time; when a `limit`
-        # is given we stop iterating at the cap, so on the disk-value store we pread at most
-        # `limit` values (never the whole corpus into RAM — the boot-autolearn OOM guard).
+        # Honors the limit DURING the walk (the F50 O(limit) invariant above): `_all_chunk_recs()`
+        # is a generator that preads + decodes ONE value at a time, and we stop iterating at the
+        # cap, so we decode at most `limit` values (never the whole corpus into RAM — the
+        # boot-autolearn OOM guard). Order is index/scan order (not recency); callers that need
+        # newest-first use `fetch_stream`.
         out = []
-        for k, r in self._all_chunk_recs():
+        for k, r in self._all_chunk_recs(key_limit=limit):
             out.append({"key": k, "content": r["content"], "created_at": r["created_at"],
                         "meta": r["meta"], "author": r["author"], "status": r["status"]})
             if limit is not None and len(out) >= limit:
                 break
         return out
+
+    def iter_all_chunks(self, limit=None):
+        """Lazy row-at-a-time scan (preads one value at a time via `_all_chunk_recs`): a
+        filtering consumer holds only the rows it keeps, never the whole capped page. A48.2: an
+        UNCAPPED walk logs one throttled `[scan] O(store)` WARNING so a new full-store read is visible."""
+        if limit is None:
+            _sb_scan_warn("iter_all_chunks")
+        n = 0
+        for k, r in self._all_chunk_recs(key_limit=limit):
+            yield {"key": k, "content": r["content"], "created_at": r["created_at"],
+                   "meta": r["meta"], "author": r["author"], "status": r["status"]}
+            n += 1
+            if limit is not None and n >= limit:
+                break
+
+    def iter_chunk_meta(self, limit=None):
+        """A48.2 — a META-ONLY walk: yields {key, meta, created_at} and does NOT retain the content
+        string, so a sweep that reads two meta fields to find its victims does not keep every atom's
+        body resident (the 350k-decode that left ~110 MB). Lazy, one record at a time."""
+        n = 0
+        for k, r in self._all_chunk_recs(key_limit=limit):
+            yield {"key": k, "meta": r["meta"], "created_at": r["created_at"]}
+            n += 1
+            if limit is not None and n >= limit:
+                break
 
     def get_all_keys(self) -> List[str]:
         return [k.decode() for k, _seq in self._store.scan(_R_CHUNKS)]
@@ -791,6 +925,50 @@ class SilicaBackend(AkashaBackend):
     # ══ Lifecycle ════════════════════════════════════════════════════════════════════
     def checkpoint(self) -> None:
         self._store.checkpoint()
+
+    def wal_bytes(self) -> int:
+        """Total on-disk WAL bytes (every bank + coordinator) — the compaction threshold basis."""
+        try:
+            return self._store.wal_bytes()
+        except Exception:
+            return 0
+
+    def route_sizes(self) -> dict:
+        """R8/F28c — per-`@`-route RAM attribution (+ a hash-route aggregate) for the MemTop report."""
+        try:
+            return self._store.route_sizes()
+        except Exception:
+            return {"at_routes": [], "other_routes": {"count": 0, "bytes": 0}}
+
+    def probe_reset(self, thread_only: bool = False) -> None:
+        """F33 §5 — zero the access-degree counters before a measured access. `thread_only` counts
+        only the calling thread's accesses (10-02 §6.3: background weave threads share the store)."""
+        try:
+            self._store.probe_reset(thread_only=thread_only)
+        except TypeError:
+            self._store.probe_reset()
+        except Exception:
+            pass
+
+    def probe_read(self) -> dict:
+        """F33 §5 — {point_get, membrane_scan, full_scan} since the last reset. A set-mediated
+        access must satisfy round-trips ≤ (atoms reached + sets touched) with ZERO full_scans."""
+        try:
+            return self._store.probe_read()
+        except Exception:
+            return {"point_get": 0, "membrane_scan": 0, "full_scan": 0}
+
+    def compact(self) -> dict:
+        """Fold the WALs (checkpoint) and report {before_bytes, after_bytes, seconds}. Writer-only:
+        each bank pauses its writers under bank.lock for its fold, so run at idle, never inline in a
+        request. A serving portal replica only reads the WAL at open, so folding under it is safe."""
+        import time as _t
+        before = self.wal_bytes()
+        t0 = _t.time()
+        self._store.checkpoint()
+        secs = _t.time() - t0
+        after = self.wal_bytes()
+        return {"before_bytes": before, "after_bytes": after, "seconds": round(secs, 3)}
 
     def close(self) -> None:
         self._store.close()

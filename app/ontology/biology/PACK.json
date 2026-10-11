@@ -1,0 +1,9 @@
+{
+  "label": "Biology",
+  "description": "TWO layers, and they do not share a provenance — which is why the attribution below names each separately rather than covering both with one line.\n\nSHIPPED (field_guide_ep1.ak): a hand-written field-guide episode for the Akasha Station programme The Plant Geek — eight plants of the temperate-European hedge bank and wayside, with the genus / family / order / clade spine they hang from and three shared characters that serve as the programme's doors. Each entry records what the plant IS, the characters you can see without a lens, its setting, its range and its naming history. No entry states a use, an edibility or a medicinal claim, for any species: all three of the programme's roles are contractually forbidden them, and a record that volunteered one would put the words in reach.\n\nNOT YET GENERATED: the taxonomic hierarchy this pack was first opened for — vertebrates, vascular plants, fungi and the major invertebrate and bacterial groups, from the NCBI Taxonomy database; kingdom to species for vertebrates, kingdom to genus for plants and fungi, kingdom to order for invertebrates. No .ak has ever been produced for it. When it lands it extends the same spine the episode uses, under the same atom ids.\n\nAtom IDs: bio:{rank}:{scientific_name} — e.g. bio:species:urtica_dioica, bio:family:asteraceae — plus bio:clade:* and bio:trait:*.",
+  "license": "MIT (the field guide, written for this project) + Public domain (the NCBI Taxonomy layer, when it ships)",
+  "source": "internal (field_guide_ep1.ak) | https://www.ncbi.nlm.nih.gov/taxonomy (pending)",
+  "size_hint": "36 atoms shipped; ~80K–150K more if the NCBI layer is generated",
+  "attribution": "Field guide: written for Akasha, no external source. NCBI Taxonomy layer (not yet shipped): NCBI Taxonomy, National Center for Biotechnology Information.",
+  "version": "1.0"
+}

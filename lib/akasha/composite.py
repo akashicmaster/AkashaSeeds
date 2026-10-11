@@ -54,6 +54,7 @@ from typing import List, Dict, Any, Optional, Callable, Set
 from lib.akasha.core import AkashaCore
 from lib.akasha.jcl.workspace_context import active as _workspace_active
 from lib.akasha.jcl.workspace_context import guard as _workspace_guard
+from lib.akasha import api as _api
 
 _onto_logger = logging.getLogger("Akasha.Ontology")
 
@@ -191,14 +192,10 @@ def _bump_salience(core, key: str, delta: float) -> None:
     if not key or not delta:
         return
     try:
-        row = core.get_chunk_raw(key)
-        if not row:
-            return
-        meta = json.loads(row["meta"]) if row.get("meta") else {}
-        if not isinstance(meta, dict):
-            return
-        meta["salience"] = round(max(0.0, float(meta.get("salience", 0.0) or 0.0) + delta), 4)
-        core.update_meta(key, meta)
+        # ONE atomic merge of the one field: a read-edit-write of the whole meta here (on a weave
+        # thread) overwrote a concurrent writer's change to another field with its stale copy.
+        core.merge_meta(key, lambda m: {"salience": round(
+            max(0.0, float(m.get("salience", 0.0) or 0.0) + delta), 4)})
     except Exception:
         pass
 
@@ -231,8 +228,8 @@ _AXIS_PREFIXES: Dict[str, List[str]] = {
 _TARGET_NS_AXES: frozenset = frozenset({"emotion", "color", "sense"})
 
 class AkashaEngine:
-    def __init__(self, db_path: str, is_volatile: bool = False):
-        self.core = AkashaCore(db_path, is_volatile)
+    def __init__(self, db_path: str, is_volatile: bool = False, banks: int = None):
+        self.core = AkashaCore(db_path, is_volatile, banks=banks)
         self.rw = None
         self.tensor = None
         self._fault_handler: Optional[Callable[[str], Optional[str]]] = None
@@ -575,21 +572,19 @@ class AkashaEngine:
 
     # --- Metadata & Aliases ---
     def set_meta(self, key: str, meta_key: str, value: Any) -> Dict[str, str]:
-        row = self.core.get_chunk_raw(key)
-        if not row: return {"error": "Chunk not found"}
-        meta = json.loads(row["meta"]) if row["meta"] else {}
-        meta[meta_key] = value
-        self.core.update_meta(key, meta)
+        if self.core.merge_meta(key, {meta_key: value}) is None:
+            return {"error": "Chunk not found"}
         return {"status": "meta_updated", "key": key}
 
     def add_meta(self, key: str, meta_key: str, value: Any) -> Dict[str, str]:
-        row = self.core.get_chunk_raw(key)
-        if not row: return {"error": "Chunk not found"}
-        meta = json.loads(row["meta"]) if row["meta"] else {}
-        if meta_key not in meta: meta[meta_key] = []
-        elif not isinstance(meta[meta_key], list): meta[meta_key] = [meta[meta_key]]
-        if value not in meta[meta_key]: meta[meta_key].append(value)
-        self.core.update_meta(key, meta)
+        def _add(meta):
+            cur = meta.get(meta_key)
+            vals = [] if cur is None else (list(cur) if isinstance(cur, list) else [cur])
+            if value not in vals:
+                vals.append(value)
+            return {meta_key: vals}
+        if self.core.merge_meta(key, _add) is None:
+            return {"error": "Chunk not found"}
         return {"status": "meta_added", "key": key}
         
     def get_meta(self, key: str) -> dict:
@@ -605,9 +600,7 @@ class AkashaEngine:
         row = self.core.get_chunk_raw(key)
         if not row: return False
         if row["status"] == "pending": self.core.update_chunk_status(key, "verified", row["content"])
-        meta = json.loads(row["meta"]) if row["meta"] else {}
-        meta["verified"] = True
-        self.core.update_meta(key, meta)
+        self.core.merge_meta(key, {"verified": True})
         return True
 
     def set_alias(self, key: str, alias: str, force: bool = False) -> Dict[str, str]:
@@ -1205,7 +1198,7 @@ class AkashaEngine:
         follow  — relation-type filter; empty = all outgoing links
         fmt     — "rich" (default) | "ascii"
         """
-        from lib.akasha.concepts.textview import TextViewConcept
+        from lib.akasha.api import views as TextViewConcept   # the heart's own descriptors (4.14)
 
         depth   = max(1, min(int(depth), 5))
         total   = [0]

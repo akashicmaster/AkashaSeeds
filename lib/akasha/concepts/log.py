@@ -180,16 +180,15 @@ class LogConcept(BaseConcept):
             if aliases:
                 focal_alias = aliases[0]
 
-        # Read scope state — whiteboard-local takes priority when a board is active
-        active_wb = self.session.get_context("active_whiteboard")
-        if active_wb:
-            active_axis  = self.session.get_context(f"wb:{active_wb}:scope_axis")
-            active_scope = self.session.get_context(f"wb:{active_wb}:scope_scope")
-            active_time  = self.session.get_context(f"wb:{active_wb}:scope_time")
-        else:
-            active_axis  = self.session.get_context("active_axis")
-            active_scope = self.session.get_context("active_scope")
-            active_time  = self.session.get_context("active_time")
+        # F54 — read scope from the session-global keys only (the whiteboard-local scope branch is
+        # retired; a board's scope rides wb:<name>:state). `radius` is the depth; `active_scope` is a
+        # read-fallback for pre-F54 state (one more series).
+        active_wb    = self.session.get_context("active_whiteboard")   # recorded for info only
+        active_axis  = self.session.get_context("active_axis")
+        _radius      = self.session.get_context("radius")
+        _ascope      = self.session.get_context("active_scope")
+        active_scope = _radius if _radius is not None else _ascope
+        active_time  = self.session.get_context("active_time")
 
         cp_meta = {
             "type":         "log_checkpoint",
@@ -197,7 +196,8 @@ class LogConcept(BaseConcept):
             "focal_key":    focal_key,
             "focal_alias":  focal_alias,
             "active_axis":  active_axis,
-            "active_scope": active_scope,
+            "radius":       active_scope,   # F54 — the depth's new field name (replay prefers it)
+            "active_scope": active_scope,   # kept one more series so a pre-F54 reader still resolves
             "active_time":  active_time,
             "whiteboard":   active_wb,
             "note":         note,
@@ -268,8 +268,6 @@ class LogConcept(BaseConcept):
         checkpoints = self._get_checkpoints_ordered()
         result_list = []
 
-        active_wb = self.session.get_context("active_whiteboard")
-
         for i, cp_id in enumerate(checkpoints):
             raw = self.cortex.core.get_chunk_raw(cp_id)
             if not raw:
@@ -279,21 +277,18 @@ class LogConcept(BaseConcept):
             focal = meta.get("focal_key", "")
             alias = meta.get("focal_alias")
             axis  = meta.get("active_axis")
-            scope = meta.get("active_scope")
+            scope = meta.get("radius") if meta.get("radius") is not None else meta.get("active_scope")
             t     = meta.get("active_time")
             note  = meta.get("note")
 
             if focal:
                 self.session.set_context("focus", focal)
 
-            if active_wb:
-                if axis  is not None: self.session.set_context(f"wb:{active_wb}:scope_axis",  axis)
-                if scope is not None: self.session.set_context(f"wb:{active_wb}:scope_scope", scope)
-                if t     is not None: self.session.set_context(f"wb:{active_wb}:scope_time",  t)
-            else:
-                if axis  is not None: self.session.set_context("active_axis",  axis)
-                if scope is not None: self.session.set_context("active_scope", scope)
-                if t     is not None: self.session.set_context("active_time",  t)
+            # F54 — restore into the session-global keys only; the depth goes to `radius` (active_scope
+            # is retired as a written key). The whiteboard-local scope branch is gone.
+            if axis  is not None: self.session.set_context("active_axis", axis)
+            if scope is not None: self.session.set_context("radius",      scope)
+            if t     is not None: self.session.set_context("active_time", t)
 
             result_list.append({
                 "index":    i,
@@ -342,7 +337,7 @@ class LogConcept(BaseConcept):
                 "focal":       meta.get("focal_key"),
                 "alias":       meta.get("focal_alias"),
                 "axis":        meta.get("active_axis"),
-                "scope":       meta.get("active_scope"),
+                "scope":       meta.get("radius") if meta.get("radius") is not None else meta.get("active_scope"),
                 "time":        meta.get("active_time"),
                 "note":        meta.get("note"),
                 "created_at":  meta.get("created_at"),

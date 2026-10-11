@@ -1,0 +1,7 @@
+{
+  "label": "Ancient Civilizations Pack",
+  "description": "The ancient cultures, kingdoms and empires of every continent, gathered by region (the river cradles, the Mediterranean, Persia, the steppe, Mesoamerica, the Andes, sub-Saharan Africa, Oceania, Southeast Asia and more) — each an atom with its endonym, era and note, its region, and (where curated) its source links and excavation sites. Derived from the Ancient Civilizations atlas (app/archives/ancient) by scripts/ancient_atlas_to_ak.py.",
+  "license": "MIT",
+  "source": "internal",
+  "version": "1.0"
+}

@@ -60,6 +60,15 @@ class BaseConcept:
         """Retrieves active security and language scopes from the running session."""
         return getattr(self.session, 'active_scopes', [])
 
+    def _is_guest(self) -> bool:
+        """True when the acting session is an unauthenticated GUEST (public read-only visitor). Used
+        by public read ops (F3) to withhold write side-effects and answer-key data from the public."""
+        try:
+            from lib.akasha.identity import Role
+            return getattr(self.session, "role", None) == Role.GUEST
+        except Exception:
+            return False
+
     def _require_concept(self):
         """
         Guard: raises RuntimeError if no concept_id is mounted.

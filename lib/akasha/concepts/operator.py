@@ -13,6 +13,7 @@ class OperatorConcept(BaseConcept):
     """Tactician (operator) model. Stateless: carries no concept_id or INDEX_SET."""
 
     CONCEPT_PREFIX = "operator"
+    CONCEPT_LABEL = "Tactician terminal — stateless combat resolution (game, under development)"
     # Stateless — CONTEXT_KEY_ACTIVE remains None (BaseConcept default)
 
     CONCEPT_METHODS = {

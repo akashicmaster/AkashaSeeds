@@ -1,0 +1,19 @@
+iso3,dimension,value,unit,year,source
+JPN,population,124516650,people,2023,World Bank SP.POP.TOTL
+JPN,gdp,4212945000000,USD,2023,World Bank NY.GDP.MKTP.CD
+JPN,area,377975,km2,2022,World Bank AG.LND.TOTL.K2
+JPN,life_expectancy,84.0,years,2022,World Bank SP.DYN.LE00.IN
+USA,population,334914895,people,2023,World Bank SP.POP.TOTL
+USA,gdp,27360935000000,USD,2023,World Bank NY.GDP.MKTP.CD
+USA,area,9147420,km2,2022,World Bank AG.LND.TOTL.K2
+USA,life_expectancy,77.4,years,2022,World Bank SP.DYN.LE00.IN
+CHN,population,1410710000,people,2023,World Bank SP.POP.TOTL
+CHN,gdp,17794782000000,USD,2023,World Bank NY.GDP.MKTP.CD
+CHN,area,9388211,km2,2022,World Bank AG.LND.TOTL.K2
+IND,population,1428627663,people,2023,World Bank SP.POP.TOTL
+IND,gdp,3549919000000,USD,2023,World Bank NY.GDP.MKTP.CD
+FRA,population,68170228,people,2023,World Bank SP.POP.TOTL
+FRA,gdp,3030904000000,USD,2023,World Bank NY.GDP.MKTP.CD
+BRA,population,216422446,people,2023,World Bank SP.POP.TOTL
+EGY,population,112716598,people,2023,World Bank SP.POP.TOTL
+DEU,gdp,4456081000000,USD,2023,World Bank NY.GDP.MKTP.CD

@@ -1,0 +1,4215 @@
+{
+  "package": "app",
+  "version": 1,
+  "depends_on": [],
+  "ops": {
+    "agg.open": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "ag.open": {
+          "args": [
+            "agg_id"
+          ],
+          "desc": "Open an existing Aggregation",
+          "group": "aggregation"
+        }
+      }
+    },
+    "agg.rm": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ag.rm": {
+          "args": [],
+          "desc": "Delete the active Aggregation",
+          "group": "aggregation"
+        }
+      }
+    },
+    "cockpit.open": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "cp.open": {
+          "args": [
+            "cockpit_id"
+          ],
+          "desc": "Mount an existing cockpit",
+          "group": "cockpit"
+        }
+      }
+    },
+    "cockpit.rm": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cp.rm": {
+          "args": [],
+          "desc": "Decommission the active cockpit",
+          "group": "cockpit"
+        }
+      }
+    },
+    "cockpit.wake": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "cp.wake": {
+          "args": [],
+          "desc": "Read the chronological beacon trail",
+          "group": "cockpit"
+        }
+      }
+    },
+    "corr.diagnose": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "corr.diagnose": {
+          "args": [],
+          "desc": "Diagnose correspondence quality and modeling gaps",
+          "group": "correspondence"
+        }
+      }
+    },
+    "corr.map": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "corr.map": {
+          "args": [],
+          "desc": "Show structure of active Correspondence",
+          "group": "correspondence"
+        }
+      }
+    },
+    "corr.trace": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "corr.trace": {
+          "args": [
+            "link_id"
+          ],
+          "desc": "Trace provenance and evidence chain for a link",
+          "group": "correspondence"
+        }
+      }
+    },
+    "country.diagnose": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "country.diagnose": {
+          "args": [],
+          "desc": "Diagnose completeness and evidence quality",
+          "group": "country"
+        }
+      }
+    },
+    "country.map": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "country.map": {
+          "args": [],
+          "desc": "Show structure of active Country",
+          "group": "country"
+        }
+      }
+    },
+    "country.observable": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "country.observable": {
+          "args": [],
+          "desc": "Show externally linked observable atoms",
+          "group": "country"
+        }
+      }
+    },
+    "country.timeline": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "country.timeline": {
+          "args": [],
+          "desc": "Show chronological event timeline of active Country",
+          "group": "country"
+        }
+      }
+    },
+    "country.trace": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "country.trace": {
+          "args": [
+            "target_id"
+          ],
+          "desc": "Trace evidence chain for a Country atom",
+          "group": "country"
+        }
+      }
+    },
+    "eidolon.map": {
+      "access": "read",
+      "router": "concept_registry"
+    },
+    "fact.diagnose": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "ft.diagnose": {
+          "args": [],
+          "desc": "Diagnose quality and completeness of the Fact collection",
+          "group": "fact"
+        }
+      }
+    },
+    "fact.map": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "ft.map": {
+          "args": [],
+          "desc": "Show structure of active Fact collection",
+          "group": "fact"
+        }
+      }
+    },
+    "fact.trace": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "ft.trace": {
+          "args": [
+            "fact_id"
+          ],
+          "desc": "Trace a Fact back to its Sources and provenance",
+          "group": "fact"
+        }
+      }
+    },
+    "geo.diagnose": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "ge.dx": {
+          "args": [],
+          "desc": "Diagnose coordinate gaps and orphaned connections",
+          "group": "geo"
+        }
+      }
+    },
+    "geo.history": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "ge.hist": {
+          "args": [],
+          "desc": "Show temporal event history of active Geo",
+          "group": "geo"
+        }
+      }
+    },
+    "geo.map": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "ge.map": {
+          "args": [],
+          "desc": "Show full structure of active Geo",
+          "group": "geo"
+        }
+      }
+    },
+    "geo.nearby": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "ge.nearby": {
+          "args": [
+            "place_id",
+            "depth"
+          ],
+          "desc": "Find connected places within a given depth",
+          "group": "geo"
+        }
+      }
+    },
+    "geo.open": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "ge.open": {
+          "args": [
+            "geo_id"
+          ],
+          "desc": "Open an existing Geo root",
+          "group": "geo"
+        }
+      }
+    },
+    "geo.path": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "ge.path": {
+          "args": [
+            "from_id",
+            "to_id"
+          ],
+          "desc": "Find shortest path between two spatial atoms",
+          "group": "geo"
+        }
+      }
+    },
+    "geo.rm": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ge.rm": {
+          "args": [],
+          "desc": "Delete the active Geo root",
+          "group": "geo"
+        }
+      }
+    },
+    "homonoia.diagnose": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "hom.dx": {
+          "args": [],
+          "desc": "Diagnose structural gaps in active Homonoia city",
+          "group": "homonoia"
+        }
+      }
+    },
+    "homonoia.map": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "hom.map": {
+          "args": [],
+          "desc": "Show structure of active Homonoia city",
+          "group": "homonoia"
+        }
+      }
+    },
+    "homonoia.open": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "hom.open": {
+          "args": [
+            "homonoia_id"
+          ],
+          "desc": "Open an existing Homonoia city",
+          "group": "homonoia"
+        }
+      }
+    },
+    "homonoia.rm": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "hom.rm": {
+          "args": [],
+          "desc": "Delete the active Homonoia city root",
+          "group": "homonoia"
+        }
+      }
+    },
+    "human.diagnose": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "hum.diagnose": {
+          "args": [],
+          "desc": "Diagnose completeness and evidence quality",
+          "group": "human"
+        }
+      }
+    },
+    "human.map": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "hum.map": {
+          "args": [],
+          "desc": "Show structure of active Human record",
+          "group": "human"
+        }
+      }
+    },
+    "human.observable": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "hum.obs": {
+          "args": [],
+          "desc": "Show externally evidenced facts linked to this Human",
+          "group": "human"
+        }
+      }
+    },
+    "human.status.set": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "hum.status": {
+          "args": [
+            "status"
+          ],
+          "desc": "Set status (alive/deceased/unknown/active/inactive/missing/disputed)",
+          "group": "human"
+        }
+      }
+    },
+    "human.timeline": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "hum.timeline": {
+          "args": [],
+          "desc": "Show chronological event timeline for this Human",
+          "group": "human"
+        }
+      }
+    },
+    "human.trace": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "hum.trace": {
+          "args": [
+            "target_id"
+          ],
+          "desc": "Trace evidence chain for a Human atom",
+          "group": "human"
+        }
+      }
+    },
+    "intelligence.cycle": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "intel.cycle": {
+          "args": [
+            "requirement_id"
+          ],
+          "desc": "Return the full cycle view for a Requirement",
+          "group": "intelligence"
+        }
+      }
+    },
+    "intelligence.diagnose": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "intel.diagnose": {
+          "args": [],
+          "desc": "Diagnose open gaps, orphaned work products, undecided recommendations",
+          "group": "intelligence"
+        }
+      }
+    },
+    "intelligence.map": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "intel.map": {
+          "args": [],
+          "desc": "Show structure of active Intelligence workspace",
+          "group": "intelligence"
+        }
+      }
+    },
+    "intelligence.open": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "intel.open": {
+          "args": [
+            "intelligence_id"
+          ],
+          "desc": "Open an existing Intelligence workspace",
+          "group": "intelligence"
+        }
+      }
+    },
+    "intelligence.rm": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "intel.rm": {
+          "args": [],
+          "desc": "Soft-delete the active Intelligence workspace",
+          "group": "intelligence"
+        }
+      }
+    },
+    "intelligence.scan.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "intel.scan": {
+          "args": [
+            "requirement_id",
+            "target_id",
+            "scan_type",
+            "signal"
+          ],
+          "desc": "Record a signal from an existing atom (observe, do not judge)",
+          "group": "intelligence"
+        }
+      }
+    },
+    "intelligence.trace": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "intel.trace": {
+          "args": [
+            "target_id"
+          ],
+          "desc": "Trace an Intelligence atom to its requirement and basis",
+          "group": "intelligence"
+        }
+      }
+    },
+    "map.diagnose": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "mp.dx": {
+          "args": [],
+          "desc": "Diagnose cartographic quality and modeling gaps",
+          "group": "map"
+        },
+        "map.diagnose": {
+          "args": [],
+          "desc": "Diagnose cartographic quality and modeling gaps",
+          "group": "map"
+        }
+      }
+    },
+    "map.history": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "mp.hist": {
+          "args": [],
+          "desc": "Show temporal event history of active Map",
+          "group": "map"
+        },
+        "map.history": {
+          "args": [],
+          "desc": "Show temporal event history of active Map",
+          "group": "map"
+        },
+        "map.timeview": {
+          "args": [],
+          "desc": "Alias for map.history",
+          "group": "map"
+        }
+      }
+    },
+    "map.timeview": {
+      "access": "read",
+      "router": "concept_registry"
+    },
+    "map.trace": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "mp.trace": {
+          "args": [
+            "target_id"
+          ],
+          "desc": "Trace provenance and evidence chain for a map atom",
+          "group": "map"
+        },
+        "map.trace": {
+          "args": [
+            "target_id"
+          ],
+          "desc": "Trace provenance and evidence chain for a map atom",
+          "group": "map"
+        }
+      }
+    },
+    "synth.map": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "sy.map": {
+          "args": [],
+          "desc": "Show structure of active Synthesis",
+          "group": "synthesis"
+        }
+      }
+    },
+    "synth.open": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "sy.open": {
+          "args": [
+            "synth_id"
+          ],
+          "desc": "Open an existing Synthesis",
+          "group": "synthesis"
+        }
+      }
+    },
+    "synth.rm": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "sy.rm": {
+          "args": [],
+          "desc": "Delete the active Synthesis root",
+          "group": "synthesis"
+        }
+      }
+    },
+    "synth.trace": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "sy.trace": {
+          "args": [
+            "claim_id"
+          ],
+          "desc": "Trace a claim back to raw sources",
+          "group": "synthesis"
+        }
+      }
+    },
+    "topos.diagnose": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "wd.dx": {
+          "args": [],
+          "desc": "Diagnose tensions in the active World",
+          "group": "topos"
+        }
+      }
+    },
+    "topos.map": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "wd.map": {
+          "args": [],
+          "desc": "Show full topology of active World",
+          "group": "topos"
+        }
+      }
+    },
+    "topos.open": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "wd.open": {
+          "args": [
+            "world_id"
+          ],
+          "desc": "Open an existing World",
+          "group": "topos"
+        }
+      }
+    },
+    "topos.rm": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "wd.rm": {
+          "args": [],
+          "desc": "Delete the active World root",
+          "group": "topos"
+        }
+      }
+    },
+    "agg.analysis.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ag.analysis": {
+          "args": [
+            "from_id",
+            "to_id",
+            "score"
+          ],
+          "desc": "Record a directed relation between two groups",
+          "group": "aggregation"
+        }
+      }
+    },
+    "agg.group.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ag.group": {
+          "args": [
+            "label"
+          ],
+          "desc": "Create a labelled group",
+          "group": "aggregation"
+        }
+      }
+    },
+    "agg.hier.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ag.hier": {
+          "args": [
+            "label"
+          ],
+          "desc": "Create a hierarchy node",
+          "group": "aggregation"
+        }
+      }
+    },
+    "agg.list": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "ag.list": {
+          "args": [],
+          "desc": "Show structure of active Aggregation",
+          "group": "aggregation"
+        }
+      }
+    },
+    "agg.ls": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "ag.ls": {
+          "args": [],
+          "desc": "List all Aggregations",
+          "group": "aggregation"
+        }
+      }
+    },
+    "agg.measure.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ag.measure": {
+          "args": [
+            "group_id",
+            "key",
+            "value"
+          ],
+          "desc": "Attach a key/value statistic to a group",
+          "group": "aggregation"
+        }
+      }
+    },
+    "agg.new": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ag.new": {
+          "args": [
+            "title",
+            "corpus_id"
+          ],
+          "desc": "Create a new Aggregation root linked to a corpus atom",
+          "group": "aggregation"
+        }
+      }
+    },
+    "agg.unit.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ag.unit": {
+          "args": [
+            "ref_id"
+          ],
+          "desc": "Index an atom as an aggregation unit",
+          "group": "aggregation"
+        }
+      }
+    },
+    "archives.explore": {
+      "access": "read",
+      "router": "concept_registry"
+    },
+    "archives.index": {
+      "access": "read",
+      "router": "concept_registry"
+    },
+    "archives.portal": {
+      "access": "read",
+      "router": "concept_registry"
+    },
+    "archives.portal.add": {
+      "access": "record",
+      "router": "concept_registry"
+    },
+    "archives.portal.new": {
+      "access": "record",
+      "router": "concept_registry"
+    },
+    "archives.portal.set": {
+      "access": "record",
+      "router": "concept_registry"
+    },
+    "archives.reference": {
+      "access": "read",
+      "router": "concept_registry",
+      "projection": {
+        "reference": {
+          "role": "letters",
+          "default_limit": 100
+        }
+      }
+    },
+    "archives.space": {
+      "access": "read",
+      "router": "concept_registry",
+      "implements": "render_concept",
+      "dive_bearing": true,
+      "projection": {
+        "pulse": "atom"
+      }
+    },
+    "cockpit.beacon": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cp.beacon": {
+          "args": [
+            "note"
+          ],
+          "desc": "Drop a beacon at the locked focal point",
+          "group": "cockpit"
+        }
+      }
+    },
+    "cockpit.lock": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cp.lock": {
+          "args": [
+            "target"
+          ],
+          "desc": "Lock cockpit focal point to an atom",
+          "group": "cockpit"
+        }
+      }
+    },
+    "cockpit.ls": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "cp.ls": {
+          "args": [],
+          "desc": "List all cockpits for current user",
+          "group": "cockpit"
+        }
+      }
+    },
+    "cockpit.new": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cp.new": {
+          "args": [
+            "name"
+          ],
+          "desc": "Commission a new cockpit",
+          "group": "cockpit"
+        }
+      }
+    },
+    "cockpit.status": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "cp.status": {
+          "args": [],
+          "desc": "Show cockpit instrument panel state",
+          "group": "cockpit"
+        }
+      }
+    },
+    "cockpit.tune": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "cp.tune": {
+          "args": [
+            "axis",
+            "scope"
+          ],
+          "desc": "Tune dimensional lens (axis and/or scope)",
+          "group": "cockpit"
+        }
+      }
+    },
+    "corr.dispute.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "corr.dispute": {
+          "args": [
+            "target_id",
+            "reason",
+            "severity"
+          ],
+          "desc": "Record a dispute against a correspondence atom",
+          "group": "correspondence"
+        }
+      }
+    },
+    "corr.eval.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "corr.eval": {
+          "args": [
+            "link_id",
+            "confidence",
+            "status"
+          ],
+          "desc": "Event-sourced re-evaluation of a link",
+          "group": "correspondence"
+        }
+      }
+    },
+    "corr.link.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "corr.link": {
+          "args": [
+            "src_id",
+            "dst_id",
+            "relation",
+            "source_id"
+          ],
+          "desc": "Add a direct evidenced correspondence link",
+          "group": "correspondence"
+        }
+      }
+    },
+    "corr.link.infer": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "corr.infer": {
+          "args": [
+            "src_id",
+            "dst_id",
+            "relation",
+            "inputs"
+          ],
+          "desc": "Add an inferred correspondence link with provenance",
+          "group": "correspondence"
+        }
+      }
+    },
+    "corr.ls": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "corr.ls": {
+          "args": [],
+          "desc": "List all Correspondence roots",
+          "group": "correspondence"
+        }
+      }
+    },
+    "corr.new": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "corr.new": {
+          "args": [
+            "title",
+            "description"
+          ],
+          "desc": "Create a new Correspondence root",
+          "group": "correspondence"
+        }
+      }
+    },
+    "corr.open": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "corr.open": {
+          "args": [
+            "corr_id"
+          ],
+          "desc": "Open an existing Correspondence root",
+          "group": "correspondence"
+        }
+      }
+    },
+    "corr.project.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "corr.proj": {
+          "args": [
+            "link_id",
+            "target_system_id"
+          ],
+          "desc": "Project a link into another system",
+          "group": "correspondence"
+        }
+      }
+    },
+    "corr.rm": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "corr.rm": {
+          "args": [],
+          "desc": "Soft-delete the active Correspondence root",
+          "group": "correspondence"
+        }
+      }
+    },
+    "corr.source.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "corr.src": {
+          "args": [
+            "kind",
+            "title",
+            "credibility"
+          ],
+          "desc": "Add a source for correspondence evidence",
+          "group": "correspondence"
+        }
+      }
+    },
+    "corr.source.eval": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "corr.src.eval": {
+          "args": [
+            "source_id",
+            "credibility",
+            "independence"
+          ],
+          "desc": "Event-sourced re-evaluation of a source",
+          "group": "correspondence"
+        }
+      }
+    },
+    "corr.system.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "corr.sys": {
+          "args": [
+            "label",
+            "system_type",
+            "ref_id"
+          ],
+          "desc": "Register a coordinate/conceptual system",
+          "group": "correspondence"
+        }
+      }
+    },
+    "country.admin.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "country.admin": {
+          "args": [
+            "target_id",
+            "administration_type",
+            "valid_from"
+          ],
+          "desc": "Record administrative control over an entity",
+          "group": "country"
+        }
+      }
+    },
+    "country.capital.set": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "country.capital": {
+          "args": [
+            "name",
+            "place_id",
+            "capital_type",
+            "valid_from"
+          ],
+          "desc": "Record a capital (event-sourced)",
+          "group": "country"
+        }
+      }
+    },
+    "country.claim.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "country.claim": {
+          "args": [
+            "claim_type",
+            "target_id",
+            "description",
+            "valid_from"
+          ],
+          "desc": "Record a territorial or political claim",
+          "group": "country"
+        }
+      }
+    },
+    "country.corr.link": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "country.corr": {
+          "args": [
+            "corr_id",
+            "relation",
+            "target_id"
+          ],
+          "desc": "Link Country to a CorrespondenceConcept atom",
+          "group": "country"
+        }
+      }
+    },
+    "country.econ.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "country.econ": {
+          "args": [
+            "economy_type",
+            "value",
+            "unit",
+            "year"
+          ],
+          "desc": "Record an economic datum",
+          "group": "country"
+        }
+      }
+    },
+    "country.event.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "country.event": {
+          "args": [
+            "event_type",
+            "description",
+            "event_time"
+          ],
+          "desc": "Record a country-level historical or political event",
+          "group": "country"
+        }
+      }
+    },
+    "country.gov.set": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "country.gov": {
+          "args": [
+            "government_type",
+            "head_of_state",
+            "valid_from"
+          ],
+          "desc": "Record a government form or regime",
+          "group": "country"
+        }
+      }
+    },
+    "country.law.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "country.law": {
+          "args": [
+            "title",
+            "law_type",
+            "status",
+            "valid_from"
+          ],
+          "desc": "Record a law, treaty, constitution, or decree",
+          "group": "country"
+        }
+      }
+    },
+    "country.law.change": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "country.law.change": {
+          "args": [
+            "law_id",
+            "change",
+            "new_status",
+            "effective_from"
+          ],
+          "desc": "Record an immutable law change event",
+          "group": "country"
+        }
+      }
+    },
+    "country.ls": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "country.ls": {
+          "args": [],
+          "desc": "List all Country roots",
+          "group": "country"
+        }
+      }
+    },
+    "country.name.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "country.name": {
+          "args": [
+            "name",
+            "name_type",
+            "language",
+            "valid_from",
+            "valid_to"
+          ],
+          "desc": "Add a country name (event-sourced)",
+          "group": "country"
+        }
+      }
+    },
+    "country.new": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "country.new": {
+          "args": [
+            "name",
+            "description",
+            "country_type"
+          ],
+          "desc": "Create a new Country root",
+          "group": "country"
+        }
+      }
+    },
+    "country.open": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "country.open": {
+          "args": [
+            "country_id"
+          ],
+          "desc": "Open an existing Country root",
+          "group": "country"
+        }
+      }
+    },
+    "country.pop.set": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "country.pop": {
+          "args": [
+            "value",
+            "year",
+            "unit"
+          ],
+          "desc": "Record a population value",
+          "group": "country"
+        }
+      }
+    },
+    "country.profile": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "country.profile": {
+          "args": [],
+          "desc": "Show structured profile of active Country",
+          "group": "country"
+        }
+      }
+    },
+    "country.rm": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "country.rm": {
+          "args": [],
+          "desc": "Soft-delete the active Country root",
+          "group": "country"
+        }
+      }
+    },
+    "country.sovereignty.set": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "country.sovereignty": {
+          "args": [
+            "sovereignty_type",
+            "valid_from",
+            "valid_to",
+            "basis"
+          ],
+          "desc": "Record sovereignty status (event-sourced)",
+          "group": "country"
+        }
+      }
+    },
+    "country.territory.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "country.territory": {
+          "args": [
+            "territory_type",
+            "place_id",
+            "label",
+            "valid_from"
+          ],
+          "desc": "Add a territory reference",
+          "group": "country"
+        }
+      }
+    },
+    "curation.ls": {
+      "access": "read",
+      "router": "concept_registry"
+    },
+    "curation.narrate": {
+      "access": "read",
+      "router": "concept_registry",
+      "implements": "pipeline.curation.narrate"
+    },
+    "curation.new": {
+      "access": "record",
+      "router": "concept_registry"
+    },
+    "eidolon.link": {
+      "access": "record",
+      "router": "concept_registry"
+    },
+    "eidolon.ls": {
+      "access": "read",
+      "router": "concept_registry"
+    },
+    "eidolon.move": {
+      "access": "record",
+      "router": "concept_registry"
+    },
+    "eidolon.new": {
+      "access": "record",
+      "router": "concept_registry"
+    },
+    "eidolon.open": {
+      "access": "record",
+      "router": "concept_registry"
+    },
+    "eidolon.rm": {
+      "access": "record",
+      "router": "concept_registry"
+    },
+    "engram.bond": {
+      "access": "record",
+      "router": "concept_registry"
+    },
+    "engram.metaphor": {
+      "access": "record",
+      "router": "concept_registry"
+    },
+    "engram.new": {
+      "access": "record",
+      "router": "concept_registry"
+    },
+    "engram.talk": {
+      "access": "record",
+      "router": "concept_registry"
+    },
+    "fact.absent": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ft.absent": {
+          "args": [
+            "description",
+            "source_id"
+          ],
+          "desc": "Record an expected-but-missing fact (Absence / Gap)",
+          "group": "fact"
+        }
+      }
+    },
+    "fact.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ft.add": {
+          "args": [
+            "fact_type",
+            "content",
+            "source_id"
+          ],
+          "desc": "Add a Direct Fact (event/state/relation/absence)",
+          "group": "fact"
+        }
+      }
+    },
+    "fact.claim": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ft.claim": {
+          "args": [
+            "speaker",
+            "content",
+            "source_id"
+          ],
+          "desc": "Record what someone said (Claim Fact)",
+          "group": "fact"
+        }
+      }
+    },
+    "fact.entity.link": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ft.ent.link": {
+          "args": [
+            "fact_id",
+            "entity_id",
+            "entity_type",
+            "role"
+          ],
+          "desc": "Link a Fact to an Entity",
+          "group": "fact"
+        }
+      }
+    },
+    "fact.infer": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ft.infer": {
+          "args": [
+            "fact_type",
+            "content",
+            "inputs"
+          ],
+          "desc": "Add an Inferred Fact derived from multiple Sources",
+          "group": "fact"
+        }
+      }
+    },
+    "fact.ls": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "ft.ls": {
+          "args": [],
+          "desc": "List all Fact collections",
+          "group": "fact"
+        }
+      }
+    },
+    "fact.new": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ft.new": {
+          "args": [
+            "title",
+            "description"
+          ],
+          "desc": "Create a new Fact collection",
+          "group": "fact"
+        }
+      }
+    },
+    "fact.open": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ft.open": {
+          "args": [
+            "fact_root_id"
+          ],
+          "desc": "Open an existing Fact collection",
+          "group": "fact"
+        }
+      }
+    },
+    "fact.rm": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ft.rm": {
+          "args": [],
+          "desc": "Soft-delete the active Fact collection",
+          "group": "fact"
+        }
+      }
+    },
+    "fact.set.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ft.set.add": {
+          "args": [
+            "factset_id",
+            "fact_id"
+          ],
+          "desc": "Add a Fact to a FactSet",
+          "group": "fact"
+        }
+      }
+    },
+    "fact.set.new": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ft.set.new": {
+          "args": [
+            "label"
+          ],
+          "desc": "Create a FactSet (purpose-driven subset of Facts)",
+          "group": "fact"
+        }
+      }
+    },
+    "fact.source.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ft.src.add": {
+          "args": [
+            "url",
+            "kind",
+            "title",
+            "credibility"
+          ],
+          "desc": "Add a Source (evidentiary anchor)",
+          "group": "fact"
+        }
+      }
+    },
+    "fact.source.eval": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ft.src.eval": {
+          "args": [
+            "source_id",
+            "credibility"
+          ],
+          "desc": "Record an updated credibility evaluation for a Source",
+          "group": "fact"
+        }
+      }
+    },
+    "geo.affine.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ge.affine": {
+          "args": [
+            "src_sys",
+            "dst_sys",
+            "matrix"
+          ],
+          "desc": "Register an affine transform between coordinate systems",
+          "group": "geo"
+        }
+      }
+    },
+    "geo.clone": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ge.clone": {
+          "args": [
+            "place_id",
+            "label"
+          ],
+          "desc": "Clone a place as alternate/disputed/fictional",
+          "group": "geo"
+        }
+      }
+    },
+    "geo.connect": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ge.link": {
+          "args": [
+            "from_id",
+            "to_id",
+            "relation"
+          ],
+          "desc": "Create a typed spatial connection between two atoms",
+          "group": "geo"
+        }
+      }
+    },
+    "geo.coord.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ge.coord": {
+          "args": [
+            "target_id",
+            "lat",
+            "lon",
+            "alt"
+          ],
+          "desc": "Add a coordinate point to a place",
+          "group": "geo"
+        }
+      }
+    },
+    "geo.event.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ge.event": {
+          "args": [
+            "place_id",
+            "event_type",
+            "description"
+          ],
+          "desc": "Record a geo event at a place",
+          "group": "geo"
+        }
+      }
+    },
+    "geo.feature.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ge.feat": {
+          "args": [
+            "place_id",
+            "feature_type"
+          ],
+          "desc": "Add a spatial feature to a place",
+          "group": "geo"
+        }
+      }
+    },
+    "geo.layer.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ge.layer": {
+          "args": [
+            "label"
+          ],
+          "desc": "Create a named spatial data layer",
+          "group": "geo"
+        }
+      }
+    },
+    "geo.ls": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "ge.ls": {
+          "args": [],
+          "desc": "List all Geo roots",
+          "group": "geo"
+        }
+      }
+    },
+    "geo.new": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ge.new": {
+          "args": [
+            "title",
+            "description",
+            "coordinate_system"
+          ],
+          "desc": "Create a new Geo root",
+          "group": "geo"
+        }
+      }
+    },
+    "geo.observe.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ge.obs": {
+          "args": [
+            "target_id",
+            "method"
+          ],
+          "desc": "Record an observation of a spatial target",
+          "group": "geo"
+        }
+      }
+    },
+    "geo.place.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ge.place": {
+          "args": [
+            "name",
+            "place_type"
+          ],
+          "desc": "Add a named place",
+          "group": "geo"
+        }
+      }
+    },
+    "geo.place.state": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ge.state": {
+          "args": [
+            "place_id",
+            "state"
+          ],
+          "desc": "Record a place state (event-sourced)",
+          "group": "geo"
+        }
+      }
+    },
+    "geo.reveal": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ge.reveal": {
+          "args": [
+            "place_id"
+          ],
+          "desc": "Reveal a hidden place (event-sourced)",
+          "group": "geo"
+        }
+      }
+    },
+    "geo.snapshot.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ge.snap": {
+          "args": [
+            "label",
+            "captured_at"
+          ],
+          "desc": "Capture a temporal snapshot of spatial members",
+          "group": "geo"
+        }
+      }
+    },
+    "geo.time.rebuild": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ge.time": {
+          "args": [],
+          "desc": "Rebuild the temporal index of active Geo",
+          "group": "geo"
+        }
+      }
+    },
+    "geo.transition.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "ge.trans": {
+          "args": [
+            "target_id",
+            "transition_type",
+            "occurred_at"
+          ],
+          "desc": "Record a spatial state transition (event-sourced)",
+          "group": "geo"
+        }
+      }
+    },
+    "homonoia.district.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "hom.district": {
+          "args": [
+            "name",
+            "district_type"
+          ],
+          "desc": "Add a district (quarter, ward, zone)",
+          "group": "homonoia"
+        }
+      }
+    },
+    "homonoia.event.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "hom.event": {
+          "args": [
+            "description",
+            "event_type"
+          ],
+          "desc": "Record a city event",
+          "group": "homonoia"
+        }
+      }
+    },
+    "homonoia.faction.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "hom.faction": {
+          "args": [
+            "name",
+            "faction_type"
+          ],
+          "desc": "Add a social faction or organisation",
+          "group": "homonoia"
+        }
+      }
+    },
+    "homonoia.law.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "hom.law": {
+          "args": [
+            "title",
+            "law_type"
+          ],
+          "desc": "Record a city law or ordinance",
+          "group": "homonoia"
+        }
+      }
+    },
+    "homonoia.ls": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "hom.ls": {
+          "args": [],
+          "desc": "List all Homonoia city roots",
+          "group": "homonoia"
+        }
+      }
+    },
+    "homonoia.new": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "hom.new": {
+          "args": [
+            "name",
+            "description"
+          ],
+          "desc": "Create a new Homonoia city root",
+          "group": "homonoia"
+        }
+      }
+    },
+    "homonoia.profile": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "hom.profile": {
+          "args": [],
+          "desc": "Show full profile of active Homonoia city",
+          "group": "homonoia"
+        }
+      }
+    },
+    "human.alias": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "hum.alias": {
+          "args": [
+            "alias"
+          ],
+          "desc": "Add a contextual alias to the Human",
+          "group": "human"
+        }
+      }
+    },
+    "human.assess": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "hum.assess": {
+          "args": [
+            "assessment_type",
+            "content",
+            "source_id"
+          ],
+          "desc": "Add an evidence-backed assessment (trait/policy/risk/...)",
+          "group": "human"
+        }
+      }
+    },
+    "human.birth.set": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "hum.birth": {
+          "args": [
+            "date",
+            "place"
+          ],
+          "desc": "Set birth date/place",
+          "group": "human"
+        }
+      }
+    },
+    "human.bond.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "hum.bond": {
+          "args": [
+            "target_id",
+            "relation",
+            "strength"
+          ],
+          "desc": "Record a relationship bond to another entity",
+          "group": "human"
+        }
+      }
+    },
+    "human.bond.update": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "hum.bond.up": {
+          "args": [
+            "bond_id",
+            "delta",
+            "event_id"
+          ],
+          "desc": "Record a change to an existing bond",
+          "group": "human"
+        }
+      }
+    },
+    "human.death.set": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "hum.death": {
+          "args": [
+            "date",
+            "place"
+          ],
+          "desc": "Set death date/place",
+          "group": "human"
+        }
+      }
+    },
+    "human.dispute": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "hum.dispute": {
+          "args": [
+            "target_id",
+            "reason"
+          ],
+          "desc": "Record a dispute against a Human atom",
+          "group": "human"
+        }
+      }
+    },
+    "human.estimate": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "hum.est": {
+          "args": [
+            "estimate_type",
+            "value",
+            "basis"
+          ],
+          "desc": "Add an estimated attribute with basis evidence",
+          "group": "human"
+        }
+      }
+    },
+    "human.fictionalize": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "hum.fict": {
+          "args": [
+            "cast_id",
+            "transformation"
+          ],
+          "desc": "Link Human to a fictional Cast projection",
+          "group": "human"
+        }
+      }
+    },
+    "human.ls": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "hum.ls": {
+          "args": [],
+          "desc": "List all Human records",
+          "group": "human"
+        }
+      }
+    },
+    "human.merge.confirm": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "hum.merge.ok": {
+          "args": [
+            "merge_link_id"
+          ],
+          "desc": "Confirm a merge link (mark as same person)",
+          "group": "human"
+        }
+      }
+    },
+    "human.merge.link": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "hum.merge.link": {
+          "args": [
+            "other_human_id",
+            "reason"
+          ],
+          "desc": "Flag two Human records as possibly the same person",
+          "group": "human"
+        }
+      }
+    },
+    "human.name.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "hum.name": {
+          "args": [
+            "name",
+            "name_type"
+          ],
+          "desc": "Add a name to the active Human",
+          "group": "human"
+        }
+      }
+    },
+    "human.new": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "hum.new": {
+          "args": [
+            "name",
+            "description"
+          ],
+          "desc": "Create a new Human actor record",
+          "group": "human"
+        }
+      }
+    },
+    "human.open": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "hum.open": {
+          "args": [
+            "human_id"
+          ],
+          "desc": "Open an existing Human record",
+          "group": "human"
+        }
+      }
+    },
+    "human.profile": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "hum.profile": {
+          "args": [],
+          "desc": "Show full profile of the active Human",
+          "group": "human"
+        }
+      }
+    },
+    "human.pseudo.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "hum.pseudo": {
+          "args": [
+            "pseudonym",
+            "context"
+          ],
+          "desc": "Add a pseudonym or alternate name",
+          "group": "human"
+        }
+      }
+    },
+    "human.rm": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "hum.rm": {
+          "args": [],
+          "desc": "Soft-delete the active Human record",
+          "group": "human"
+        }
+      }
+    },
+    "instance.bind": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "instance.bind": {
+          "args": [
+            "slot",
+            "atom"
+          ],
+          "desc": "Link a mounted instance to its ontology atom (instance_of)"
+        }
+      }
+    },
+    "instance.blur": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "instance.blur": {
+          "args": [
+            "model"
+          ],
+          "desc": "Clear routing focus for a model class"
+        }
+      }
+    },
+    "instance.focus": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "instance.focus": {
+          "args": [
+            "slot"
+          ],
+          "desc": "Route a model class to the given slot"
+        }
+      }
+    },
+    "instance.join": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "instance.join": {
+          "args": [
+            "concept_id",
+            "slot"
+          ],
+          "desc": "Borrow an external instance into this space"
+        }
+      }
+    },
+    "instance.ls": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "instance.ls": {
+          "args": [],
+          "desc": "List all instances in this space"
+        }
+      }
+    },
+    "instance.mount": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "instance.mount": {
+          "args": [
+            "model",
+            "slot"
+          ],
+          "desc": "Mount a concept model instance into this space"
+        }
+      }
+    },
+    "instance.unmount": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "instance.unmount": {
+          "args": [
+            "slot"
+          ],
+          "desc": "Remove a slot from this space (instance is not deleted)"
+        }
+      }
+    },
+    "intelligence.assess.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "intel.assess": {
+          "args": [
+            "requirement_id",
+            "assessment_type",
+            "judgment",
+            "basis"
+          ],
+          "desc": "Add an Assessment (judgment grounded in Curation/Fact/Synthesis)",
+          "group": "intelligence"
+        }
+      }
+    },
+    "intelligence.decision.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "intel.decision": {
+          "args": [
+            "recommendation_id",
+            "decision_status",
+            "decided_by",
+            "reason"
+          ],
+          "desc": "Record a Decision against a Recommendation (event-sourced)",
+          "group": "intelligence"
+        }
+      }
+    },
+    "intelligence.dispute.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "intel.dispute": {
+          "args": [
+            "target_id",
+            "reason",
+            "severity"
+          ],
+          "desc": "Flag a dispute against any Intelligence atom",
+          "group": "intelligence"
+        }
+      }
+    },
+    "intelligence.estimate.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "intel.estimate": {
+          "args": [
+            "requirement_id",
+            "estimate_type",
+            "statement",
+            "basis"
+          ],
+          "desc": "Add an Estimate (probability, timeline, scenario, range)",
+          "group": "intelligence"
+        }
+      }
+    },
+    "intelligence.gap.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "intel.gap": {
+          "args": [
+            "requirement_id",
+            "description",
+            "gap_type",
+            "severity"
+          ],
+          "desc": "Record a knowledge gap (missing, low-confidence, contradicting)",
+          "group": "intelligence"
+        }
+      }
+    },
+    "intelligence.ls": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "intel.ls": {
+          "args": [],
+          "desc": "List all Intelligence workspaces",
+          "group": "intelligence"
+        }
+      }
+    },
+    "intelligence.new": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "intel.new": {
+          "args": [
+            "title",
+            "description"
+          ],
+          "desc": "Create a new Intelligence workspace",
+          "group": "intelligence"
+        }
+      }
+    },
+    "intelligence.option.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "intel.option": {
+          "args": [
+            "requirement_id",
+            "title",
+            "option_type",
+            "basis"
+          ],
+          "desc": "Add a decision Option with benefits, risks, feasibility",
+          "group": "intelligence"
+        }
+      }
+    },
+    "intelligence.recommend.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "intel.recommend": {
+          "args": [
+            "requirement_id",
+            "statement",
+            "recommended_option_id",
+            "basis"
+          ],
+          "desc": "Issue a Recommendation (draft/reviewed/issued)",
+          "group": "intelligence"
+        }
+      }
+    },
+    "intelligence.req.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "intel.req": {
+          "args": [
+            "question",
+            "requirement_type",
+            "priority"
+          ],
+          "desc": "Add an intelligence Requirement (the central question)",
+          "group": "intelligence"
+        }
+      }
+    },
+    "intelligence.task.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "intel.task": {
+          "args": [
+            "requirement_id",
+            "description",
+            "tasking_type",
+            "gap_id"
+          ],
+          "desc": "Issue a Tasking instruction (collect, verify, analyze, etc.)",
+          "group": "intelligence"
+        }
+      }
+    },
+    "map.edition.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "mp.ed": {
+          "args": [
+            "title",
+            "maker",
+            "created_at",
+            "coordinate_system"
+          ],
+          "desc": "Add a map edition (source document)",
+          "group": "map"
+        },
+        "map.ed": {
+          "args": [
+            "title",
+            "maker",
+            "created_at",
+            "coordinate_system"
+          ],
+          "desc": "Add a map edition (source document)",
+          "group": "map"
+        },
+        "map.edition": {
+          "args": [
+            "title",
+            "maker",
+            "created_at",
+            "coordinate_system"
+          ],
+          "desc": "Add a map edition (alias: map.ed)",
+          "group": "map"
+        }
+      }
+    },
+    "map.eval": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "mp.eval": {
+          "args": [
+            "target_id",
+            "target_type",
+            "confidence"
+          ],
+          "desc": "Event-sourced re-evaluation of a map atom",
+          "group": "map"
+        },
+        "map.eval": {
+          "args": [
+            "target_id",
+            "target_type",
+            "confidence"
+          ],
+          "desc": "Event-sourced re-evaluation of a map atom",
+          "group": "map"
+        }
+      }
+    },
+    "map.feature.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "mp.feat": {
+          "args": [
+            "edition_id",
+            "name",
+            "feature_type"
+          ],
+          "desc": "Add a cartographic feature to an edition",
+          "group": "map"
+        },
+        "map.feat": {
+          "args": [
+            "edition_id",
+            "name",
+            "feature_type"
+          ],
+          "desc": "Add a depicted feature to an edition",
+          "group": "map"
+        }
+      }
+    },
+    "map.geometry.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "mp.geom": {
+          "args": [
+            "feature_id",
+            "geometry_type",
+            "coordinates"
+          ],
+          "desc": "Add geometry to a feature",
+          "group": "map"
+        },
+        "map.geom": {
+          "args": [
+            "feature_id",
+            "geometry_type",
+            "coordinates"
+          ],
+          "desc": "Add geometry to a feature",
+          "group": "map"
+        }
+      }
+    },
+    "map.ground": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "mp.ground": {
+          "args": [
+            "src_id",
+            "dst_id",
+            "relation",
+            "source_id"
+          ],
+          "desc": "Record a map-local grounding claim",
+          "group": "map"
+        },
+        "map.ground": {
+          "args": [
+            "src_id",
+            "dst_id",
+            "relation",
+            "source_id"
+          ],
+          "desc": "Record a map-local grounding claim",
+          "group": "map"
+        }
+      }
+    },
+    "map.label.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "mp.label": {
+          "args": [
+            "edition_id",
+            "target_id",
+            "text",
+            "language"
+          ],
+          "desc": "Add a label to a map atom",
+          "group": "map"
+        },
+        "map.label": {
+          "args": [
+            "edition_id",
+            "target_id",
+            "text",
+            "language"
+          ],
+          "desc": "Add label text to a map atom",
+          "group": "map"
+        }
+      }
+    },
+    "map.ls": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "mp.ls": {
+          "args": [],
+          "desc": "List all Map roots",
+          "group": "map"
+        },
+        "map.ls": {
+          "args": [],
+          "desc": "List all Map roots",
+          "group": "map"
+        }
+      }
+    },
+    "map.map": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "mp.map": {
+          "args": [],
+          "desc": "Show structure of active Map",
+          "group": "map"
+        }
+      }
+    },
+    "map.new": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "mp.new": {
+          "args": [
+            "title",
+            "description"
+          ],
+          "desc": "Create a new Map root",
+          "group": "map"
+        },
+        "map.new": {
+          "args": [
+            "title",
+            "description"
+          ],
+          "desc": "Create a new Map root",
+          "group": "map"
+        }
+      }
+    },
+    "map.open": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "mp.open": {
+          "args": [
+            "map_id"
+          ],
+          "desc": "Open an existing Map root",
+          "group": "map"
+        },
+        "map.open": {
+          "args": [
+            "map_id"
+          ],
+          "desc": "Open an existing Map root",
+          "group": "map"
+        }
+      }
+    },
+    "map.projection.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "mp.proj": {
+          "args": [
+            "edition_id",
+            "target_system",
+            "method"
+          ],
+          "desc": "Add a cartographic projection transform",
+          "group": "map"
+        },
+        "map.proj": {
+          "args": [
+            "edition_id",
+            "target_system",
+            "method"
+          ],
+          "desc": "Add a cartographic projection transform",
+          "group": "map"
+        }
+      }
+    },
+    "map.rm": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "mp.rm": {
+          "args": [],
+          "desc": "Soft-delete the active Map root",
+          "group": "map"
+        },
+        "map.rm": {
+          "args": [],
+          "desc": "Soft-delete the active Map root",
+          "group": "map"
+        }
+      }
+    },
+    "map.show": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "map.show": {
+          "args": [],
+          "desc": "Show structure of active Map",
+          "group": "map"
+        }
+      }
+    },
+    "map.snapshot.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "mp.snap": {
+          "args": [
+            "label",
+            "captured_at"
+          ],
+          "desc": "Add a temporal snapshot of the map",
+          "group": "map"
+        },
+        "map.snap": {
+          "args": [
+            "label",
+            "captured_at"
+          ],
+          "desc": "Add a temporal snapshot of the map",
+          "group": "map"
+        }
+      }
+    },
+    "map.time.rebuild": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "mp.time": {
+          "args": [],
+          "desc": "Rebuild the temporal index of active Map",
+          "group": "map"
+        },
+        "map.time.rebuild": {
+          "args": [],
+          "desc": "Rebuild the temporal index of active Map",
+          "group": "map"
+        }
+      }
+    },
+    "map.transition.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "mp.trans": {
+          "args": [
+            "target_id",
+            "transition_type",
+            "description",
+            "occurred_at"
+          ],
+          "desc": "Record a cartographic state transition",
+          "group": "map"
+        },
+        "map.trans": {
+          "args": [
+            "target_id",
+            "transition_type",
+            "description",
+            "occurred_at"
+          ],
+          "desc": "Record a cartographic state transition",
+          "group": "map"
+        }
+      }
+    },
+    "pres.deck.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "implements": "pipeline.deck.add",
+      "cli": {
+        "pr.deck": {
+          "args": [
+            "title"
+          ],
+          "desc": "Add a slide-deck section",
+          "group": "presentation"
+        }
+      }
+    },
+    "pres.frame.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "implements": "pipeline.frame.add",
+      "cli": {
+        "pr.frame": {
+          "args": [
+            "deck_id",
+            "title"
+          ],
+          "desc": "Add a frame/slide to a deck",
+          "group": "presentation"
+        }
+      }
+    },
+    "pres.list": {
+      "access": "read",
+      "router": "concept_registry",
+      "implements": "pipeline.deck.list",
+      "cli": {
+        "pr.list": {
+          "args": [],
+          "desc": "Show structure of active Presentation",
+          "group": "presentation"
+        }
+      }
+    },
+    "pres.ls": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "pr.ls": {
+          "args": [],
+          "desc": "List all Presentations",
+          "group": "presentation"
+        }
+      }
+    },
+    "pres.new": {
+      "access": "record",
+      "router": "concept_registry",
+      "implements": "pipeline.deck.new",
+      "cli": {
+        "pr.new": {
+          "args": [
+            "title"
+          ],
+          "desc": "Create a new Presentation root",
+          "group": "presentation"
+        }
+      }
+    },
+    "pres.node.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "pr.node": {
+          "args": [
+            "region_id",
+            "ref_id"
+          ],
+          "desc": "Attach a content reference node to a region",
+          "group": "presentation"
+        }
+      }
+    },
+    "pres.open": {
+      "access": "read",
+      "router": "concept_registry",
+      "implements": "pipeline.deck.open",
+      "cli": {
+        "pr.open": {
+          "args": [
+            "pres_id"
+          ],
+          "desc": "Open an existing Presentation",
+          "group": "presentation"
+        }
+      }
+    },
+    "pres.region.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "pr.region": {
+          "args": [
+            "frame_id",
+            "label"
+          ],
+          "desc": "Add a layout region within a frame",
+          "group": "presentation"
+        }
+      }
+    },
+    "pres.rm": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "pr.rm": {
+          "args": [],
+          "desc": "Delete the active Presentation",
+          "group": "presentation"
+        }
+      }
+    },
+    "rec.get": {
+      "access": "read",
+      "router": "concept_registry",
+      "projection": {
+        "pulse": "rec"
+      },
+      "cli": {
+        "rec.get": {
+          "args": [
+            "key"
+          ],
+          "desc": "Get record with all attributes",
+          "group": "rec"
+        }
+      }
+    },
+    "rec.idx": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "rec.idx": {
+          "args": [
+            "key",
+            "sets"
+          ],
+          "desc": "Add record to index sets (comma-separated set names)",
+          "group": "rec"
+        }
+      }
+    },
+    "rec.ls": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "rec.ls": {
+          "args": [],
+          "desc": "List records: rec.ls [type=<t>] [in_set=<s>]",
+          "group": "rec"
+        }
+      }
+    },
+    "rec.new": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "rec.new": {
+          "args": [
+            "type"
+          ],
+          "desc": "Create a record atom (type=<concept> content=<text> <attr>=<val> …)",
+          "group": "rec"
+        }
+      }
+    },
+    "rec.rm": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "rec.rm": {
+          "args": [
+            "key"
+          ],
+          "desc": "Delete a record",
+          "group": "rec"
+        }
+      }
+    },
+    "rec.set": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "rec.set": {
+          "args": [
+            "key",
+            "attr",
+            "val"
+          ],
+          "desc": "Set an attribute on a record",
+          "group": "rec"
+        }
+      }
+    },
+    "rec.sum": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "rec.sum": {
+          "args": [
+            "attr"
+          ],
+          "desc": "Sum a numeric attribute: rec.sum attr=amount [in_set=<s>] [type=<t>]",
+          "group": "rec"
+        }
+      }
+    },
+    "soma.equip": {
+      "access": "record",
+      "router": "concept_registry"
+    },
+    "soma.new": {
+      "access": "record",
+      "router": "concept_registry"
+    },
+    "soma.repair": {
+      "access": "record",
+      "router": "concept_registry"
+    },
+    "soma.status": {
+      "access": "read",
+      "router": "concept_registry"
+    },
+    "synth.claim.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "sy.claim": {
+          "args": [
+            "content"
+          ],
+          "desc": "Assert a claim backed by interpretations/evidence",
+          "group": "synthesis"
+        }
+      }
+    },
+    "synth.code.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "sy.code": {
+          "args": [
+            "label"
+          ],
+          "desc": "Create a qualitative code label",
+          "group": "synthesis"
+        }
+      }
+    },
+    "synth.interp.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "sy.interp": {
+          "args": [
+            "stance",
+            "theme_id"
+          ],
+          "desc": "Record an interpretation grounded in a theme",
+          "group": "synthesis"
+        }
+      }
+    },
+    "synth.ls": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "sy.ls": {
+          "args": [],
+          "desc": "List all Synthesis roots",
+          "group": "synthesis"
+        }
+      }
+    },
+    "synth.new": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "sy.new": {
+          "args": [
+            "title"
+          ],
+          "desc": "Create a new Synthesis root",
+          "group": "synthesis"
+        }
+      }
+    },
+    "synth.source.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "sy.src": {
+          "args": [
+            "ref_id"
+          ],
+          "desc": "Index an atom as a source",
+          "group": "synthesis"
+        }
+      }
+    },
+    "synth.theme.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "sy.theme": {
+          "args": [
+            "label"
+          ],
+          "desc": "Create a theme grouping one or more codes",
+          "group": "synthesis"
+        }
+      }
+    },
+    "synth.thread.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "sy.step": {
+          "args": [
+            "thread_id",
+            "ref_id"
+          ],
+          "desc": "Append an atom as the next step in a thread",
+          "group": "synthesis"
+        }
+      }
+    },
+    "synth.thread.new": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "sy.thread": {
+          "args": [
+            "label"
+          ],
+          "desc": "Create a named reasoning thread",
+          "group": "synthesis"
+        }
+      }
+    },
+    "table.col.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "table.col.add": {
+          "args": [
+            "table",
+            "name"
+          ],
+          "desc": "Add a column: table.col.add table=<t> name=<col> [type=text|int|float|bool|date]",
+          "group": "table"
+        }
+      }
+    },
+    "table.col.ls": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "table.col.ls": {
+          "args": [
+            "table"
+          ],
+          "desc": "List columns of a table in ordinal order",
+          "group": "table"
+        }
+      }
+    },
+    "table.export": {
+      "access": "read",
+      "router": "concept_registry",
+      "implements": "pipeline.table.export",
+      "cli": {
+        "table.export": {
+          "args": [
+            "table"
+          ],
+          "desc": "Export table as CSV text",
+          "group": "table"
+        }
+      }
+    },
+    "table.get": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "table.get": {
+          "args": [
+            "table"
+          ],
+          "desc": "Show table schema and row count",
+          "group": "table"
+        }
+      }
+    },
+    "table.import": {
+      "access": "record",
+      "router": "concept_registry",
+      "implements": "pipeline.table.import",
+      "cli": {
+        "table.import": {
+          "args": [
+            "table"
+          ],
+          "desc": "Import CSV: table.import table=<t> csv=\"header\\nrow1\\nrow2\"",
+          "group": "table"
+        }
+      }
+    },
+    "table.ls": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "table.ls": {
+          "args": [
+            "table"
+          ],
+          "desc": "List rows: table.ls table=<t> [limit=100]",
+          "group": "table"
+        }
+      }
+    },
+    "table.new": {
+      "access": "record",
+      "router": "concept_registry",
+      "implements": "pipeline.table.create",
+      "cli": {
+        "table.new": {
+          "args": [
+            "name",
+            "cols"
+          ],
+          "desc": "Create a table: table.new name=<n> cols=\"col:type,...\" [description=<text>]",
+          "group": "table"
+        }
+      }
+    },
+    "table.rm": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "table.rm": {
+          "args": [
+            "table"
+          ],
+          "desc": "Drop a table and all its rows (irreversible)",
+          "group": "table"
+        }
+      }
+    },
+    "table.row.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "table.row.add": {
+          "args": [
+            "table"
+          ],
+          "desc": "Insert a row: table.row.add table=<t> col1=val1 col2=val2 ...",
+          "group": "table"
+        }
+      }
+    },
+    "table.row.get": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "table.row.get": {
+          "args": [
+            "table",
+            "row"
+          ],
+          "desc": "Retrieve a single row by key",
+          "group": "table"
+        }
+      }
+    },
+    "table.row.rm": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "table.row.rm": {
+          "args": [
+            "table",
+            "row"
+          ],
+          "desc": "Remove a single row",
+          "group": "table"
+        }
+      }
+    },
+    "thesaurus.concept": {
+      "access": "read",
+      "router": "concept_registry",
+      "dive_bearing": true,
+      "projection": {
+        "pulse": "concept",
+        "mcp": {
+          "name": "akasha_concept",
+          "access": "read",
+          "description": "Concept page for a word: neighbourhood, synonyms/broader/narrower, usage, and external references — the primary lookup before writing prose.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "implements": "pipeline.concept.card"
+    },
+    "thesaurus.explore": {
+      "access": "read",
+      "router": "concept_registry",
+      "dive_bearing": true
+    },
+    "thesaurus.reference": {
+      "access": "read",
+      "router": "concept_registry",
+      "dive_bearing": true,
+      "projection": {
+        "reference": {
+          "role": "glossary",
+          "default_limit": 200
+        }
+      }
+    },
+    "topos.collect.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "wd.col": {
+          "args": [
+            "label",
+            "collection_type"
+          ],
+          "desc": "Create a collection",
+          "group": "topos"
+        }
+      }
+    },
+    "topos.collect.put": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "wd.put": {
+          "args": [
+            "collect_id",
+            "member_id"
+          ],
+          "desc": "Add a member to a collection",
+          "group": "topos"
+        }
+      }
+    },
+    "topos.connect": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "wd.link": {
+          "args": [
+            "from_id",
+            "to_id",
+            "connection_type"
+          ],
+          "desc": "Connect two places",
+          "group": "topos"
+        }
+      }
+    },
+    "topos.event": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "wd.event": {
+          "args": [
+            "description",
+            "intensity"
+          ],
+          "desc": "Record a world event",
+          "group": "topos"
+        }
+      }
+    },
+    "topos.hidden.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "wd.hide": {
+          "args": [
+            "hint"
+          ],
+          "desc": "Add a hidden layer element",
+          "group": "topos"
+        }
+      }
+    },
+    "topos.law.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "wd.law": {
+          "args": [
+            "law_type",
+            "content"
+          ],
+          "desc": "Add a law to the World",
+          "group": "topos"
+        }
+      }
+    },
+    "topos.law.change": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "wd.amend": {
+          "args": [
+            "law_id",
+            "new_state"
+          ],
+          "desc": "Record a law state change",
+          "group": "topos"
+        }
+      }
+    },
+    "topos.ls": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "wd.ls": {
+          "args": [],
+          "desc": "List all Worlds",
+          "group": "topos"
+        }
+      }
+    },
+    "topos.new": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "wd.new": {
+          "args": [
+            "title",
+            "description",
+            "time_type"
+          ],
+          "desc": "Create a new World",
+          "group": "topos"
+        }
+      }
+    },
+    "topos.object.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "wd.obj": {
+          "args": [
+            "place_id",
+            "name"
+          ],
+          "desc": "Add an object to a place",
+          "group": "topos"
+        }
+      }
+    },
+    "topos.place.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "wd.place": {
+          "args": [
+            "name",
+            "place_type",
+            "category"
+          ],
+          "desc": "Add a place to the active World",
+          "group": "topos"
+        }
+      }
+    },
+    "topos.place.state": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "wd.state": {
+          "args": [
+            "place_id",
+            "state"
+          ],
+          "desc": "Record a place state change",
+          "group": "topos"
+        }
+      }
+    },
+    "topos.portal.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "wd.portal": {
+          "args": [
+            "place_id",
+            "direction"
+          ],
+          "desc": "Add a portal to a place",
+          "group": "topos"
+        }
+      }
+    },
+    "topos.prop.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "wd.prop": {
+          "args": [
+            "place_id",
+            "item"
+          ],
+          "desc": "Add a prop/suggester to a place",
+          "group": "topos"
+        }
+      }
+    },
+    "feed.poll": {
+      "fn": "app.concepts.feed_poll:handle_feed_poll",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "feed.poll": {
+          "args": [
+            "action"
+          ],
+          "desc": "Live-telemetry poller control (default ON): feed.poll on|off|status (librarian/admin; off persists)"
+        }
+      }
+    },
+    "analysis.precompute": {
+      "fn": "app.concepts.analysis_ops:handle_analysis_precompute",
+      "stage": "pre",
+      "access": "run",
+      "cli": {
+        "analysis.precompute": {
+          "args": [
+            "labo",
+            "input",
+            "bench",
+            "fields",
+            "plugins"
+          ],
+          "desc": "Batch-precompute a pool's statistical projections in the background (Harmonia), so guests re-fetch them via analysis.view with no real-time Atom sweep. Default: count for every scanned field. Needs run on the bench named by bench= (its projections are written there)."
+        }
+      },
+      "target": "bench",
+      "target_kind": "bench",
+      "target_required": true
+    },
+    "analysis.diag": {
+      "fn": "app.concepts.analysis_ops:handle_analysis_diag",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "analysis.diag": {
+          "args": [
+            "pip_check",
+            "tf_family"
+          ],
+          "desc": "Diagnose why an analysis chart is blank: Python/env, boot-phase states, analysis/vlab job status, which optional libraries are importable, and each pool's prepared-counts readiness. Add pip_check=1 to probe WHY a missing library won't install (e.g. no wheel for this Python); tf_family=1 to test which TensorFlow variant (tensorflow/-cpu/tf-nightly/…) has a wheel for this Python."
+        }
+      }
+    },
+    "station.air.turn": {
+      "access": "say",
+      "router": "concept_registry",
+      "implements": "society.air"
+    },
+    "learning.observe": {
+      "access": "record",
+      "router": "concept_registry",
+      "block_branch": true
+    },
+    "learning.feature.run": {
+      "access": "record",
+      "router": "concept_registry",
+      "block_branch": true
+    },
+    "world.genesis": {
+      "access": "record",
+      "router": "concept_registry",
+      "implements": "genesis"
+    },
+    "ingredient.get": {
+      "access": "read",
+      "router": "concept_registry",
+      "projection": {
+        "pulse": "ingredient"
+      }
+    },
+    "cheese.get": {
+      "access": "read",
+      "router": "concept_registry",
+      "projection": {
+        "pulse": "cheese"
+      }
+    },
+    "bread.get": {
+      "access": "read",
+      "router": "concept_registry",
+      "projection": {
+        "pulse": "bread"
+      }
+    },
+    "sweet.get": {
+      "access": "read",
+      "router": "concept_registry",
+      "projection": {
+        "pulse": "sweet"
+      }
+    },
+    "smallplate.get": {
+      "access": "read",
+      "router": "concept_registry",
+      "projection": {
+        "pulse": "smallplate"
+      }
+    },
+    "meal.get": {
+      "access": "read",
+      "router": "concept_registry",
+      "projection": {
+        "pulse": "meal"
+      }
+    },
+    "drink.get": {
+      "access": "read",
+      "router": "concept_registry",
+      "projection": {
+        "pulse": "drink"
+      }
+    },
+    "cocktail.get": {
+      "access": "read",
+      "router": "concept_registry",
+      "projection": {
+        "pulse": "cocktail"
+      }
+    },
+    "wine.get": {
+      "access": "read",
+      "router": "concept_registry",
+      "projection": {
+        "pulse": "wine"
+      }
+    },
+    "spirit.get": {
+      "access": "read",
+      "router": "concept_registry",
+      "projection": {
+        "pulse": "spirit"
+      }
+    },
+    "brewery.get": {
+      "access": "read",
+      "router": "concept_registry",
+      "projection": {
+        "pulse": "brewery"
+      }
+    },
+    "producer.get": {
+      "access": "read",
+      "router": "concept_registry",
+      "projection": {
+        "pulse": "producer"
+      }
+    },
+    "concept.tree": {
+      "access": "read",
+      "router": "concept_registry",
+      "implements": "concept_tree"
+    },
+    "research.source.bind": {
+      "access": "record",
+      "router": "concept_registry",
+      "implements": "bench.bind_pool"
+    },
+    "survey.res.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "implements": "pipeline.survey.respondent",
+      "cli": {
+        "sv.who": {
+          "args": [
+            "respondent_id"
+          ],
+          "desc": "Register a respondent",
+          "group": "survey"
+        }
+      }
+    },
+    "survey.ans": {
+      "access": "record",
+      "router": "concept_registry",
+      "implements": "pipeline.survey.answer",
+      "cli": {
+        "sv.ans": {
+          "args": [
+            "question_id",
+            "respondent_atom",
+            "answer"
+          ],
+          "desc": "Record a response",
+          "group": "survey"
+        }
+      }
+    },
+    "survey.open": {
+      "access": "read",
+      "router": "concept_registry",
+      "implements": "pipeline.survey.open",
+      "cli": {
+        "sv.open": {
+          "args": [
+            "survey_id"
+          ],
+          "desc": "Open an existing Survey",
+          "group": "survey"
+        }
+      }
+    },
+    "survey.list": {
+      "access": "read",
+      "router": "concept_registry",
+      "implements": "pipeline.survey.list",
+      "cli": {
+        "sv.list": {
+          "args": [],
+          "desc": "Show active Survey structure",
+          "group": "survey"
+        }
+      }
+    },
+    "vlab.layer.backfill": {
+      "access": "record",
+      "router": "concept_registry",
+      "hydrate": {
+        "name": "vlab_layer",
+        "layer_v": 2,
+        "on_boot": "rebuild",
+        "boot_verify": "run",
+        "inputs": "vision_observation atoms + vision_run atoms",
+        "assigned_key": "assigned",
+        "droppable": true,
+        "desc": "the observation coordinate layer (family/model/bench/branch/mode/purpose) + its Sets"
+      }
+    },
+    "research.layer.backfill": {
+      "access": "record",
+      "router": "concept_registry",
+      "hydrate": {
+        "name": "research_layer",
+        "layer_v": 1,
+        "on_boot": "rebuild",
+        "boot_verify": "run",
+        "inputs": "research_chunk atoms (pre-§2-port)",
+        "assigned_key": "assigned",
+        "droppable": true,
+        "desc": "map legacy research_chunk atoms to the ported reading shape (concept + D2-M facets + the notebook readings Sets + bench coordinate); idempotent, assigned=0 once mapped (seeds-14 §2)"
+      }
+    },
+    "note.new": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "n.new": {
+          "args": [
+            "title"
+          ],
+          "desc": "Create a new note/document",
+          "group": "note"
+        }
+      }
+    },
+    "note.ls": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "n.ls": {
+          "args": [],
+          "desc": "List all notes for current user",
+          "group": "note"
+        }
+      }
+    },
+    "note.open": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "n.open": {
+          "args": [
+            "note_id"
+          ],
+          "desc": "Open (mount) an existing note by ID",
+          "group": "note"
+        }
+      }
+    },
+    "note.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "n.add": {
+          "args": [
+            "text"
+          ],
+          "desc": "Append a content chunk to the active note",
+          "group": "note"
+        }
+      }
+    },
+    "note.section": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "n.sec": {
+          "args": [
+            "title"
+          ],
+          "desc": "Add a section to the active note",
+          "group": "note"
+        },
+        "n.chap": {
+          "args": [
+            "title",
+            "role"
+          ],
+          "desc": "Add a chapter (role=chapter)",
+          "group": "note"
+        }
+      }
+    },
+    "note.paragraph": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "n.para": {
+          "args": [
+            "category"
+          ],
+          "desc": "Add a paragraph container",
+          "group": "note"
+        }
+      }
+    },
+    "note.toc": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "n.toc": {
+          "args": [],
+          "desc": "Show table of contents for the active note",
+          "group": "note"
+        }
+      }
+    },
+    "note.read": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "n.read": {
+          "args": [],
+          "desc": "Read the active note as sequential text",
+          "group": "note"
+        }
+      }
+    },
+    "note.rm": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "n.rm": {
+          "args": [],
+          "desc": "Delete the active note",
+          "group": "note"
+        }
+      }
+    },
+    "note.list": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "n.list": {
+          "args": [],
+          "desc": "List chunks (head preview)",
+          "group": "note"
+        }
+      }
+    },
+    "note.edit": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "n.edit": {
+          "args": [
+            "chunk_id",
+            "text"
+          ],
+          "desc": "Edit a chunk (new version)",
+          "group": "note"
+        }
+      }
+    },
+    "note.move": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "n.move": {
+          "args": [
+            "chunk_id",
+            "after"
+          ],
+          "desc": "Reorder a chunk",
+          "group": "note"
+        }
+      }
+    },
+    "note.undo": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "n.undo": {
+          "args": [],
+          "desc": "Undo last edit or reorder",
+          "group": "note"
+        }
+      }
+    },
+    "note.redo": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "n.redo": {
+          "args": [],
+          "desc": "Redo last undone edit",
+          "group": "note"
+        }
+      }
+    },
+    "note.restore": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "n.restore": {
+          "args": [],
+          "desc": "Restore original order and content",
+          "group": "note"
+        }
+      }
+    },
+    "note.rename": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "n.rename": {
+          "args": [
+            "title"
+          ],
+          "desc": "Rename the active note",
+          "group": "note"
+        }
+      }
+    },
+    "survey.new": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "sv.new": {
+          "args": [
+            "title",
+            "description"
+          ],
+          "desc": "Create a new Survey",
+          "group": "survey"
+        }
+      }
+    },
+    "survey.ls": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "sv.ls": {
+          "args": [],
+          "desc": "List all Surveys",
+          "group": "survey"
+        }
+      }
+    },
+    "survey.q.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "sv.q": {
+          "args": [
+            "text",
+            "qtype"
+          ],
+          "desc": "Add a question to active Survey",
+          "group": "survey"
+        }
+      }
+    },
+    "survey.opt.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "sv.opt": {
+          "args": [
+            "question_id",
+            "label",
+            "value"
+          ],
+          "desc": "Add an option to a question",
+          "group": "survey"
+        }
+      }
+    },
+    "survey.rm": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "sv.rm": {
+          "args": [],
+          "desc": "Delete the active Survey",
+          "group": "survey"
+        }
+      }
+    },
+    "fieldnote.new": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "fn.new": {
+          "args": [
+            "title",
+            "project",
+            "region",
+            "season"
+          ],
+          "desc": "Create a new FieldNote",
+          "group": "fieldnote"
+        }
+      }
+    },
+    "fieldnote.ls": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "fn.ls": {
+          "args": [],
+          "desc": "List all FieldNotes",
+          "group": "fieldnote"
+        }
+      }
+    },
+    "fieldnote.open": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "fn.open": {
+          "args": [
+            "fieldnote_id"
+          ],
+          "desc": "Open an existing FieldNote",
+          "group": "fieldnote"
+        }
+      }
+    },
+    "fieldnote.add": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "fn.add": {
+          "args": [
+            "text"
+          ],
+          "desc": "Add an observation to the active FieldNote",
+          "group": "fieldnote"
+        }
+      }
+    },
+    "fieldnote.read": {
+      "access": "read",
+      "router": "concept_registry",
+      "cli": {
+        "fn.read": {
+          "args": [],
+          "desc": "Read all observations in the active FieldNote",
+          "group": "fieldnote"
+        }
+      }
+    },
+    "fieldnote.rm": {
+      "access": "record",
+      "router": "concept_registry",
+      "cli": {
+        "fn.rm": {
+          "args": [],
+          "desc": "Delete the active FieldNote",
+          "group": "fieldnote"
+        }
+      }
+    },
+    "labo.new": {
+      "access": "record",
+      "router": "concept_registry",
+      "implements": "workload.labo.new"
+    },
+    "labo.bind": {
+      "access": "record",
+      "router": "concept_registry",
+      "implements": "workload.labo.bind"
+    },
+    "labo.of": {
+      "access": "read",
+      "router": "concept_registry",
+      "implements": "workload.labo.of"
+    },
+    "analysis.precompute.pass": {
+      "fn": "app.concepts.precompute:handle_analysis_precompute_pass",
+      "stage": "pre",
+      "access": "run",
+      "target": "bench",
+      "target_kind": "bench",
+      "target_required": true,
+      "cli": {
+        "analysis.precompute.pass": {
+          "args": [
+            "bench"
+          ],
+          "desc": "One bounded pass of the text-analysis precompute over every frozen pool, as the caller (the analysis_precompute workload's step): analysis.precompute.pass bench=<own bench>"
+        }
+      }
+    },
+    "vlab.media.pass": {
+      "fn": "app.concepts.precompute:handle_vlab_media_pass",
+      "stage": "pre",
+      "access": "run",
+      "target": "bench",
+      "target_kind": "bench",
+      "target_required": true,
+      "cli": {
+        "vlab.media.pass": {
+          "args": [
+            "bench"
+          ],
+          "desc": "One bounded pass of the image/audio observation precompute over every frozen media pool, as the caller (the media_precompute workload's step): vlab.media.pass bench=<own bench>"
+        }
+      }
+    },
+    "labo.register.pass": {
+      "fn": "app.concepts.labo_pass:handle_labo_register_pass",
+      "stage": "pre",
+      "access": "run",
+      "target": "bench",
+      "target_kind": "bench",
+      "target_required": true,
+      "cli": {
+        "labo.register.pass": {
+          "args": [
+            "bench"
+          ],
+          "desc": "One bounded pass registering the canonical labs and binding the resources present, as the caller (the labo_register workload's step): labo.register.pass bench=<own bench>"
+        }
+      }
+    }
+  },
+  "schedules": {
+    "feed_defaults": {
+      "fn": "app.concepts.feed_poll:schedule_feed_defaults",
+      "phase": "writer",
+      "order": 35,
+      "when": "every_boot"
+    }
+  },
+  "thread_units": [],
+  "provision": {},
+  "hydrate": [],
+  "declarations": [
+    "app/config/macros/*.csl",
+    "app/config/seed/*.json"
+  ],
+  "code_paths": [
+    "app/concepts/",
+    "app/config/macros/",
+    "app/config/seed/",
+    "app/seeds/fieldnote/",
+    "app/seeds/loom/",
+    "app/seeds/note/"
+  ],
+  "data_paths": [],
+  "evals": [
+    "app/test/clab_*_eval.py",
+    "app/test/labo_*_eval.py",
+    "test/semantic_eval.py",
+    "test/dream_eval.py",
+    "test/nebula_eval.py",
+    "test/macro_eval.py",
+    "app/test/cross_*_eval.py",
+    "app/test/vlab_*_eval.py",
+    "app/test/profile_*_eval.py"
+  ],
+  "routers": {},
+  "binds": [],
+  "hooks": {
+    "tier_policy": "app.concepts.vision_lab:_tier_policy"
+  },
+  "owner": "user",
+  "_cli_groups": "Help groups for this package's commands that no Concept Model class names (group 4, 4.6): a `cli` entry may say which `group` it is listed under, and the group's one-line label is here. A registry-discovered class labels its own group with CONCEPT_LABEL.",
+  "cli_groups": {
+    "correspondence": "Cross-system conceptual mapping with evidence provenance and dispute tracking",
+    "synthesis": "Qualitative analysis — sources, codes, themes, interpretations, claims, and reasoning threads",
+    "presentation": "Slide/layout model — decks, frames, layout regions, and cross-universe content reference nodes",
+    "aggregation": "Grouping and statistical summary — units, groups, measures, directed analysis, and hierarchies"
+  },
+  "_code_paths_seeds": "app/seeds/<app>/ holds the first-run sample capsules `sys.onboarding.seed` plants (read through the app/config/seed/*.json recipes). The three app directories only — app/seeds/*.py at the top are dev generators and do not ship.",
+  "effectful_families": [
+    "station"
+  ],
+  "env": {
+    "AKASHA_ANALYSIS_MAX_DISTINCT": {
+      "kind": "capacity",
+      "default": "500",
+      "means": "distinct values a field may carry before the analysis names it high-cardinality"
+    },
+    "AKASHA_ANALYSIS_TOPN": {
+      "kind": "capacity",
+      "default": "500",
+      "means": "rows of a count projection kept (the top N)"
+    },
+    "AKASHA_GROUPBY_MAX_SETS": {
+      "kind": "capacity",
+      "default": "200",
+      "means": "sets a group-by projection may enumerate"
+    },
+    "AKASHA_PRECOMPUTE_CHUNK": {
+      "kind": "capacity",
+      "default": "2000",
+      "means": "members read per chunk by a precompute pass"
+    },
+    "AKASHA_PRECOMPUTE_MAX_FIELDS": {
+      "kind": "capacity",
+      "default": "80",
+      "means": "fields a precompute pass scans per pool"
+    },
+    "AKASHA_PRECOMPUTE_MAX_MEMBERS": {
+      "kind": "capacity",
+      "default": "60000",
+      "means": "largest pool a precompute pass prepares; a larger one is reported, not scanned"
+    },
+    "AKASHA_PRECOMPUTE_MAX_PAIRS": {
+      "kind": "capacity",
+      "default": "3160",
+      "means": "field pairs a cross-tabulation precompute computes"
+    },
+    "AKASHA_PRECOMPUTE_SCATTER_PCAP": {
+      "kind": "capacity",
+      "default": "400",
+      "means": "points kept in a precomputed scatter"
+    },
+    "AKASHA_PRECOMPUTE_YIELD_EVERY": {
+      "kind": "capacity",
+      "default": "1000",
+      "means": "members between two yields of a precompute pass (0 = never yield)"
+    },
+    "AKASHA_PRECOMPUTE_YIELD_MS": {
+      "kind": "capacity",
+      "default": "20",
+      "means": "milliseconds a precompute pass yields to the writer"
+    },
+    "AKASHA_FEED_MIN_INTERVAL": {
+      "kind": "capacity",
+      "default": "3600",
+      "means": "seconds below which a feed is not pulled again (0 honours each feed's own interval)"
+    },
+    "AKASHA_TELEMETRY_KEEP_DAYS": {
+      "kind": "capacity",
+      "default": "1",
+      "means": "days of telemetry kept (1 = today only)"
+    },
+    "AKASHA_REFERENCE_CACHE_TTL": {
+      "kind": "capacity",
+      "default": "600",
+      "means": "seconds a rendered reference page stays fresh"
+    },
+    "AKASHA_RECIPE_FREE_QUOTA": {
+      "kind": "capacity",
+      "default": "0",
+      "means": "own recipes a free plan may hold (0 = unmetered; above 0 the tiering is on)"
+    },
+    "AKASHA_RECIPE_PAID_FEATURES": {
+      "kind": "capacity",
+      "default": "nutrition,critical,haccp",
+      "means": "analytics features that require a paid plan once a free quota is set"
+    },
+    "AKASHA_BRIDGE_PROVIDER": {
+      "kind": "network",
+      "default": "wikidata",
+      "means": "the translation provider of lex.bridge (wikidata | wikipedia)"
+    },
+    "AKASHA_LLM_MODEL": {
+      "kind": "network",
+      "default": "",
+      "means": "the model name the programmes speak with (provider and key are the platform's)"
+    },
+    "AKASHA_X_LINK": {
+      "kind": "network",
+      "default": "https://akashicarchives.net<room>",
+      "means": "the link a programme's X post points back to"
+    }
+  }
+}

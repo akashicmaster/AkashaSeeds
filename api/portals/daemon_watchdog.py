@@ -14,7 +14,6 @@ with spawn=True — reaping the wedged writer and spawning a fresh one — then 
 
 Guards:
   • only the portal RECORDED in the run-dir watches (no thundering herd from a leaked orphan);
-  • disabled with AKASHA_NO_WATCHDOG=1;
   • the portal NEVER becomes a writer — it spawns a separate --daemon process, never an engine.
 
 Tunables (env): AKASHA_WATCHDOG_INTERVAL (default 60 s), AKASHA_WATCHDOG_SILENT_K (default 3).
@@ -108,7 +107,40 @@ def _loop(base_dir: str, interval: float, silent_k: int) -> None:
         silent += 1
         if silent < silent_k:
             continue
+        # Busy ≠ wedged. Under an ACCESS BURST the daemon may miss the lightweight ping while its
+        # request threads run a wave of slow disk-value reads — reviving it there restarts a WORKING
+        # daemon, dropping in-flight requests and forcing a multi-minute ontology reload (the "portal
+        # flew back to 'warming up' under load" symptom). Only revive a daemon that is genuinely
+        # WEDGED: alive but NOT advancing (no CPU time, no major page-faults). A busy daemon advances;
+        # a deadlocked/dead one does not — the same distinction the boot path uses (_daemon_advancing).
+        _pid = akasha._daemon_process_alive(base_dir)
+        if _pid is not None and akasha._daemon_advancing(_pid):
+            silent = 0
+            log.debug("[Watchdog] daemon missed the ping but is advancing (busy under load) — "
+                      "not reviving.")
+            continue
         silent = 0
+        # F60 §3.1 — a lifecycle decision is LOGGED before it acts, to BOTH web-portal.log (this
+        # process's log) and system.log (the writer's), so a revive is attributable in either delivery.
+        try:
+            _advancing = bool(_pid is not None and akasha._daemon_advancing(_pid))
+            _hb_age = akasha._boot_heartbeat_age(base_dir)
+        except Exception:
+            _advancing, _hb_age = False, None
+        try:
+            _pf = akasha._pidfile_state(base_dir)
+        except Exception:
+            _pf = "?"
+        # A53 item 6a — name exactly WHAT the watchdog saw: the pidfile state (missing|stale|live),
+        # whether /proc for the recorded pid is present, whether it is advancing, and how stale the
+        # last boot heartbeat is — so a revive line is self-explaining, never a bare verdict.
+        _revive_line = ("[Watchdog] reviving: rounds=%d interval=%.0f pidfile=%s pid=%s /proc=%s "
+                        "advancing=%s last_health=%s" % (
+                            silent_k, interval, _pf, _pid if _pid else "none",
+                            "present" if _pid is not None else "absent", _advancing,
+                            ("%.0fs" % _hb_age) if _hb_age is not None else "none"))
+        log.warning(_revive_line)
+        _system_log(root, _revive_line)
         try:
             state = _revive(akasha, root, base_dir)
             log.warning("[Watchdog] Cell daemon was unresponsive for %d rounds — ran convergence "
@@ -116,13 +148,12 @@ def _loop(base_dir: str, interval: float, silent_k: int) -> None:
             _system_log(root, f"Cell daemon unresponsive — portal watchdog ran convergence: {state}")
         except Exception as exc:
             log.warning("[Watchdog] revive attempt failed: %s", exc)
+            _system_log(root, f"revive attempt failed: {exc}")
 
 
 def start(base_dir: str) -> bool:
     """Start the watchdog thread if this is a serve-only portal and the watchdog is enabled.
     Returns True if started. Idempotent-ish (a second call starts a second thread — call once)."""
-    if os.environ.get("AKASHA_NO_WATCHDOG", "").strip().lower() in ("1", "yes", "true", "on"):
-        return False
     # Only the serve-only portal subprocess watches (never the interactive foreground, which is the
     # writer itself). AKASHA_SERVE_ONLY is set by akasha.py when it spawns the portal subprocess.
     if os.environ.get("AKASHA_SERVE_ONLY", "").strip().lower() not in ("1", "yes", "true", "on"):

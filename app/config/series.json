@@ -1,0 +1,373 @@
+{
+  "_doc": "The application's distributions. Each series is one seed the platform's crystallizer (python spawn.py <series>) cuts; the schema is the platform specification's 'Series declaration'. Paths are relative to the application root. Groups station, feeds and labs hold what needs a key, a network or a model at first run (the station's LLM/X programmes, the live feeds, the laboratories' precompute); the `seeds13` series selects none of them and ships no archives-only page.",
+  "default": "seeds",
+  "groups": {
+    "pages": {
+      "paths": [
+        "archives/",
+        "scripts/shelf_setup.py",
+        "scripts/shelf_reading_cycle.py"
+      ]
+    },
+    "radu": {
+      "paths": [
+        "concepts/radu.py",
+        "config/identities.json",
+        "concepts/radu_projection.py",
+        "test/radu_annotation_eval.py",
+        "test/fixtures/radu_annotation_v0_1.clab"
+      ]
+    },
+    "plants": {
+      "paths": [
+        "assets/plants_checklist/",
+        "assets/plants_vision/",
+        "assets/plants_vision20/",
+        "config/tier_policy.json"
+      ],
+      "whole": true
+    },
+    "station": {
+      "paths": [
+        "config/workbench/workloads/news_show.json",
+        "config/workbench/workloads/news_show_x.json",
+        "config/workbench/workloads/thinkers_shelf.json",
+        "config/workbench/workloads/art_explorer.json",
+        "config/workbench/workloads/plant_geek.json",
+        "config/workbench/studio_ai/"
+      ]
+    },
+    "feeds": {
+      "paths": [
+        "config/workbench/workloads/eonet.json",
+        "config/workbench/workloads/iss.json",
+        "config/workbench/workloads/usgs_eq.json",
+        "config/workbench/workloads/telemetry_gc.json",
+        "config/workbench/telemetry/"
+      ]
+    },
+    "labs": {
+      "paths": [
+        "config/workbench/workloads/labo_register.json",
+        "config/workbench/workloads/analysis_precompute.json",
+        "config/workbench/workloads/media_precompute.json",
+        "config/workbench/workloads/plants_vision.json",
+        "config/workbench/labo-register/",
+        "config/workbench/analysis-precompute/",
+        "config/workbench/media-precompute/",
+        "config/workbench/plants-vision/"
+      ]
+    }
+  },
+  "private": [
+    "ontology/primary_examples/",
+    "test/fixtures/radu_primary_examples.clab",
+    "test/clab_radu_fixture_eval.py",
+    "test/clab_rubik_eval.py",
+    "test/clab_projection_eval.py",
+    "test/clab_eval.py"
+  ],
+  "series": {
+    "seeds13": {
+      "twin": true,
+      "tier": "regular",
+      "max_leaves": 5,
+      "packs": "*",
+      "autoload_packs": [
+        "philosophy",
+        "domain",
+        "world"
+      ],
+      "docs": [
+        "users",
+        "cookbook",
+        "developer",
+        "concept-model",
+        "ontology"
+      ],
+      "cookbook": true,
+      "portal_gate": true,
+      "groups": []
+    },
+    "seeds14": {
+      "twin": true,
+      "tier": "beta",
+      "max_leaves": 5,
+      "packs": "*",
+      "autoload_packs": [
+        "philosophy",
+        "domain",
+        "world"
+      ],
+      "docs": [
+        "users",
+        "cookbook",
+        "developer",
+        "handoff",
+        "concept-model",
+        "ontology"
+      ],
+      "cookbook": true,
+      "portal_gate": true,
+      "groups": [
+        "station",
+        "feeds",
+        "labs"
+      ]
+    },
+    "thesaurus09": {
+      "twin": true,
+      "tier": "alpha",
+      "max_leaves": 50,
+      "load_all": true,
+      "packs": "*",
+      "docs": [
+        "users",
+        "cookbook",
+        "developer",
+        "handoff",
+        "concept-model",
+        "ontology"
+      ],
+      "cookbook": false,
+      "groups": [
+        "pages",
+        "radu",
+        "plants",
+        "station",
+        "feeds",
+        "labs"
+      ],
+      "corpora": [
+        "bl_real",
+        "mobility_eu_2014",
+        "cma_visual_curation",
+        "birdclef"
+      ],
+      "semcache_featured": {
+        "enabled": true,
+        "from_sets": [
+          "curation:demo:print_dreamers",
+          "curation:demo:beer_journey",
+          "curation:demo:sky_dreamers",
+          "curation:demo:lineage"
+        ],
+        "top_salient": 150
+      },
+      "bundle_models": true,
+      "port": 80,
+      "value_store": "disk",
+      "tls": {
+        "domains": [
+          "akashicarchives.net",
+          "akashickitchen.net"
+        ],
+        "email": "info@akashicarchives.net",
+        "staging": false
+      }
+    },
+    "seeds12": {
+      "twin": true,
+      "tier": "beta",
+      "max_leaves": 5,
+      "packs": "*",
+      "autoload_packs": [
+        "philosophy",
+        "domain",
+        "world"
+      ],
+      "docs": [
+        "users",
+        "cookbook",
+        "developer",
+        "handoff",
+        "concept-model",
+        "ontology"
+      ],
+      "cookbook": true,
+      "portal_gate": true,
+      "groups": [
+        "station",
+        "feeds",
+        "labs"
+      ]
+    },
+    "thesaurus08": {
+      "twin": true,
+      "tier": "alpha",
+      "max_leaves": 50,
+      "load_all": true,
+      "packs": "*",
+      "docs": [
+        "users",
+        "developer",
+        "handoff",
+        "concept-model",
+        "ontology"
+      ],
+      "cookbook": false,
+      "groups": [
+        "pages",
+        "radu",
+        "station",
+        "feeds",
+        "labs"
+      ],
+      "corpora": [
+        "bl_real",
+        "mobility_eu_2014",
+        "cma_visual_curation",
+        "birdclef"
+      ],
+      "port": 80,
+      "value_store": "disk",
+      "tls": {
+        "domains": [
+          "akashicarchives.net",
+          "akashickitchen.net"
+        ],
+        "email": "info@akashicarchives.net",
+        "staging": false
+      }
+    },
+    "seeds11": {
+      "tier": "beta",
+      "max_leaves": 5,
+      "packs": "*",
+      "docs": [
+        "users",
+        "cookbook",
+        "developer",
+        "handoff",
+        "concept-model",
+        "ontology"
+      ],
+      "cookbook": true,
+      "groups": [
+        "station",
+        "feeds",
+        "labs"
+      ]
+    },
+    "seeds10": {
+      "tier": "beta",
+      "max_leaves": 5,
+      "packs": "*",
+      "docs": [
+        "users",
+        "cookbook",
+        "concept-model",
+        "ontology"
+      ],
+      "cookbook": true,
+      "groups": [
+        "station",
+        "feeds",
+        "labs"
+      ]
+    },
+    "seeds08": {
+      "tier": "alpha",
+      "max_leaves": 5,
+      "packs": "*",
+      "docs": [],
+      "cookbook": true,
+      "groups": [
+        "station",
+        "feeds",
+        "labs"
+      ]
+    },
+    "server08": {
+      "tier": "alpha-server",
+      "max_leaves": 999999,
+      "load_all": true,
+      "packs": "*",
+      "docs": [],
+      "cookbook": false,
+      "groups": [
+        "pages",
+        "station",
+        "feeds",
+        "labs"
+      ]
+    },
+    "seeds": {
+      "tier": "public",
+      "max_leaves": 5,
+      "packs": "*",
+      "autoload_packs": [
+        "philosophy",
+        "domain",
+        "world"
+      ],
+      "docs": [
+        "users",
+        "cookbook",
+        "concept-model",
+        "ontology"
+      ],
+      "cookbook": true,
+      "portal_gate": true,
+      "groups": [
+        "station",
+        "feeds",
+        "labs"
+      ]
+    },
+    "librarian": {
+      "tier": "specialized",
+      "max_leaves": 50,
+      "packs": [],
+      "docs": [],
+      "cookbook": true,
+      "groups": [
+        "station",
+        "feeds",
+        "labs"
+      ]
+    },
+    "thesaurus": {
+      "tier": "specialized",
+      "max_leaves": 50,
+      "load_all": true,
+      "packs": [],
+      "docs": [],
+      "cookbook": false,
+      "groups": [
+        "pages",
+        "radu",
+        "station",
+        "feeds",
+        "labs"
+      ]
+    },
+    "business": {
+      "tier": "professional",
+      "max_leaves": 500,
+      "packs": [],
+      "docs": [],
+      "cookbook": false,
+      "groups": [
+        "pages",
+        "station",
+        "feeds",
+        "labs"
+      ]
+    },
+    "enterprise": {
+      "tier": "unlimited",
+      "max_leaves": 999999,
+      "load_all": true,
+      "packs": [],
+      "docs": [],
+      "cookbook": false,
+      "groups": [
+        "pages",
+        "station",
+        "feeds",
+        "labs"
+      ]
+    }
+  }
+}

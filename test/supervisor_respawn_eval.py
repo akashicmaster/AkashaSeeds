@@ -12,7 +12,7 @@ recipe (`python -m services.<x> --sleep`) so nothing touches the nucleus:
   5  GATE env     — a credential-shaped env key is refused at BUILD time (never persisted).
   6  GATE perms   — a group/other-writable descriptor is refused (tamper guard).
   7  GATE sign    — with a supervisor key set, an unsigned/forged recipe is refused; a
-                    correctly-signed one passes; strict mode refuses unsigned even with no key.
+                    correctly-signed one passes; with no key the OS boundary is the gate.
   8  single-writer admission — a serve_only=False unit is refused while svc:cell is live (P5).
 
 Run:  python test/supervisor_respawn_eval.py
@@ -50,6 +50,25 @@ def main():
     base = tempfile.mkdtemp(prefix="sup_p1_")
     os.makedirs(os.path.join(base, "central"), exist_ok=True)
     sv._ensure_run_dir(base)
+
+    # Busy-vs-hung guard (health tick): a unit that MISSES its probe but is ADVANCING (CPU / major-
+    # faults — a portal working through an access burst) must NOT be respawned; a frozen/hung one
+    # (no CPU) still is. This is what stops the "portal flew back to 'warming up' under load" churn.
+    if sys.platform.startswith("linux") and os.path.isdir("/proc"):
+        import subprocess as _sp, signal as _sig
+        _busy = _sp.Popen([sys.executable, "-c", "x=0\nwhile True:\n x+=1"])
+        _frozen = _sp.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+        try:
+            time.sleep(0.3); os.kill(_frozen.pid, _sig.SIGSTOP)
+            _ba = sv._proc_advancing(_busy.pid, window=0.6)
+            _fa = sv._proc_advancing(_frozen.pid, window=0.6)
+            check("0 busy unit spared, frozen unit reapable", _ba is True and _fa is False,
+                  f"busy_adv={_ba} frozen_adv={_fa}")
+        finally:
+            try: os.kill(_frozen.pid, _sig.SIGCONT)
+            except OSError: pass
+            for _p in (_busy, _frozen):
+                _p.kill(); _p.wait()
 
     # Use a genuinely spawnable, harmless recipe: python -c is disallowed, so run a tiny
     # sleeper via an allow-listed *services.* module path that we know exists as a probe.
@@ -168,15 +187,13 @@ def main():
     finally:
         del os.environ["AKASHA_SECRET"]
 
-    # strict mode: refuse unsigned even with NO key available (enterprise lever)
-    os.environ["AKASHA_SUPERVISOR_STRICT"] = "1"
-    try:
-        sv.write_unit(base, {"id": "svc:strict", "kind": sv.KIND_SERVICE, "pid": 1, "spec": s_ok})
-        ok_st, why_st = sv.authorize_recipe(base, "svc:strict", s_ok)
-        check("7e strict mode refuses unsigned recipe with no key", not ok_st, why_st)
-        sv.remove_unit(base, "svc:strict")
-    finally:
-        del os.environ["AKASHA_SUPERVISOR_STRICT"]
+    # no key: the OS boundary is the gate, so an unsigned recipe passes (the strict-signing
+    # switch is deleted — the purge order §4.5; a key's presence is the one deciding fact)
+    sv.write_unit(base, {"id": "svc:nokey", "kind": sv.KIND_SERVICE, "pid": 1, "spec": s_ok})
+    ok_nk, why_nk = sv.authorize_recipe(base, "svc:nokey", s_ok)
+    check("7e with no key an unsigned recipe passes (one deciding fact: key present)",
+          ok_nk, why_nk)
+    sv.remove_unit(base, "svc:nokey")
 
     # ── 8. single-writer admission (P5) ───────────────────────────────────────
     sup2 = sv.Supervisor(base)
@@ -214,6 +231,63 @@ def main():
         except Exception:
             pass
     sv.remove_unit(base, "svc:held")
+
+    # ── 10. THREAD-substrate stop safety: a host-bound unit's pid is the HOST interpreter's, so
+    #    stop() must NEVER signal it (else stopping an in-process poller would take down the whole
+    #    Cell daemon and every unit it carries — the collateral this guards against). ──
+    sup4 = sv.Supervisor(base)
+    host = _sp.Popen(real_sleeper, cwd=ROOT)      # stand-in for the host daemon interpreter
+    sup4.record_running("svc:inproc", host.pid, engine="thread-unit",
+                        substrate=sv.SUBSTRATE_THREAD,
+                        health={"kind": "heartbeat", "stale_s": 90})
+    r10 = sup4.stop("svc:inproc")
+    time.sleep(0.2)
+    check("10 stop() of a live THREAD unit does NOT kill the host pid (no daemon collateral)",
+          sv._pid_alive(host.pid) and r10.get("status") == "host-managed", str(r10))
+    check("10b stop() leaves the THREAD descriptor while the host lives (no orphaned live thread)",
+          sv.read_unit(base, "svc:inproc") is not None)
+    # once the host is gone, the thread died with it → stop() scrubs the now-safe stale descriptor
+    host.terminate(); host.wait(timeout=3)
+    r10c = sup4.stop("svc:inproc")
+    check("10c stop() of a THREAD unit whose host already exited scrubs the stale descriptor",
+          r10c.get("status") == "stopped" and sv.read_unit(base, "svc:inproc") is None, str(r10c))
+
+    # ── R7. the uvicorn portal shuts down GRACEFULLY inside the reaper grace. Its default graceful
+    #    shutdown waits on idle keep-alive connections with no bound, so on `stop` the supervisor's
+    #    SIGTERM grace expired and the portal was SIGKILL'd (a WARNING reserved for a WEDGED portal).
+    #    The portal launch now bounds uvicorn's timeout_graceful_shutdown BELOW the 5.0s reaper grace,
+    #    so a `stop` with an idle keep-alive drains and exits status=-15. Assert the Config carries it
+    #    (a fake uvicorn module captures the kwargs — no real socket, no uvicorn dependency). ──
+    _REAP_GRACE_S = 5.0                                   # svc:web-portal SIGTERM grace (akasha.py reaper)
+
+    class _FakeCfg:
+        def __init__(self, app, **kw):
+            self.kw = kw; self.install_signal_handlers = True
+            for k, v in kw.items():
+                setattr(self, k, v)
+
+    class _FakeServer:
+        def __init__(self, cfg):
+            self.cfg = cfg
+
+    class _FakeUvicorn:
+        Config = _FakeCfg
+        Server = _FakeServer
+
+    from api.portals.asgi import _run_uvicorn
+    os.environ.pop("AKASHA_PORTAL_GRACEFUL_S", None)      # default path
+    _cfg, _srv = _run_uvicorn(_FakeUvicorn, object(), "127.0.0.1", 8080, None, None, True)
+    _g = _cfg.kw.get("timeout_graceful_shutdown")
+    check("R7 the portal Config bounds uvicorn's graceful shutdown", _g is not None, str(_cfg.kw))
+    check("R7 the graceful shutdown is BELOW the reaper grace (no SIGKILL on a normal stop)",
+          _g is not None and _g < _REAP_GRACE_S, f"graceful={_g} grace={_REAP_GRACE_S}")
+    check("R7 signal handlers stay off the background portal thread",
+          _cfg.install_signal_handlers is False)
+    os.environ["AKASHA_PORTAL_GRACEFUL_S"] = "2"          # operator override, still under the grace
+    _cfg2, _ = _run_uvicorn(_FakeUvicorn, object(), "127.0.0.1", 8080, None, None, True)
+    check("R7 AKASHA_PORTAL_GRACEFUL_S overrides the graceful timeout",
+          _cfg2.kw.get("timeout_graceful_shutdown") == 2, str(_cfg2.kw))
+    os.environ.pop("AKASHA_PORTAL_GRACEFUL_S", None)
 
     print()
     total = len(_PASS) + len(_FAIL)

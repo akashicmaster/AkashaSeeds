@@ -1,0 +1,43 @@
+{
+  "package": "source",
+  "version": 1,
+  "depends_on": [
+    "ontology"
+  ],
+  "ops": {},
+  "schedules": {
+    "source_packs": {
+      "fn": "lib.akasha.source.bootstrap:schedule_source_packs",
+      "phase": "post_load",
+      "order": 40,
+      "when": "new_build"
+    },
+    "source_bootstrap": {
+      "fn": "lib.akasha.source.bootstrap:schedule_source_bootstrap",
+      "phase": "post_load",
+      "order": 50,
+      "when": "new_build"
+    }
+  },
+  "provision": {},
+  "hydrate": [],
+  "declarations": [
+    "config/source/*.json"
+  ],
+  "code_paths": [
+    "lib/akasha/source/",
+    "config/source/"
+  ],
+  "data_paths": [],
+  "evals": [
+    "test/source_*_eval.py",
+    "test/feed_*_eval.py",
+    "test/analysis_*_eval.py",
+    "test/media_precompute_eval.py",
+    "test/mobility_*_eval.py",
+    "test/bl_*_eval.py"
+  ],
+  "_comment": "source — pools, packs, the declared-corpus bootstraps and the fetch into the graph. It RECORDS and ANNOUNCES; it drives no Concept Model (group 4, 4.11 — the feed poller, the analysis ops and the precompute passes are the application's, in concepts/). May import ontology, nothing rightward.",
+  "owner": "platform",
+  "thread_units": []
+}

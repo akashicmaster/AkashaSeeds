@@ -175,7 +175,14 @@ class MultiLocaleNLP:
 
         # First attempt
         try:
-            self.models[lang_code] = self.spacy.load(model_name)
+            # F49-2 — a spaCy model load is a NATIVE surface (vectors/weights, invisible to MemTop);
+            # log its RSS delta so it names itself if it is part of the boot climb.
+            try:
+                from lib.akasha.memtrace import native_load as _nl
+                with _nl("spacy.load:%s" % model_name):
+                    self.models[lang_code] = self.spacy.load(model_name)
+            except ImportError:
+                self.models[lang_code] = self.spacy.load(model_name)
             return self.models[lang_code]
         except OSError:
             pass
@@ -213,6 +220,28 @@ class MultiLocaleNLP:
         except Exception as exc:
             logger.warning("[NLP] Could not auto-download '%s': %s", model_name, exc)
             return None
+
+    def ensure_models(self, langs: Optional[List[str]] = None) -> Dict[str, bool]:
+        """Eagerly load (downloading if needed) the SpaCy models for `langs` — default: EVERY entry
+        in `model_map` (Latin-script only; CJK is intentionally not mapped). This is the thesaurus-tier
+        startup hook: the fuller tier pre-loads the non-English language dictionaries so original-
+        language (原言語) analysis is ready without an on-first-use download. seeds tiers do NOT call
+        this — they load on demand, and never auto-install (AKASHA_SKIP_AUTOINSTALL / no network → the
+        model simply stays absent and that language degrades to the tokenizer floor). Returns
+        {lang: loaded?}. Best-effort: a failed download is logged, not fatal."""
+        self._check_dependencies()
+        if not self.spacy:
+            return {}
+        out: Dict[str, bool] = {}
+        for lang in (langs or list(self.model_map.keys())):
+            try:
+                out[lang] = self._load_model(lang) is not None
+            except Exception as exc:                      # never let a model failure block boot
+                logger.warning("[NLP] ensure_models('%s') failed: %s", lang, exc)
+                out[lang] = False
+        loaded = [l for l, ok in out.items() if ok]
+        logger.info("[NLP] thesaurus tier — language models ready: %s", ", ".join(loaded) or "(none)")
+        return out
 
     # -----------------------------------------------------------------------
     # Public extraction API

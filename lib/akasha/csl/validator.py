@@ -65,11 +65,8 @@ _KNOWN_KERNEL_METHODS: Set[str] = {
     "dive.look", "look", "dive.out", "out",
     # Sets
     "set.add", "set.rm", "set.ls", "set.clear", "set.op",
-    # Notes
-    "note.new", "note.add", "note.section", "note.paragraph",
-    "note.toc", "note.read", "note.rm", "note.list", "note.ls",
-    "note.edit", "note.move", "note.undo", "note.redo",
-    "note.restore", "note.rename", "note.open",
+    # (The note.* methods came from a hand-copied list here. They are the Note Concept Model's own,
+    #  and reach this validator through the registry below, like every other model's — group 4.)
     # Associate
     "kernel.associate", "associate.unwritten",
     # Jataka
@@ -121,14 +118,11 @@ def _load_registry():
         if _root_dir not in sys.path:
             sys.path.insert(0, _root_dir)
 
-        from lib.akasha.concepts.registry import ConceptRegistry
-        reg = ConceptRegistry()
-        concepts_dir = os.path.join(_akasha_dir, "concepts")
-        reg.discover(concepts_dir, module_prefix="lib.akasha.concepts")
-        # Session-layer models (SpaceConcept → instance.*) live in a sibling dir. The kernel
-        # discovers both; CSL must too, or instance.* validates as an unknown command.
-        reg.discover(os.path.join(_akasha_dir, "session"), module_prefix="lib.akasha.session")
-        return reg
+        # The router comes from the manifests through the API — the validator never imports the
+        # concepts package (backend layout order 2026-09-20 §1.3). It discovers both layers
+        # itself, so instance.* validates here exactly as it dispatches in the kernel.
+        from lib.akasha import api as _api
+        return (_api.discover_routers() or [None])[0]
     except Exception:
         return None
 

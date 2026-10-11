@@ -19,11 +19,10 @@ def _start_renewal_watcher(data_dir: str, certfile: str) -> None:
     expiry. The portal already runs the port-80 responder that serves the ACME
     challenge, so renewal only writes challenge tokens into the shared dir. On a
     successful renewal the worker re-execs itself so uvicorn picks up the new
-    cert (SSL cannot be hot-swapped in place). Opt out with AKASHA_ACME_NO_RENEW.
+    cert (SSL cannot be hot-swapped in place). An operator-supplied cert (no ACME domains
+    declared) is never renewed here.
     """
     import os as _os
-    if _os.environ.get("AKASHA_ACME_NO_RENEW"):
-        return
     if not _os.environ.get("AKASHA_TLS_DOMAINS", "").strip() \
             and not _os.environ.get("AKASHA_BASE_DOMAIN", "").strip():
         return   # nothing to renew against — cert is operator-supplied
@@ -55,7 +54,23 @@ def _start_renewal_watcher(data_dir: str, certfile: str) -> None:
     threading.Thread(target=_loop, daemon=True, name="tls-renewal-watcher").start()
 
 
+def _bias_oom_victim() -> None:
+    """F48-2.3 — a serve-only portal is the SACRIFICEABLE child: bias it as the OOM killer's
+    PREFERRED victim so a memory spike takes the transient portal, NOT the single writer daemon.
+    A POSITIVE oom_score_adj needs no privilege (unlike the writer's protective negative one, which
+    silently no-ops unprivileged — why dmesg kept showing 0). AKASHA_PORTAL_OOM_SCORE_ADJ tunes it
+    (default 500); 0 disables. Best-effort, never fatal."""
+    try:
+        _v = int(os.environ.get("AKASHA_PORTAL_OOM_SCORE_ADJ", "500") or "0")
+        if _v:
+            with open("/proc/self/oom_score_adj", "w") as _f:
+                _f.write(str(max(-1000, min(1000, _v))))
+    except Exception:
+        pass
+
+
 def main() -> None:
+    _bias_oom_victim()
     # Anchor sys.path to project root (two dirs above api/portals/)
     _here = os.path.dirname(os.path.abspath(__file__))
     _root = os.path.dirname(os.path.dirname(_here))
@@ -87,17 +102,29 @@ def main() -> None:
         format="%(asctime)s | %(name)-20s | %(levelname)-8s | %(message)s",
     )
 
-    from api.gateway import create_gateway
-    # Single-writer invariant: this serve-only subprocess must NOT write the nucleus directly.
-    # SplitGateway serves reads from this local engine and forwards writes/auth to the ONE
-    # primary writer over the local socket (preserving network trust). See cell_ipc.SplitGateway.
-    from api.portals.cell_ipc import SplitGateway
-    gw = SplitGateway(create_gateway(series=args.series, base_dir=data_dir), data_dir)
+    # Lever C — DEFER the heavy gateway build (create_gateway loads the ~1GB read substrate; on a
+    # B-scale line that is the 45–60 s "port not yet bound" window that makes the site look DOWN).
+    # We hand this factory to run_server_warming, which binds the port IMMEDIATELY with a warming
+    # page and calls the factory on a background thread, swapping in the live app when ready. The
+    # cheap setup below (watchdog, TLS, health-probe registration) still runs first on this thread.
+    def _make_gateway():
+        # The serve-only portal holds NO index. Silica search is in-RAM and fast on the DAEMON,
+        # which already holds the index; a SECOND copy here is pure waste and OOMs a memory-bounded
+        # host (daemon 5 GB + portal 5 GB > 8 GB → the daemon is OOM-killed → the whole site
+        # churns). ThinPortalGateway forwards every RPC to the one writer, keeping ONE index. (The
+        # local-engine mode is deleted with its switch — the purge order §4.5.)
+        from api.portals.cell_ipc import ThinPortalGateway, ping as _ping
+        # Wait for the daemon to be READY (its socket is bound only AFTER its index is loaded and
+        # it can serve), so the warming page shows until forwards can actually be answered.
+        import time as _t
+        while not _ping(data_dir):
+            _t.sleep(1.0)
+        return ThinPortalGateway(data_dir)
 
     # R5 — daemon self-watchdog. This serve-only portal outlives the writer and never writes the
     # nucleus, so it is the natural place to watch the daemon: if the writer wedges (silent for K
     # rounds with a stale boot heartbeat) the watchdog reaps it and spawns a fresh one. No-op unless
-    # AKASHA_SERVE_ONLY is set (it is, for this subprocess) and AKASHA_NO_WATCHDOG is unset.
+    # AKASHA_SERVE_ONLY is set (it is, for this subprocess).
     try:
         from api.portals import daemon_watchdog
         daemon_watchdog.start(data_dir)
@@ -148,16 +175,21 @@ def main() -> None:
             "target": f"{_scheme}://127.0.0.1:{int(serve_port)}/api/rpc",
             "method": "sys.ping", "timeout": 3.0,
         })
-        # F9 — signal readiness: substrate is loaded and we are about to bind. This ends the health
-        # tick's boot grace so a genuinely-hung portal is still caught quickly, while a slow-booting
-        # one is never respawned before this point.
+        # F9 — signal readiness: with Lever C the port binds IMMEDIATELY (warming page), so the
+        # worker is reachable from here on. The warming page answers the sys.ping health probe with
+        # a 503 (any HTTP response counts as alive), so ending the boot grace now is safe — a
+        # genuinely-hung worker is still caught, while the slow substrate load never looks dead.
         _sv.mark_unit_ready(data_dir, "svc:web-portal")
     except Exception:
         pass
 
-    from api.portals.asgi import run_server
-    run_server(gw, host=args.host, port=serve_port, static_dirs=static_dirs or None,
-               ssl_certfile=ssl_cert, ssl_keyfile=ssl_key)
+    # Lever C — bind the port now with a warming page; build the live gateway (the heavy substrate
+    # load, via _make_gateway) on a background thread and swap it in when ready. The site is never
+    # "connection refused" during boot — it shows "warming up" and self-opens the instant it's live.
+    from api.portals.asgi import run_server_warming
+    run_server_warming(_make_gateway, host=args.host, port=serve_port,
+                       static_dirs=static_dirs or None,
+                       ssl_certfile=ssl_cert, ssl_keyfile=ssl_key)
 
 
 if __name__ == "__main__":

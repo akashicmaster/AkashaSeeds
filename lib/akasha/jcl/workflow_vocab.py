@@ -33,6 +33,12 @@ REL_IF        = "ref:if"          # declarative condition gate on a step
 # Reserved alias prefix for named workflow definitions (protected like `ws:`).
 WF_ALIAS_PREFIX = "wf:"
 
+# Reserved alias prefix for named MACROS (G4 §3.2) — a saved, parameterized CSL script that is a
+# coarser reader expressed as Set operations. Kept DISTINCT from wf: (bench workflow) / workflow.*
+# (CSL job) so the three do not collide in a reader's mind (§4).
+MACRO_ALIAS_PREFIX = "macro:"
+
 # Atom meta `type` markers.
 META_WORKFLOW = "job:workflow"    # the definition atom (body = CSL source)
+META_MACRO    = "job:macro"       # a saved parameterized CSL macro (body = CSL source; params spec)
 META_STEP     = "job:step"        # a projected step atom (post-launch)

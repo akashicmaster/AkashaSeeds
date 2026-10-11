@@ -27,6 +27,7 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
 sys.path.insert(0, ROOT)
+from lib.akasha.concepts import semantic_ops
 os.environ["AKASHA_SKIP_AUTOINSTALL"] = "1"
 
 _results = []
@@ -248,8 +249,11 @@ def phase7_autolearn():
         return
     import json as _json
     from lib.akasha.kernel import KernelDispatcher
+    # Boot autolearn is on demand on the seeds line (the ~40k-atom bake would saturate the boot
+    # window). This phase exercises the autolearn+bake machinery itself, so it boots a SERVICE tier
+    # — the declared fact under which a deployment bakes at boot (no switch: purge order §4.5).
     KernelDispatcher._boot_load_ontology = lambda self: None
-    k = KernelDispatcher(series="seeds", base_dir=tempfile.mkdtemp(prefix="akasha_auto_"))
+    k = KernelDispatcher(series="thesaurus", base_dir=tempfile.mkdtemp(prefix="akasha_auto_"))
     nuc = k.manager.shared_nucleus
     corpus = [
         "Photosynthesis converts light energy into chemical energy in plant cells",
@@ -271,7 +275,12 @@ def phase7_autolearn():
     os.makedirs(_sent_dir, exist_ok=True)
     with open(os.path.join(_sent_dir, "_relations_test.done"), "w") as _sf:
         _sf.write("1")
-    k._schedule_semantic_learn()
+    import threading as _thr
+    _before = set(_thr.enumerate())
+    semantic_ops.schedule_semantic_learn(k)
+    # the daemon THIS call started — the wait below follows it, not the wall clock
+    _daemon = next((t for t in _thr.enumerate() if t not in _before and t.name == "semantic-autolearn"),
+                   None)
 
     def baked_count():
         n = 0
@@ -287,15 +296,28 @@ def phase7_autolearn():
                 n += 1
         return n
 
+    # Directive 2026-10-03 item 5 — this waited a fixed 12 s (60 × 0.2 s) for a BACKGROUND daemon
+    # that polls its relations gate every 5 s and then learns and bakes; a parallel suite on a
+    # contended CPU overran the budget and the phase read `model persisted=False` while the daemon
+    # was still working. The wait now follows the DAEMON: done when it has persisted a model and
+    # baked atoms, failed the moment it exits without doing so. A ceiling (300 s) remains only
+    # for a daemon that hangs — a hang is a failure, a slow machine is not.
     persisted, baked = False, 0
-    for _ in range(60):
-        time.sleep(0.2)
+    _ceiling = time.time() + 300.0
+    while time.time() < _ceiling:
+        alive = _daemon is not None and _daemon.is_alive()
         if not persisted and nuc.vault_retrieve("semantic", "model"):
             persisted = True
         if persisted:
             baked = baked_count()
             if baked > 0:
                 break
+        if not alive:
+            break                       # the daemon finished (or never started): read once more above
+        time.sleep(0.2)
+    if not (persisted and baked > 0) and _daemon is not None and not _daemon.is_alive():
+        persisted = persisted or bool(nuc.vault_retrieve("semantic", "model"))
+        baked = baked_count() if persisted else 0
     record("P7 autolearn", persisted and baked > 0,
            f"model persisted={persisted}, vectors baked into {baked}/{len(set(keys))} atoms")
 

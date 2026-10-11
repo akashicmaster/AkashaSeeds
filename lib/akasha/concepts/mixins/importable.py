@@ -129,3 +129,44 @@ class ImportableMixin:
             f"{self.__class__.__name__} does not implement import_projection. "
             "Add it or remove the ImportableMixin."
         )
+
+    # ── Raw-records import — the model-agnostic ingest contract ────────────────
+    #
+    # import_projection() above projects EXISTING graph atoms (the lens route).
+    # import_records() is the complementary side: it ingests RAW EXTERNAL records
+    # (dicts parsed from JSONL/CSV/JSON, or handed in over RPC) and mints the
+    # model's atoms. This is the single generalized entry the kernel `io.ingest`
+    # route calls, so any model becomes a drop-in target for file / inline / RPC
+    # batch import without a bespoke per-model op. A model overrides this; the
+    # base is a safe stub.
+
+    def import_records(
+        self,
+        records: List[Dict[str, Any]],   # raw external rows (already parsed to dicts)
+        into:    str = "",               # target instance id (e.g. a survey id) or name
+        mapping: Dict[str, str] = None,  # {model_field: source_column}  (optional remap)
+        **opts,
+    ) -> Dict[str, Any]:
+        """Ingest raw external records into this model's atoms. Return a summary dict.
+
+        `records` are plain dicts (from FileIO's JSONL/CSV/JSON parse, or an RPC list).
+        `mapping` optionally remaps the model's expected field → the source column name.
+        `into` names the target instance the records attach to (model-defined).
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not implement import_records. "
+            "Add it (the io.ingest contract) or remove the ImportableMixin."
+        )
+
+    @staticmethod
+    def _mapped(record: Dict[str, Any], mapping: Dict[str, str], field: str,
+                *fallbacks: str, default: str = "") -> str:
+        """Read a model field from a record, honouring an optional {field: source_col} remap and a
+        list of fallback column names. The shared helper so every model maps records the same way."""
+        mapping = mapping or {}
+        keys = [mapping[field]] if field in mapping else [field, *fallbacks]
+        for k in keys:
+            v = record.get(k)
+            if v is not None and str(v).strip():
+                return str(v)
+        return default

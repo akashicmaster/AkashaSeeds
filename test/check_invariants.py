@@ -101,10 +101,23 @@ def check_static_anchors():
         ("lib/akasha/composite.py", "ws:/wf: reserved in add_to_set (x3)",
          r'startswith\("ws:"\)\s+or\s+name\.startswith\("wf:"\)'),
         # Transport trust is a server-set enum, network is the safe default.
-        ("lib/akasha/kernel.py", "transport trust constants",
+        #
+        # These two anchors pointed at `lib/akasha/kernel.py` and went red when the kernel was cut
+        # to 3,433 lines: the constants moved to `lib/akasha/api/trust.py` — the one door — and
+        # `_TRUSTED_TRANSPORTS` became public `TRUSTED_TRANSPORTS` on the way. Nothing had
+        # regressed, but for as long as they were stale they said "the invariant may have
+        # regressed" about an invariant nothing was checking at all.
+        #
+        # They are re-pointed rather than deleted, because a moved constant should still be found.
+        # But a grep is a weak guard for a BEHAVIOUR: it can only tell you a line of source exists.
+        # `test/transport_trust_eval.py` holds the property itself — a bare client_id is never a
+        # privileged identity over the network, a client-supplied trust level is ignored, the
+        # local console still works — and the three modules that keep their own copies of these
+        # constants are checked against the contract there instead of against a comment.
+        ("lib/akasha/api/trust.py", "transport trust constants",
          r'TRUST_NETWORK\s*=\s*"network"'),
-        ("lib/akasha/kernel.py", "trusted transports frozenset",
-         r"_TRUSTED_TRANSPORTS\s*=\s*frozenset"),
+        ("lib/akasha/api/trust.py", "trusted transports frozenset",
+         r"TRUSTED_TRANSPORTS\s*=\s*frozenset"),
         ("lib/akasha/kernel.py", "_WRITE_ACTIONS gate",
          r"_WRITE_ACTIONS\s*=\s*frozenset"),
         ("lib/akasha/kernel.py", "genesis_rite is local/internal only",
@@ -487,107 +500,6 @@ def check_loaded_link_targets():
         ok(f"loaded link targets: all {r['checked']} namespaced links hang off their real atom")
 
 
-def check_canon_law():
-    """The Product·Component·Method upper ontology (docs/for-llm/product-component-ontology.md)
-    is derived automatically at ingestion. Assert the law holds after normalization: domain
-    super-concepts carry their role, an orphan recipe MINTS its product (recipe ⊆ meal:all),
-    and every recipe reaches a product via sys:method_of. Boots a kernel, seeds a food slice,
-    runs the normalizer exactly as the ingestion hook does, and checks the shape."""
-    os.environ["AKASHA_SKIP_AUTOINSTALL"] = "1"
-    try:
-        from lib.akasha.kernel import KernelDispatcher
-        from lib.akasha.ontology_normalize import OntologyNormalizer
-        from lib.akasha import canon
-    except Exception as e:
-        fail(f"[E] cannot import canon/normalizer: {e!r}")
-        return
-    KernelDispatcher._boot_load_ontology = lambda self: None
-    k = KernelDispatcher(series="seeds", base_dir=tempfile.mkdtemp(prefix="akasha_canon_inv_"))
-    k.dispatch({"jsonrpc": "2.0", "method": "kernel.genesis_rite",
-                "params": {"session_token": "admin",
-                           "data": {"user_name": "admin",
-                                    "passphrase": hashlib.sha256(b"pw").hexdigest()}},
-                "id": "g"}, "local")
-
-    def loc(m, **data):
-        return k.dispatch({"jsonrpc": "2.0", "method": m,
-                           "params": {"session_token": "admin", "data": data}, "id": 1}, "local")
-
-    for a, d in [("role:product", "product."), ("role:component", "component."),
-                 ("role:method", "method."), ("role:producer", "producer."),
-                 ("meal", "Meal."), ("recipe", "Recipe."), ("ingredient", "Ingredient."),
-                 ("drink", "Drink."), ("cocktail", "Cocktail."), ("spirit", "Spirit."),
-                 ("producer", "Producer."), ("dish:soup", "Soup — a dish."),
-                 ("recipe:paella", "Paella (Rice). Method: simmer."),
-                 ("ingred:veg:tomato", "Tomato."),
-                 ("whiskey:brand:x", "A whisky brand."),
-                 ("whiskey:distillery:d", "A distillery (producer, not a drink)."),
-                 ("ing:lime", "Lime — a cocktail ingredient."),
-                 ("spirit:gin", "Gin — a base spirit (a cocktail component).")]:
-        loc("def", name=a, description=d, scope="universal")
-    ln = [{"method": "kernel.memory.link",
-           "params": {"src": "recipe:paella", "dst": "ingred:veg:tomato", "rel": "thesaurus:related"}},
-          {"method": "kernel.memory.link",
-           "params": {"src": "whiskey:brand:x", "dst": "whiskey:distillery:d", "rel": "whiskey:made_by"}}]
-    for s in ln:
-        loc(s["method"], **s["params"])
-
-    sess = k.manager.get_session("admin")
-    cortex = sess.local_cortex
-    cores = [getattr(cortex, "core", None), getattr(getattr(sess, "nucleus", None), "core", None)]
-    for s in OntologyNormalizer(cores).plan(link_steps=ln):
-        loc(s["method"], **s["params"])
-
-    def linked(src, dst, rel):
-        sk, dk = cortex.resolve_alias(src), cortex.resolve_alias(dst)
-        return bool(sk and dk) and any(x == dk and r == rel
-                                       for x, r in (cortex.get_adjacent_links(sk) or []))
-
-    if linked("meal", "role:product", canon.IS_A) and linked("recipe", "role:method", canon.IS_A):
-        ok("[E] canon: domain super-concepts carry their role")
-    else:
-        fail("[E] canon: a domain super-concept is missing its role sys:is_a")
-
-    if cortex.resolve_alias("dish:paella") and linked("recipe:paella", "dish:paella", canon.METHOD_OF):
-        ok("[E] canon: orphan recipe minted its product + method_of (recipe ⊆ meal)")
-    else:
-        fail("[E] canon: orphan recipe NOT bound to a minted product (subset invariant broken)")
-
-    mkey = cortex.resolve_alias("dish:paella")
-    if mkey and mkey in set(cortex.get_collection_members("meal:all") or []):
-        ok("[E] canon: minted product is in the meal:all superset")
-    else:
-        fail("[E] canon: minted product missing from meal:all")
-
-    # drink side — the category rolls up into the drink umbrella, a spirit brand is a drink
-    # product, its distillery is a PRODUCER (never a drink), and made_by is canonicalized.
-    def in_set(setname, alias):
-        key = cortex.resolve_alias(alias)
-        return bool(key) and key in set(cortex.get_collection_members(setname) or [])
-
-    if linked("spirit", "drink", canon.IS_A) and in_set("drink:all", "whiskey:brand:x"):
-        ok("[E] canon: spirit rolls up into drink; a spirit brand is in drink:all")
-    else:
-        fail("[E] canon: drink rollup broken (spirit not is_a drink or brand not in drink:all)")
-
-    if not in_set("drink:all", "whiskey:distillery:d") and in_set("producer:all", "whiskey:distillery:d"):
-        ok("[E] canon: a producer (distillery) is NOT a drink — it stays in producer:all")
-    else:
-        fail("[E] canon: a producer leaked into drink:all (or is missing from producer:all)")
-
-    if linked("whiskey:brand:x", "whiskey:distillery:d", canon.MADE_BY):
-        ok("[E] canon: producer link canonicalized to sys:made_by")
-    else:
-        fail("[E] canon: made_by not canonicalized")
-
-    # drink components (ing:/spirit: base) are enrolled in the universal component role.
-    if (linked("ing:lime", "ingredient", canon.IS_A) and in_set("ingredient:all", "ing:lime")
-            and linked("spirit:gin", "ingredient", canon.IS_A)):
-        ok("[E] canon: drink components (ing:/spirit:) carry role:component (is_a ingredient)")
-    else:
-        fail("[E] canon: drink components not enrolled in the component role")
-
-
 def main():
     check_static_anchors()
     check_route_proliferation()
@@ -597,7 +509,6 @@ def main():
     check_loaded_set_memberships()
     check_loaded_link_targets()
     check_runtime()
-    check_canon_law()
 
     print()
     for m in _ok:

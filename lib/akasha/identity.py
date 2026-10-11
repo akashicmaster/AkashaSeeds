@@ -84,7 +84,24 @@ _SYSTEM_IDENTITIES.update({
     "system.jataka":    Role.ADMIN,
     "system.librarian": Role.LIBRARIAN,
     "system.weaver":    Role.LIBRARIAN,   # post-write Weaver jobs run under this identity
+    # Every OTHER internal identity is registered by the module that acts as it, through
+    # `api.trust.system_identity` (group 4, 4.15) — see `_system_role` below.
 })
+
+
+def _system_role(client_id: str):
+    """The Role of an internal identity — the heart's own, or one a module registered at load."""
+    r = _SYSTEM_IDENTITIES.get(client_id)
+    if r is not None:
+        return r
+    from lib.akasha.api import trust as _trust
+    val = _trust.system_identities().get(client_id)
+    if val:
+        try:
+            return Role(val)
+        except ValueError:
+            return None
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -189,7 +206,8 @@ class GuestBindingStore:
     memory — Lambda invocations are fully independent.  Cut the HTTP connection
     immediately after each call; the next call is verified from scratch.
 
-    The HMAC secret is loaded from / persisted to nucleus.db on first use.
+    The HMAC secret is resolved ONCE, at boot, by `ensure_secret()` — see the note
+    on that method for why it may not be minted lazily on the request path.
     If nucleus is unavailable the secret is ephemeral (single-process only).
 
     Session context (e.g. curation_return_point) lives in the Akasha semantic
@@ -203,6 +221,7 @@ class GuestBindingStore:
 
     def __init__(self, nucleus_fn=None):
         self._secret_bytes: Optional[bytes] = None
+        self._secret_source: str = ""
         self._nucleus_fn = nucleus_fn
 
     # ── Secret management ─────────────────────────────────────────────────────
@@ -229,6 +248,39 @@ class GuestBindingStore:
         """
         if self._secret_bytes is not None:
             return self._secret_bytes
+        self.ensure_secret()
+        return self._secret_bytes
+
+    def ensure_secret(self) -> str:
+        """Resolve the signing secret ONCE, at boot, and say where it came from.
+
+        This is called from `IdentityManager.__init__` — single-threaded, before any
+        request can arrive — and it must stay that way, because the mint is NOT
+        concurrency-safe and cannot be made so cheaply:
+
+            Two threads both find `_secret_bytes is None` and no stored key, both mint,
+            both `vault_store`, and whichever assignment lands last wins the attribute.
+            Every token already signed with the loser is then permanently invalid —
+            `gbk:` and `akt:` alike — and the holder gets `-32001 signature mismatch` on
+            every call, forever, with no way to recover but a new token.
+
+        That is not hypothetical: it is what a fresh cell did whenever its first traffic
+        was concurrent (a crawler reaching the portal before any serial guest create).
+        `collapse_eval`'s 24-client burst hit it every run — 353k instant refusals and
+        207 real renders, so the storm eval was measuring a spin on a dead token instead
+        of the render path it exists to bound.
+
+        No lock is taken: the mint is a single-writer act placed at boot, in the idiom
+        the rest of the system uses, rather than a fourth bookkeeping lock held across a
+        vault write (which `CLAUDE.md` → Concurrency model rules out).
+
+        Returns the source id — `env` | `vault` | `minted` | `ephemeral` — which is
+        vocabulary, not prose: `env` is the only one a networked deploy should ever see
+        (Security Model → Post-launch priority #1), so the boot line answers "did
+        AKASHA_SECRET actually reach this process?" without printing the key.
+        """
+        if self._secret_bytes is not None:
+            return self._secret_source
         import os as _os
         env_secret = _os.environ.get("AKASHA_SECRET")
         if env_secret:
@@ -236,20 +288,24 @@ class GuestBindingStore:
                 self._secret_bytes = bytes.fromhex(env_secret)
             except ValueError:
                 self._secret_bytes = hashlib.sha256(env_secret.encode()).digest()
-            return self._secret_bytes
+            self._secret_source = "env"
+            return self._secret_source
         n = self._nucleus_fn() if self._nucleus_fn else None
         if n:
             stored = n.vault_retrieve("system", "guest_binding_secret")
             if stored:
                 self._secret_bytes = bytes.fromhex(stored)
-                return self._secret_bytes
+                self._secret_source = "vault"
+                return self._secret_source
             new_key = secrets.token_bytes(32)
             n.vault_store("system", "guest_binding_secret", new_key.hex())
             self._secret_bytes = new_key
-            return self._secret_bytes
+            self._secret_source = "minted"
+            return self._secret_source
         # No nucleus — ephemeral secret (not Lambda-safe across cold starts)
         self._secret_bytes = secrets.token_bytes(32)
-        return self._secret_bytes
+        self._secret_source = "ephemeral"
+        return self._secret_source
 
     # ── Token encode / decode ─────────────────────────────────────────────────
 
@@ -411,6 +467,12 @@ class IdentityManager:
 
         # Guest binding store: self-verifying tokens, no server-side state
         self._guest_bindings = GuestBindingStore(nucleus_fn=self._nucleus)
+        # Resolve the token-signing secret HERE — single-threaded, before the first
+        # request. Left to the request path it is minted by whichever thread arrives
+        # first, and a concurrent first touch mints it several times over: the losers'
+        # tokens never verify again. See GuestBindingStore.ensure_secret.
+        _sec_src = self._guest_bindings.ensure_secret()
+        logger.info("[iam] token signing secret source=%s", _sec_src)
 
         if nucleus_path or nucleus:
             self._load_all()
@@ -539,13 +601,27 @@ class IdentityManager:
         # from a guest binding key by the kernel before this call.
         if client_id.startswith("guest:"):
             return Role.GUEST
-        if client_id in _SYSTEM_IDENTITIES:
-            return _SYSTEM_IDENTITIES[client_id]
+        _sys = _system_role(client_id)
+        if _sys is not None:
+            return _sys
         record = self._cache.get(client_id)
         if record and record.get("active", True):
             return Role(record["role"])
-        if self.series_name == "thesaurus":
-            return Role.GUEST
+        # An identity with NO record is answered EXACTLY as `anonymous` is — by the `anonymous`
+        # line of the assignment file (`anonymous guest`), in EVERY series (group 4, 4.1). It used
+        # to be a branch on the series name, which only the thesaurus tier took; every other tier
+        # raised, so the same unknown caller was a guest on one cell and an error on another. With
+        # no `anonymous` line at all there is nothing to answer as, and the request is refused.
+        return self._anonymous_role(client_id)
+
+    @staticmethod
+    def _anonymous_role(client_id: str) -> Role:
+        from lib.akasha.api import gate as _gate
+        for line in _gate.lines_for("anonymous"):
+            try:
+                return Role(str(line.get("idset") or ""))
+            except ValueError:
+                continue
         raise PermissionError(f"Access Denied: Identity '{client_id}' is unknown.")
 
     def is_system_identity(self, client_id: str) -> bool:
@@ -556,7 +632,7 @@ class IdentityManager:
         over an untrusted transport — only kernel-internal (TRUST_INTERNAL)
         callers may act as them.
         """
-        return client_id in _SYSTEM_IDENTITIES
+        return _system_role(client_id) is not None
 
     # ── Session tokens (akt:) — proof-of-identity for untrusted transports ─────
 
@@ -583,6 +659,13 @@ class IdentityManager:
         if time.time() > expires_at:
             raise PermissionError("Session token has expired.")
         record = self._cache.get(client_id)
+        if not record:
+            # F25b (secondary): hydrate-on-miss, like the group path. A read-side portal builds its IAM
+            # cache once at open; a user created AFTER (the Genesis admin on a fresh install, or a later
+            # user.add) is absent until then, so a correctly-signed token 401s forever. decode_auth has
+            # already validated the HMAC, so this only fires for genuinely-signed tokens (no storm), and
+            # it does a targeted store retrieve + the genesis-admin lift, populating the cache.
+            record = self._hydrate_user_on_miss(client_id)
         if not record or not record.get("active", True):
             raise PermissionError("Session token: unknown or inactive identity.")
         if int(record.get("token_epoch", 0)) != epoch:
@@ -708,7 +791,7 @@ class IdentityManager:
         passphrase_hash is a presented (client-side SHA-256) hash; it is salted
         and stretched with PBKDF2 before storage.
         """
-        if client_id in _SYSTEM_IDENTITIES:
+        if _system_role(client_id) is not None:
             raise ValueError(f"'{client_id}' is a reserved system identity.")
         record = _make_user_record(role, None, display_name or client_id, created_by)
         if passphrase_hash:
@@ -718,7 +801,7 @@ class IdentityManager:
 
     def deregister_client(self, client_id: str):
         """Soft-delete a user (marks active=False, removes from cache)."""
-        if client_id in _SYSTEM_IDENTITIES:
+        if _system_role(client_id) is not None:
             raise ValueError(f"'{client_id}' is a reserved system identity.")
         record = self._cache.get(client_id)
         if not record:
@@ -731,7 +814,7 @@ class IdentityManager:
 
     def set_passphrase(self, client_id: str, passphrase_hash: str):
         """Update a user's passphrase hash."""
-        if client_id in _SYSTEM_IDENTITIES:
+        if _system_role(client_id) is not None:
             raise ValueError(f"Cannot change passphrase of system identity '{client_id}'.")
         record = self._cache.get(client_id)
         if not record:
@@ -743,7 +826,7 @@ class IdentityManager:
 
     def set_role(self, client_id: str, role: Role):
         """Change a user's role."""
-        if client_id in _SYSTEM_IDENTITIES:
+        if _system_role(client_id) is not None:
             raise ValueError(f"Cannot change role of system identity '{client_id}'.")
         record = self._cache.get(client_id)
         if not record:
@@ -783,51 +866,10 @@ class IdentityManager:
 
     # ── Scope generation ──────────────────────────────────────────────────────
 
-    def get_allowed_scopes(self, client_id: str, role: Role) -> List[str]:
-        """
-        Returns the scope prefixes this client may access.
-        The Cortex uses this list to filter graph traversals at the DB level.
-
-        Scope taxonomy:
-          scope:sys:universal   — collective public knowledge (all roles read)
-          scope:sys:dna         — innate DNA memory (ADMIN read only)
-          view:public           — publicly visible atoms
-          owner:user_X          — private ownership marker for client X
-          view:user_X           — private read scope for client X
-          scope:group_G         — group G's shared knowledge
-          view:group_G          — group G read access marker
-          manage:group_G        — group G management rights (GROUP_ADMIN only)
-          view:admin_override   — ADMIN can see pending/capsule atoms
-        """
-        scopes = ["scope:sys:universal", "view:public"]
-
-        if role == Role.GUEST:
-            return scopes
-
-        scopes += [f"owner:user_{client_id}", f"view:user_{client_id}"]
-
-        if role in (Role.LIBRARIAN, Role.ADMIN):
-            scopes += ["scope:sys:collective", "role:librarian"]
-
-        if role == Role.ADMIN:
-            scopes += ["view:admin_override", "scope:sys:dna",
-                       "role:superuser", "scope:sys:admin"]
-
-        for group_id, members in self._group_members.items():
-            if client_id in members:
-                scopes += [f"scope:group_{group_id}", f"view:group_{group_id}"]
-
-        for group_id, admin_id in self._group_admins.items():
-            if admin_id == client_id:
-                scopes += [f"scope:group_{group_id}", f"view:group_{group_id}",
-                           f"manage:group_{group_id}"]
-
-        for group_id, libs in self._group_librarians.items():
-            if client_id in libs:
-                scopes += [f"scope:group_{group_id}", f"view:group_{group_id}",
-                           f"write:group_{group_id}"]
-
-        return list(dict.fromkeys(scopes))
+    # `get_allowed_scopes` is GONE (one-gate order, stage 2). A session's scope list is
+    # `gate.scopes_for(identity)` — a read of the assignment file — and the store enforces it.
+    # Two functions producing a scope list is two policies, and the one that was not audited
+    # is the one that would have been wrong.
 
     _GROUP_HYDRATE_TTL = 3.0   # seconds — max re-scan cadence for the read-side hydrate
 
@@ -872,7 +914,7 @@ class IdentityManager:
             self._group_members[group_id] = []
         if admin_client_id not in self._group_members[group_id]:
             self._group_members[group_id].append(admin_client_id)
-        if admin_client_id not in self._cache and admin_client_id not in _SYSTEM_IDENTITIES:
+        if admin_client_id not in self._cache and _system_role(admin_client_id) is None:
             self.register_client(admin_client_id, Role.GROUP_ADMIN, created_by="system")
         self._save_group(group_id)
 
@@ -885,7 +927,11 @@ class IdentityManager:
             n.vault_delete("iam", f"group:{group_id}")
 
     def add_group_member(self, group_id: str, requester_id: str, new_member_id: str):
-        """Add a client to a group (requester must be group admin or ADMIN)."""
+        """Add a client to a group (requester must be group admin or ADMIN). S2-f — only `grp.new`
+        (create_group) creates a group; adding to an UNKNOWN group is refused, never an implicit create
+        (a positional typo used to mint a phantom group with admin='')."""
+        if self.get_group(group_id) is None:
+            raise KeyError(f"group '{group_id}' does not exist")
         self._assert_group_manager(group_id, requester_id)
         if group_id not in self._group_members:
             self._group_members[group_id] = []
@@ -956,167 +1002,12 @@ class IdentityManager:
 
     # ── Authorization ─────────────────────────────────────────────────────────
 
-    def authorize(self, role: Role, action: str, params: dict = None) -> bool:
-        """Evaluates if a Role has the Capability to execute an action."""
-        if params is None:
-            params = {}
-        policy = self._policies.get(role, self._policies[Role.GUEST])
-
-        if action in ("read", "explore", "network.tree", "sys.history",
-                      "link.list", "dive.look", "dive.out"):
-            if not policy.has(Capability.READ):
-                return False
-            # The depth quota bounds OPEN-ENDED graph traversal only. The concept
-            # navigator (concept.roots/tree/children — action "read") and plain reads
-            # are taxonomic / fan-out-capped and cost-bounded regardless of the display
-            # `depth`, so quota'ing them wrongly blocked the archives' concept-hierarchy
-            # tree (guests request depth 3, cap was 2) → the left pane silently hid.
-            if action in ("explore", "network.tree"):
-                req_depth = int(params.get("depth", params.get("scope", 1)))
-                if req_depth > policy.max_depth:
-                    raise PermissionError(
-                        f"Quota exceeded: depth {req_depth} > {policy.max_depth}"
-                    )
-            return True
-
-        if action in ("write", "define", "link.create", "meta.set",
-                      "node.virt", "note.new", "note.add"):
-            return policy.has(Capability.WRITE)
-
-        if action in ("collective.write",):
-            return policy.has(Capability.COLLECTIVE_WRITE)
-
-        if action in ("drop", "rm", "node.evict", "note.remove"):
-            return policy.has(Capability.DELETE)
-
-        if action in ("sync.push", "sync.pull", "kw.sync",
-                      "sys.encapsulate", "sys.decapsulate"):
-            return policy.has(Capability.SYNC_PUSH) or policy.has(Capability.SYNC_PULL)
-
-        if action in ("kw.verify", "sys.crystallize", "sys.delegate"):
-            return policy.has(Capability.DELEGATE) or policy.has(Capability.FEDERATE)
-
-        if action in ("group.manage",):
-            return policy.has(Capability.GROUP_MANAGE)
-
-        if action in ("iam.manage",):
-            return policy.has(Capability.IAM_MANAGE)
-
-        # Service lifecycle operation (svc start/stop/restart/logs). A DELEGABLE capability
-        # distinct from blanket ADMIN — admin holds it implicitly (build_admin_policy grants
-        # every Capability), and a future delegate can hold it over a unit selector without
-        # being admin (service-extension-and-delegation-spec §3). `svc.read` (svc ls) is
-        # plain READ. Effective policy = base role ⊕ attached grants (capability-delegation
-        # -iam-spec §3) is consulted by the caller before this static check where a resource
-        # target is in play; this line is the base-role floor.
-        if action in ("svc.operate",):
-            return policy.has(Capability.SVC_OPERATE)
-        if action in ("svc.read",):
-            return policy.has(Capability.READ)
-
-        if action in ("dream", "jataka.dream", "link.reinforce"):
-            return policy.has(Capability.SIMULATE)
-
-        if action in ("sys.telemetry",):
-            return policy.has(Capability.TELEMETRY)
-
-        if action in ("jcl.execute", "job.submit"):
-            return policy.has(Capability.WRITE)
-
-        if action in ("jcl.admin",):
-            return policy.has(Capability.DELEGATE)
-
-        if action in ("echo", "help", "status", "ping"):
-            return True
-
-        return False
-
-    # ── Capability delegation — grants compose ON TOP of the base role ────────
-    # A grant is the universal unit of delegated authority (capability-delegation-iam-spec).
-    # Effective policy = base role ⊕ attached active grants. This is purely ADDITIVE: a
-    # principal with no grants composes to EXACTLY the static role behaviour above, so
-    # seeds/thesaurus are byte-for-byte unchanged until the first grant is created ("ship
-    # dark"). Grants live in the nucleus vault (auth ≠ collections), never a client atom.
-
-    # Action → the Capability a grant must supply to authorize it. Only delegable actions
-    # need an entry; anything absent cannot be granted (fail-closed).
-    _GRANT_ACTION_CAP = {
-        "svc.operate": Capability.SVC_OPERATE,
-        "svc.read":    Capability.READ,
-        "write":       Capability.WRITE,
-        "define":      Capability.WRITE,
-        "collective.write": Capability.COLLECTIVE_WRITE,
-        "drop":        Capability.DELETE,
-        "iam.manage":  Capability.IAM_MANAGE,
-        "group.manage": Capability.GROUP_MANAGE,
-    }
-
-    def _grants_for(self, grantee: str) -> List[dict]:
-        try:
-            v = self._nucleus().vault_retrieve("iam", f"grant:{grantee}")
-            return v if isinstance(v, list) else []
-        except Exception:
-            return []
-
-    def _save_grants(self, grantee: str, grants: List[dict]) -> None:
-        self._nucleus().vault_store("iam", f"grant:{grantee}", grants)
-
-    @staticmethod
-    def _resource_of(params: dict) -> Optional[str]:
-        """The resource a grant is matched against — the action's target if any, else None
-        (a scoped grant matches nothing when there is no target; only resource '*' would)."""
-        if not params:
-            return None
-        for k in ("id", "unit", "scope", "pack", "group_id", "name"):
-            v = params.get(k)
-            if v:
-                return str(v)
-        return None
-
-    @staticmethod
-    def _resource_matches(selector: str, target: Optional[str]) -> bool:
-        if selector == "*":
-            return True
-        if target is None:
-            return False
-        if selector.endswith("*"):
-            return target.startswith(selector[:-1])
-        return selector == target
-
-    def _grant_authorize(self, client_id: str, action: str, params: dict) -> bool:
-        """True if an ACTIVE, unexpired, resource-matching grant supplies the capability the
-        action needs. Fail-closed: unknown action, no grant, expired/revoked, or out-of-resource
-        all contribute nothing."""
-        cap = self._GRANT_ACTION_CAP.get(action)
-        if cap is None:
-            return False
-        target = self._resource_of(params)
-        now = time.time()
-        verb = str((params or {}).get("_verb") or action.split(".")[-1])
-        for g in self._grants_for(client_id):
-            if g.get("state", "active") != "active":
-                continue
-            exp = g.get("expires")
-            if exp and now > float(exp):
-                continue
-            if g.get("capability") != cap.value:
-                continue
-            if not self._resource_matches(str(g.get("resource", "*")), target):
-                continue
-            verbs = g.get("verbs")
-            if verbs and verbs != "*" and verb not in verbs:
-                continue
-            return True
-        return False
-
-    def authorize_effective(self, client_id: str, role: Role, action: str,
-                            params: dict = None) -> bool:
-        """authorize(), then — only if the base role denies — consult attached grants. The
-        union is the effective policy; the no-grant path is exactly the base role check, so
-        this is a safe drop-in for the dispatcher (ship dark)."""
-        if self.authorize(role, action, params):     # base role (may raise quota PermissionError)
-            return True
-        return self._grant_authorize(client_id, action, params or {})
+    # `authorize` and `authorize_effective` are GONE (one-gate order, stage 2). Every
+    # decision is `api.gate.gate(identity, action, target)`. The role→capability→action chain
+    # they walked had `status` returning True for EVERY caller including a guest, with the real
+    # decision sitting in an `_assert_admin` inside the handler — the second gate the ruling's
+    # §6 names. The capabilities below remain as the SHAPE of a user record; nothing reads them
+    # for a permission any more.
 
     def grant_add(self, grantor: str, grantee: str, capability: str, resource: str = "*",
                   verbs=None, expires=None, state: str = "active",
@@ -1149,12 +1040,11 @@ class IdentityManager:
     # ── Internal helpers ──────────────────────────────────────────────────────
 
     def _assert_group_manager(self, group_id: str, requester_id: str):
-        role = Role.GUEST
-        if requester_id in _SYSTEM_IDENTITIES:
-            role = _SYSTEM_IDENTITIES[requester_id]
-        elif requester_id in self._cache:
-            role = Role(self._cache[requester_id]["role"])
-        if role == Role.ADMIN:
+        # THE GATE (ruling §5). `admin` on `*` manages every group; `admin on <group>` manages
+        # that one — the line narrows the row, which is why there is no group-administrator row
+        # and why the three-way role lookup that stood here is gone.
+        from lib.akasha.api import gate as _gate
+        if _gate.gate(requester_id, _gate.ADMIN, group_id)[0]:
             return
         if self._group_admins.get(group_id) == requester_id:
             return

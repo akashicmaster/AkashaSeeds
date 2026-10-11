@@ -65,7 +65,7 @@ When UX feedback arrives — "users are confused about X", "they want to do Y be
 
 1. **Identify** which concept model element the feedback addresses: an operation, a relationship, or session state.
 2. **Modify** the concept model: add a new `op_*` method, or change parameters of an existing one.
-3. **Update IAM routing** — add the new method to `_METHOD_TO_ACTION` in `kernel.py`.
+3. **Check the IAM action** — the registry derives it from the verb; pin it in `CONCEPT_METHODS` (or beside the op in `app/config/MANIFEST.json`, then `python scripts/gen_kernel_methods.py`) only if the derived one is wrong. No platform file is edited.
 4. **Update the HTML** to call the new or modified operator.
 
 Only step 4 touches the HTML. Steps 1–3 happen at the concept model level, where design intent is explicit, reviewable, and testable independently of any rendering surface.

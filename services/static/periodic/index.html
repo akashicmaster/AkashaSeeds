@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Periodic Table</title>
+<meta name="description" content="The periodic table of the elements — a reading-room portal of the Akashic Archives. Every element opens its place in the Akasha knowledge graph.">
+<style>
+    :root{
+        --bg:#0b0e13; --panel:#141a22; --ink:#e8eef4; --muted:#9fb0be; --faint:#6b7c8a;
+        --line:rgba(150,180,200,.18); --accent:#6fb0c8;
+        --alkali:#d9634c; --alkaline:#e0954a; --tm:#c8a44a; --ptm:#5f9a9a; --metalloid:#7ba85a;
+        --nonmetal:#5aa0c8; --halogen:#7d8fd8; --noble:#b06ac8; --lan:#cf7a9e; --act:#9a7ac8;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:radial-gradient(1100px 560px at 50% -10%,rgba(111,176,200,.10),transparent 60%),var(--bg);
+        color:var(--ink);font-family:'Helvetica Neue',Arial,'Hiragino Sans',sans-serif;min-height:100vh;min-height:100dvh;
+        -webkit-text-size-adjust:100%;padding:18px max(14px,env(safe-area-inset-left)) 50px}
+    a{color:inherit;text-decoration:none}
+    .wrap{max-width:1160px;margin:0 auto}
+    .top{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+    .crumb{font-size:.58rem;letter-spacing:2.5px;text-transform:uppercase;color:var(--muted);border:1px solid var(--line);padding:6px 13px;border-radius:3px;transition:.2s}
+    .crumb:hover{color:var(--accent);border-color:var(--accent)}
+    h1{font-size:clamp(1.4rem,3.4vw,2rem);font-weight:600;letter-spacing:.04em}
+    .sub{font-size:.72rem;color:var(--muted);margin:3px 0 4px}
+    .hint{font-size:.66rem;color:var(--faint);margin-bottom:14px}
+    .readout{min-height:26px;margin:8px 2px 14px;font-size:.8rem;color:var(--muted)}
+    .readout b{color:var(--ink)} .readout .z{color:var(--accent);font-weight:700;margin-right:8px}
+    .scroll{overflow-x:auto;padding-bottom:8px}
+    .pt{display:grid;grid-template-columns:repeat(18,minmax(38px,1fr));gap:4px;min-width:760px}
+    .cell{position:relative;aspect-ratio:1/1.06;border-radius:4px;border:1px solid var(--c);
+        background:color-mix(in srgb,var(--c) 15%,transparent);display:flex;flex-direction:column;justify-content:center;
+        align-items:center;cursor:pointer;transition:.13s;padding:2px;overflow:hidden}
+    .cell:hover{background:color-mix(in srgb,var(--c) 40%,transparent);transform:translateY(-2px);z-index:2;
+        box-shadow:0 6px 16px rgba(0,0,0,.5)}
+    .cell .z{position:absolute;top:2px;left:4px;font-size:.5rem;color:var(--muted)}
+    .cell .sym{font-size:clamp(.8rem,1.6vw,1.15rem);font-weight:700;line-height:1;color:var(--ink)}
+    .cell .nm{font-size:.42rem;color:var(--muted);text-align:center;line-height:1.05;margin-top:2px;max-width:100%;
+        white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .ph{border-style:dashed;cursor:default;color:var(--muted);font-size:.5rem;text-align:center;justify-content:center}
+    .ph:hover{transform:none;background:transparent;box-shadow:none}
+    .legend{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:18px;font-size:.6rem;color:var(--muted)}
+    .legend span{display:inline-flex;align-items:center;gap:5px}
+    .legend .sw{width:11px;height:11px;border-radius:2px;flex:none}
+    .foot{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);font-size:.55rem;letter-spacing:1.5px;
+        text-transform:uppercase;color:var(--faint);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+    .foot a{color:var(--muted)} .foot a:hover{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+    <div class="top"><a href="/hall/" class="crumb">◄ reading hall</a><a href="/" class="crumb">world tree</a></div>
+    <h1>Periodic Table</h1>
+    <div class="sub">The one hundred and eighteen elements — the alphabet of matter.</div>
+    <div class="hint">Tap any element to open its place in the Akasha knowledge graph.</div>
+    <div class="readout" id="readout">Hydrogen — the lightest element, and the most abundant in the universe.</div>
+    <div class="scroll"><div class="pt" id="pt"></div></div>
+    <div class="legend" id="legend"></div>
+    <div class="foot"><span id="foot-meta">periodic table · read-only</span>
+        <span>the alphabet of matter · <a href="https://github.com/henrigrohmann/AkashicTree" target="_blank" rel="noopener">AKASHA</a></span></div>
+</div>
+<script>
+(function(){
+'use strict';
+var EL=[[1,"H","hydrogen",1,1,"nonmetal"],[2,"He","helium",18,1,"noble"],[3,"Li","lithium",1,2,"alkali"],[4,"Be","beryllium",2,2,"alkaline"],[5,"B","boron",13,2,"metalloid"],[6,"C","carbon",14,2,"nonmetal"],[7,"N","nitrogen",15,2,"nonmetal"],[8,"O","oxygen",16,2,"nonmetal"],[9,"F","fluorine",17,2,"halogen"],[10,"Ne","neon",18,2,"noble"],[11,"Na","sodium",1,3,"alkali"],[12,"Mg","magnesium",2,3,"alkaline"],[13,"Al","aluminum",13,3,"ptm"],[14,"Si","silicon",14,3,"metalloid"],[15,"P","phosphorus",15,3,"nonmetal"],[16,"S","sulfur",16,3,"nonmetal"],[17,"Cl","chlorine",17,3,"halogen"],[18,"Ar","argon",18,3,"noble"],[19,"K","potassium",1,4,"alkali"],[20,"Ca","calcium",2,4,"alkaline"],[21,"Sc","scandium",3,4,"tm"],[22,"Ti","titanium",4,4,"tm"],[23,"V","vanadium",5,4,"tm"],[24,"Cr","chromium",6,4,"tm"],[25,"Mn","manganese",7,4,"tm"],[26,"Fe","iron",8,4,"tm"],[27,"Co","cobalt",9,4,"tm"],[28,"Ni","nickel",10,4,"tm"],[29,"Cu","copper",11,4,"tm"],[30,"Zn","zinc",12,4,"tm"],[31,"Ga","gallium",13,4,"ptm"],[32,"Ge","germanium",14,4,"metalloid"],[33,"As","arsenic",15,4,"metalloid"],[34,"Se","selenium",16,4,"nonmetal"],[35,"Br","bromine",17,4,"halogen"],[36,"Kr","krypton",18,4,"noble"],[37,"Rb","rubidium",1,5,"alkali"],[38,"Sr","strontium",2,5,"alkaline"],[39,"Y","yttrium",3,5,"tm"],[40,"Zr","zirconium",4,5,"tm"],[41,"Nb","niobium",5,5,"tm"],[42,"Mo","molybdenum",6,5,"tm"],[43,"Tc","technetium",7,5,"tm"],[44,"Ru","ruthenium",8,5,"tm"],[45,"Rh","rhodium",9,5,"tm"],[46,"Pd","palladium",10,5,"tm"],[47,"Ag","silver",11,5,"tm"],[48,"Cd","cadmium",12,5,"tm"],[49,"In","indium",13,5,"ptm"],[50,"Sn","tin",14,5,"ptm"],[51,"Sb","antimony",15,5,"metalloid"],[52,"Te","tellurium",16,5,"metalloid"],[53,"I","iodine",17,5,"halogen"],[54,"Xe","xenon",18,5,"noble"],[55,"Cs","cesium",1,6,"alkali"],[56,"Ba","barium",2,6,"alkaline"],[57,"La","lanthanum",3,9,"lan"],[58,"Ce","cerium",4,9,"lan"],[59,"Pr","praseodymium",5,9,"lan"],[60,"Nd","neodymium",6,9,"lan"],[61,"Pm","promethium",7,9,"lan"],[62,"Sm","samarium",8,9,"lan"],[63,"Eu","europium",9,9,"lan"],[64,"Gd","gadolinium",10,9,"lan"],[65,"Tb","terbium",11,9,"lan"],[66,"Dy","dysprosium",12,9,"lan"],[67,"Ho","holmium",13,9,"lan"],[68,"Er","erbium",14,9,"lan"],[69,"Tm","thulium",15,9,"lan"],[70,"Yb","ytterbium",16,9,"lan"],[71,"Lu","lutetium",17,9,"lan"],[72,"Hf","hafnium",4,6,"tm"],[73,"Ta","tantalum",5,6,"tm"],[74,"W","tungsten",6,6,"tm"],[75,"Re","rhenium",7,6,"tm"],[76,"Os","osmium",8,6,"tm"],[77,"Ir","iridium",9,6,"tm"],[78,"Pt","platinum",10,6,"tm"],[79,"Au","gold",11,6,"tm"],[80,"Hg","mercury",12,6,"tm"],[81,"Tl","thallium",13,6,"ptm"],[82,"Pb","lead",14,6,"ptm"],[83,"Bi","bismuth",15,6,"ptm"],[84,"Po","polonium",16,6,"ptm"],[85,"At","astatine",17,6,"halogen"],[86,"Rn","radon",18,6,"noble"],[87,"Fr","francium",1,7,"alkali"],[88,"Ra","radium",2,7,"alkaline"],[89,"Ac","actinium",3,10,"act"],[90,"Th","thorium",4,10,"act"],[91,"Pa","protactinium",5,10,"act"],[92,"U","uranium",6,10,"act"],[93,"Np","neptunium",7,10,"act"],[94,"Pu","plutonium",8,10,"act"],[95,"Am","americium",9,10,"act"],[96,"Cm","curium",10,10,"act"],[97,"Bk","berkelium",11,10,"act"],[98,"Cf","californium",12,10,"act"],[99,"Es","einsteinium",13,10,"act"],[100,"Fm","fermium",14,10,"act"],[101,"Md","mendelevium",15,10,"act"],[102,"No","nobelium",16,10,"act"],[103,"Lr","lawrencium",17,10,"act"],[104,"Rf","rutherfordium",4,7,"tm"],[105,"Db","dubnium",5,7,"tm"],[106,"Sg","seaborgium",6,7,"tm"],[107,"Bh","bohrium",7,7,"tm"],[108,"Hs","hassium",8,7,"tm"],[109,"Mt","meitnerium",9,7,"tm"],[110,"Ds","darmstadtium",10,7,"tm"],[111,"Rg","roentgenium",11,7,"tm"],[112,"Cn","copernicium",12,7,"tm"],[113,"Nh","nihonium",13,7,"ptm"],[114,"Fl","flerovium",14,7,"ptm"],[115,"Mc","moscovium",15,7,"ptm"],[116,"Lv","livermorium",16,7,"ptm"],[117,"Ts","tennessine",17,7,"ptm"],[118,"Og","oganesson",18,7,"noble"]];
+var CATNAME={alkali:'alkali metal',alkaline:'alkaline earth',tm:'transition metal',ptm:'post-transition metal',
+    metalloid:'metalloid',nonmetal:'reactive nonmetal',halogen:'halogen',noble:'noble gas',lan:'lanthanide',act:'actinide'};
+function esc(s){var d=document.createElement('div');d.textContent=(s==null?'':String(s));return d.innerHTML;}
+function title(s){return String(s).charAt(0).toUpperCase()+String(s).slice(1);}
+var pt=document.getElementById('pt');
+function place(el,col,row){el.style.gridColumn=col;el.style.gridRow=row;}
+// f-block placeholders
+[[3,6,'57–71'],[3,7,'89–103']].forEach(function(p){
+    var d=document.createElement('div');d.className='cell ph';d.style.setProperty('--c','var(--lan)');
+    if(p[2]==='89–103')d.style.setProperty('--c','var(--act)');
+    d.textContent=p[2];place(d,p[0],p[1]);pt.appendChild(d);
+});
+EL.forEach(function(e){
+    var z=e[0],sym=e[1],name=e[2],col=e[3],row=e[4],cat=e[5];
+    var a=document.createElement('a');a.className='cell';a.href='/word/?name='+encodeURIComponent('chem:element:'+name);
+    a.style.setProperty('--c','var(--'+cat+')');place(a,col,row);
+    a.innerHTML='<span class="z">'+z+'</span><span class="sym">'+esc(sym)+'</span><span class="nm">'+esc(title(name))+'</span>';
+    a.addEventListener('mouseenter',function(){document.getElementById('readout').innerHTML=
+        '<span class="z">'+z+'</span><b>'+esc(title(name))+'</b> ('+esc(sym)+') · '+esc(CATNAME[cat]||cat);});
+    pt.appendChild(a);
+});
+var cats=[['nonmetal','reactive nonmetal'],['noble','noble gas'],['alkali','alkali metal'],['alkaline','alkaline earth'],
+    ['metalloid','metalloid'],['halogen','halogen'],['tm','transition metal'],['ptm','post-transition'],['lan','lanthanide'],['act','actinide']];
+document.getElementById('legend').innerHTML=cats.map(function(c){
+    return '<span><span class="sw" style="background:var(--'+c[0]+')"></span>'+c[1]+'</span>';}).join('');
+try{if(navigator.sendBeacon){var prev='';try{prev=sessionStorage.getItem('pulse_prev')||'';}catch(e){}
+    navigator.sendBeacon('/pulse',new Blob([JSON.stringify({concept:'site:archives_periodic',surface:'periodic',prev:prev,page_referrer:document.referrer||''})],{type:'application/json'}));
+    try{sessionStorage.setItem('pulse_prev','site:archives_periodic');}catch(e){}}}catch(e){}
+}());
+</script>
+</body>
+</html>

@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>World Map — Akashic Archives</title>
+  <meta name="description" content="The world-map index of the Akashic Archives — every country held in the thesaurus, drawn on the globe and opening onto its concept page."/>
+  <script src="/lib/plotly-2.27.0.min.js" charset="utf-8"></script>
+  <style>
+    :root {
+      --wall:      #1c1206;
+      --wall-mid:  #2a1a0b;
+      --wall-lt:   #3a2712;
+      --sea:       #0d1620;
+      --parch:     #e8dcc0;
+      --parch-mid: #c9b98f;
+      --amber:     #d69a34;
+      --amber-lt:  #f0c46a;
+      --ink-dim:   #8a7a5c;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; font-family: Georgia, 'Times New Roman', serif;
+                 background: var(--wall); color: var(--parch); overflow: hidden; }
+    /* ── top bar ── */
+    header { height: 54px; background: var(--wall-mid); border-bottom: 1px solid var(--wall-lt);
+             display: flex; align-items: center; gap: 14px; padding: 0 20px; position: relative; z-index: 5; }
+    .back-link { font-family: 'Courier New', monospace; font-size: 0.63rem; letter-spacing: 2.5px;
+                 text-transform: uppercase; color: var(--ink-dim); text-decoration: none; white-space: nowrap; }
+    .back-link:hover { color: var(--amber-lt); }
+    .sep { color: var(--wall-lt); }
+    .title { font-size: 1.05rem; letter-spacing: 1px; color: var(--parch); }
+    .title small { display: block; font-family: 'Courier New', monospace; font-size: 0.56rem;
+                   letter-spacing: 2px; text-transform: uppercase; color: var(--ink-dim); margin-top: 2px; }
+    .count { margin-left: auto; font-family: 'Courier New', monospace; font-size: 0.62rem;
+             letter-spacing: 1.5px; color: var(--amber); text-transform: uppercase; white-space: nowrap; }
+    /* ── map ── */
+    #map { position: absolute; top: 54px; left: 0; right: 0; bottom: 30px; }
+    #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+               font-family: 'Courier New', monospace; font-size: 0.72rem; letter-spacing: 2px;
+               color: var(--ink-dim); text-transform: uppercase; }
+    .fallback-note { position: absolute; bottom: 34px; left: 50%; transform: translateX(-50%);
+                     font-family: 'Courier New', monospace; font-size: 0.55rem; letter-spacing: 1px;
+                     color: var(--ink-dim); background: rgba(28,18,6,0.8); padding: 3px 10px; border-radius: 3px;
+                     display: none; }
+    footer { position: absolute; bottom: 0; left: 0; right: 0; height: 30px; background: var(--wall-mid);
+             border-top: 1px solid var(--wall-lt); display: flex; align-items: center; justify-content: center;
+             font-family: 'Courier New', monospace; font-size: 0.54rem; letter-spacing: 1.5px; color: var(--ink-dim); }
+    footer a { color: var(--ink-dim); text-decoration: none; }
+    footer a:hover { color: var(--amber); }
+    .hint { color: var(--amber); opacity: 0.75; }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="back-link" href="/hall/">◄ reading hall</a>
+    <span class="sep">·</span>
+    <a class="back-link" href="/">world tree</a>
+    <div class="title">World Map Index<small>world-map index</small></div>
+    <div class="count" id="count">mapping …</div>
+  </header>
+
+  <div id="map"><div id="loading">drawing the world …</div></div>
+  <div class="fallback-note" id="fallback-note">reference data unavailable — showing the outline atlas</div>
+
+  <footer>
+    <span>click a country to open its record&nbsp;&nbsp;·&nbsp;&nbsp;<span class="hint">powered by</span>&nbsp;<a href="https://github.com/henrigrohmann/AkashicTree" target="_blank" rel="noopener">AKASHA</a></span>
+  </footer>
+
+<script>
+  // ── RPC + guest session (shared with the rest of the archives) ──────────────
+  function rpc(method, params) {
+    return fetch('/rpc', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', method: method, params: params, id: method }),
+    }).then(function (r) { return r.json(); }).then(function (j) {
+      if (j.error) throw new Error(j.error.message || 'rpc error');
+      return j.result;
+    });
+  }
+  var _guestToken = null, _guestExp = 0, _guestPromise = null,
+      _GUEST_KEY = 'akasha_guest_token', _GUEST_SKEW = 30000;
+  // A guest binding token (gbk:) hard-expires at creation + ttl (<=30 min) and is NOT renewed
+  // by activity, so a token cached in localStorage goes stale — reusing it returned -32001 and
+  // left the map empty on reload. Remember the expiry; never reuse a (near-)expired token.
+  function getToken() {
+    var now = Date.now();
+    if (_guestToken && _guestExp - now > _GUEST_SKEW) return Promise.resolve(_guestToken);
+    if (_guestPromise) return _guestPromise;
+    if (!_guestToken) {
+      try {
+        var raw = localStorage.getItem(_GUEST_KEY);
+        if (raw) {
+          var o = raw.charAt(0) === '{' ? JSON.parse(raw) : { key: raw, exp: 0 };
+          if (o && o.key && o.exp - now > _GUEST_SKEW) { _guestToken = o.key; _guestExp = o.exp; return Promise.resolve(_guestToken); }
+        }
+      } catch (e) {}
+    }
+    _guestPromise = rpc('session.guest.create', {}).then(function (g) {
+      _guestPromise = null; _guestToken = g.binding_key;
+      _guestExp = (g && g.expires_at) ? g.expires_at * 1000 : (Date.now() + 25 * 60000);
+      try { localStorage.setItem(_GUEST_KEY, JSON.stringify({ key: _guestToken, exp: _guestExp })); } catch (e) {}
+      return _guestToken;
+    }).catch(function (e) { _guestPromise = null; throw e; });
+    return _guestPromise;
+  }
+
+  var COUNT = document.getElementById('count');
+  var LOADING = document.getElementById('loading');
+
+  // ── Primary: the countries actually held in the thesaurus (geo:country:*) ───
+  // Each geo:country:<ISO3> atom carries the country name in its description.
+  getToken().then(function (tok) {
+    return rpc('thesaurus.reference', { session_token: tok, ns: 'geo:country', limit: 400 });
+  }).then(function (r) {
+    var entries = (r && (r.concepts || r.entries)) || [];
+    var codes = [], names = [], present = {};
+    entries.forEach(function (e) {
+      var iso = (e.term || '').toUpperCase().replace(/[^A-Z]/g, '');
+      if (iso.length !== 3 || present[iso]) return;
+      present[iso] = true;
+      codes.push(iso);
+      names.push((e.description || '').replace(/\s*—.*$/, '').trim() || iso);
+    });
+    if (!codes.length) throw new Error('no geo:country atoms');
+    renderMap(codes, names, false);
+  }).catch(function () {
+    // ── Degradation-first fallback: outline atlas from a public code list ─────
+    fetch('/lib/world_gdp_codes.csv')
+      .then(function (r) { return r.text(); })
+      .then(function (csv) {
+        var lines = csv.trim().split('\n'), codes = [], names = [];
+        for (var i = 1; i < lines.length; i++) {
+          var c = lines[i].split(',');
+          var name = (c[0] || '').replace(/^"|"$/g, '').trim();
+          var iso  = (c[c.length - 1] || '').trim().toUpperCase();
+          if (iso.length === 3) { codes.push(iso); names.push(name || iso); }
+        }
+        document.getElementById('fallback-note').style.display = 'block';
+        renderMap(codes, names, true);
+      })
+      .catch(function () {
+        if (LOADING) LOADING.textContent = 'the world map could not be drawn';
+        COUNT.textContent = '';
+      });
+  });
+
+  function renderMap(codes, names, isFallback) {
+    if (LOADING) LOADING.style.display = 'none';
+    COUNT.textContent = codes.length + (isFallback ? ' territories' : ' countries in the thesaurus');
+
+    if (typeof Plotly === 'undefined' || !Plotly.newPlot) {
+      document.getElementById('map').innerHTML =
+        '<div id="loading">interactive map unavailable</div>';
+      return;
+    }
+
+    var trace = {
+      type: 'choropleth', locationmode: 'ISO-3',
+      locations: codes, z: codes.map(function () { return 1; }),
+      // Pin the colour scale. Every country carries the same z (1 = "in the
+      // thesaurus"); without an explicit zmin/zmax Plotly's normalisation of a
+      // uniform z is undefined, so the map rendered all-amber on one load and
+      // partly dark on the next. Fixed range → every lit country is the same amber.
+      zmin: 0, zmax: 1,
+      text: names, customdata: codes,
+      hovertemplate: '<b>%{text}</b><br><span style="font-family:monospace">%{location}</span>' +
+                     '<br><i>open record ▸</i><extra></extra>',
+      colorscale: [[0, '#6b5220'], [1, '#e6b752']], showscale: false,
+      marker: { line: { color: '#1c1206', width: 0.5 } },
+    };
+    var layout = {
+      paper_bgcolor: 'rgba(0,0,0,0)', margin: { t: 0, b: 0, l: 0, r: 0 },
+      geo: {
+        bgcolor: 'rgba(0,0,0,0)', showframe: false, showcoastlines: true,
+        coastlinecolor: 'rgba(150,130,90,0.35)', showland: true, landcolor: '#241708',
+        showocean: true, oceancolor: '#0d1620', showcountries: true,
+        countrycolor: 'rgba(120,100,66,0.25)', projection: { type: 'natural earth' },
+        lataxis: { showgrid: true, gridcolor: 'rgba(120,150,175,0.08)' },
+        lonaxis: { showgrid: true, gridcolor: 'rgba(120,150,175,0.08)' },
+      },
+      font: { family: 'Courier New, monospace', color: '#c9b98f', size: 11 },
+    };
+    Plotly.newPlot('map', [trace], layout,
+      { responsive: true, displayModeBar: false, scrollZoom: true });
+
+    document.getElementById('map').on('plotly_click', function (ev) {
+      var pt = (ev.points && ev.points[0]) || {};
+      var iso = pt.customdata || pt.location;
+      if (iso) {
+        window.location.href = '/a/' +
+          encodeURIComponent('geo:country:' + iso).replace(/%3A/g, ':');
+      }
+    });
+  }
+</script>
+<!-- pulse beacon (F18) — fire-and-forget access analytics; never breaks the page -->
+<script>
+(function () {
+  try {
+    var prev = ''; try { prev = sessionStorage.getItem('pulse_prev') || ''; } catch (e) {}
+    var concept = 'site:archives_worldmap';
+    var payload = { concept: concept, surface: 'worldmap', prev: prev,
+                    page_referrer: document.referrer || '' };
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon('/pulse', new Blob([JSON.stringify(payload)],
+                                              { type: 'application/json' }));
+    }
+    try { sessionStorage.setItem('pulse_prev', concept); } catch (e) {}
+  } catch (e) { /* analytics must never break a page */ }
+})();
+</script>
+</body>
+</html>

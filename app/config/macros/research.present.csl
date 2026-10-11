@@ -1,0 +1,7 @@
+# research.present (seeds-14 §2 macro) — present a Publication Set: its chunks in composed order, with
+# the composed_from / published_in backlinks inspectable. A publication is a Set + links; presenting it
+# is a read. Coarser than the Set primitives, so it is a MACRO. Forward to the bench op.
+# Invoke: macro.run name=research.present bench=<labo> pub=<set> — `bench` (macro.run reserves `name`).
+#
+#!params bench,pub
+research.publication.present name="$bench" pub="$pub"

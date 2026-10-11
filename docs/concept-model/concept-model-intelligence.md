@@ -19,8 +19,8 @@ upstream outputs into a coherent, audience-ready deliverable. Fact anchors the e
 to credibility-scored, event-sourced source material.
 
 All concept models are registered automatically via the **Concept Model Plugin Registry**
-(`lib/akasha/concepts/registry.py`). See `docs/concept-model-spec.md §7` for the plugin
-authoring guide.
+(`lib/akasha/concepts/registry.py`), which discovers the application's models in `app/concepts/`.
+See `docs/concept-model/concept-model-spec.md §7` for the authoring guide.
 
 ---
 
@@ -80,7 +80,7 @@ authoring guide.
 
 ## 1. Fact
 
-**Source:** `lib/akasha/concepts/fact.py`  
+**Source:** `app/concepts/fact.py`  
 **Context key:** `active_fact_root`  
 **CLI prefix:** `ft.*`
 
@@ -296,7 +296,7 @@ akasha/user $ ft.trace fact_id=h8i9...rs08
 
 ## 2. Aggregation
 
-**Source:** `lib/akasha/concepts/aggregation.py`  
+**Source:** `app/concepts/aggregation.py`  
 **Context key:** `active_aggregation_root`  
 **Global index:** `set:agg:index`
 
@@ -799,7 +799,7 @@ codes and interprets the same material qualitatively.
 
 ## 3. Synthesis
 
-**Source:** `lib/akasha/concepts/synthesis.py`  
+**Source:** `app/concepts/synthesis.py`  
 **Context key:** `active_synthesis_root`  
 **Prefix:** `synth`  
 **Index set:** `set:synth:index`
@@ -1476,7 +1476,7 @@ order.
 
 ## 4. Curation
 
-**Source:** `lib/akasha/concepts/curation.py`  
+**Source:** `app/concepts/curation.py`  
 **Context key:** `active_curation_root`  
 **CLI prefix:** `cur.*`  
 **Index set:** `set:curation:index`
@@ -1485,7 +1485,7 @@ order.
 > small: `curation.new` (`cur.new`), `curation.narrate` (`cur.narrate`), `curation.ls`
 > (`cur.ls`), and `curation.project` (`cur.project`). The **premise / perspective-view /
 > fold / conclusion argumentation model described in the rest of this section is a DESIGN
-> for a planned extension — it is not yet implemented.** Methods such as `cur.premise`,
+> that is not implemented in this release.** Methods such as `cur.premise`,
 > `cur.view`, `cur.fold`, `cur.conclude`, `cur.dispute`, and `cur.trace` (and their
 > `curation.premise.add` / `curation.conclusion.add` mappings) will return **"Unknown
 > method"** today. Treat §4.3–§4.7 as the target design, not a runnable API.
@@ -1786,7 +1786,7 @@ Curation is the **connective tissue** between raw evidence collection and downst
 
 ## 5. Intelligence
 
-**Source:** `lib/akasha/concepts/intelligence.py`  
+**Source:** `app/concepts/intelligence.py`  
 **Context key:** `active_intelligence_root`  
 **CLI prefix:** `intel.*`  
 **Index set:** `set:intelligence:index`
@@ -2138,7 +2138,7 @@ Intelligence is the **final reasoning layer** before Presentation. It draws on e
 
 ## 6. Presentation
 
-**Source:** `lib/akasha/concepts/presentation.py`  
+**Source:** `app/concepts/presentation.py`  
 **Context key:** `active_presentation_root`  
 **Prefix:** `pres`  
 **Index set:** `set:pres:index`

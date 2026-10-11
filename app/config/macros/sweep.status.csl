@@ -1,0 +1,6 @@
+# sweep.status (P0-a §2.3 macro) — the sweep fan: conds / branches / pending / done / failed. A
+# guest-readable forward to the `sweep.status` operator. The sweep name is `sweep=` under macro.run
+# (which reserves `name`); the direct op `sweep.status … name=<sweep>` is equivalent.
+#
+#!params bench,sweep
+sweep.status bench="$bench" name="$sweep"

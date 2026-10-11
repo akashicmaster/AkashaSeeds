@@ -90,6 +90,16 @@ class AkashaBackend(ABC):
     def update_meta(self, key: str, meta_dict: dict) -> None:
         """Replace the atom's meta JSON with meta_dict."""
 
+    @abstractmethod
+    def merge_meta(self, key: str, updates) -> Optional[dict]:
+        """ATOMIC read-merge-write of an atom's meta: the record is read, `updates` merged into it and
+        the result written as ONE indivisible step against every other writer of that record, so two
+        writers changing different fields never lose each other's change. `updates` is a dict, or a
+        callable given the current meta (a copy) and returning the dict to merge — for a value derived
+        from the current one (a counter). Returns the meta as written, or None if there is no such atom.
+        The read-modify-write a caller does itself (get_chunk_raw → edit → update_meta) is NOT atomic:
+        a concurrent writer's change to another field is overwritten by the stale copy."""
+
     # ── Access Control ─────────────────────────────────────────────────────────
 
     @abstractmethod
@@ -354,6 +364,24 @@ class AkashaBackend(ABC):
         once the cap is reached, so a bounded consumer (e.g. the boot autolearn) never
         materializes the whole corpus into RAM. `limit=None` preserves the read-everything
         behaviour used by export/backup."""
+
+    def iter_all_chunks(self, limit: Optional[int] = None):
+        """Yield atoms one at a time (a lazy `get_all_chunks`). A consumer that FILTERS as it
+        reads (e.g. the boot autolearn, which discards raw-source/external atoms) can then hold
+        only the rows it keeps, instead of materializing the whole capped page first — the
+        difference between a bounded working set and a corpus-sized RAM spike when a large Source
+        corpus dominates the store. Default impl falls back to materializing get_all_chunks (no
+        worse than today); the SQLite/Silica backends override it with a truly lazy cursor/scan."""
+        for row in (self.get_all_chunks(limit) or []):
+            yield row
+
+    def iter_chunk_meta(self, limit: Optional[int] = None):
+        """A48.2 — a META-ONLY walk: yield {key, meta, created_at} WITHOUT the content column, so a
+        sweep reading two meta fields to find its victims does not pread + hold every atom's body.
+        Default impl reuses iter_all_chunks (no worse than today); SQLite/Silica override it to select
+        only key+meta. Consumers that need only meta should prefer this over iter_all_chunks."""
+        for row in self.iter_all_chunks(limit):
+            yield {"key": row.get("key"), "meta": row.get("meta"), "created_at": row.get("created_at")}
 
     @abstractmethod
     def get_all_links(self, rel_filter: Optional[str] = None,

@@ -14,6 +14,7 @@ import os
 import sys
 import stat as _stat
 import json
+import http.cookies
 import urllib.parse
 import socket
 import logging
@@ -59,6 +60,69 @@ def portal_banner(host: str, port: int, scheme: str = "http") -> list:
         ]
     return [f"{g}[+] Web portal → {scheme}://{_hostport(host)}/{_tls_note}{e}"]
 
+# ── Auth gate (seeds simplified-archives) ─────────────────────────────────────────────────────
+# A server-side, docroot-wide login wall for the AUTHENTICATED simplified archives (the seeds line),
+# kept separate from the guest-open thesaurus archives. When AKASHA_PORTAL_GATE is set, every HTML
+# page is served ONLY to a request that carries a valid akt: session cookie; everyone else gets this
+# self-contained login page (verifying against kernel.auth.verify, then setting the cookie + reloading).
+# Stdlib-only so it works on the seeds httpd portal (no uvicorn/FastAPI needed).
+_PORTAL_GATE_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Akasha — sign in</title>
+<style>
+ :root{--bg:#04070d;--ink:#e6dcff;--muted:#a9a0c8;--faint:#6f6791;--line:rgba(150,130,220,.2);--violet:#b9a5ff;--amber:#ffcf8c}
+ *{box-sizing:border-box;margin:0;padding:0}
+ html,body{min-height:100vh;color:var(--ink);font-family:'Courier New',Courier,monospace;
+  background:radial-gradient(1100px 720px at 50% -12%,#160e2e 0%,#0a0818 55%,#04070d 100%) fixed,var(--bg);
+  display:flex;align-items:center;justify-content:center;padding:24px}
+ .card{width:min(400px,92vw);border:1px solid var(--line);border-radius:16px;background:rgba(18,14,34,.6);
+  padding:30px 26px;box-shadow:0 0 60px rgba(90,50,160,.18)}
+ .brand{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:4px}
+ .brand .dot{width:9px;height:9px;border-radius:50%;background:var(--amber);box-shadow:0 0 12px var(--amber)}
+ .brand b{letter-spacing:4px;font-size:.72rem;color:var(--amber);font-weight:normal;text-transform:uppercase}
+ h1{text-align:center;font-size:1.15rem;letter-spacing:2px;margin:14px 0 4px;color:#e2d5ff}
+ p.sub{text-align:center;font-size:.66rem;letter-spacing:1px;color:var(--faint);margin-bottom:22px}
+ label{display:block;font-size:.56rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin:14px 0 5px}
+ input{width:100%;background:rgba(8,6,17,.7);border:1px solid var(--line);border-radius:9px;color:var(--ink);
+  font-family:inherit;font-size:.85rem;padding:11px 13px;outline:none}
+ input:focus{border-color:var(--violet)}
+ button{width:100%;margin-top:22px;font-family:inherit;font-size:.7rem;letter-spacing:2px;text-transform:uppercase;
+  color:#0a0818;background:var(--violet);border:none;border-radius:10px;padding:12px;cursor:pointer;transition:.2s}
+ button:hover{background:#cbb8ff}
+ .msg{min-height:1.2em;margin-top:14px;text-align:center;font-size:.66rem;letter-spacing:.5px;color:var(--muted)}
+ .msg.err{color:#ff9a9a}
+</style></head><body>
+ <form class="card" onsubmit="event.preventDefault();login()">
+  <div class="brand"><span class="dot"></span><b>Akasha</b></div>
+  <h1>Your Archives</h1>
+  <p class="sub">a private semantic space · sign in to enter</p>
+  <label for="u">User ID</label>
+  <input id="u" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" autofocus>
+  <label for="p">Passphrase</label>
+  <input id="p" type="password" autocomplete="current-password">
+  <button type="submit">Enter</button>
+  <div class="msg" id="m"></div>
+ </form>
+<script>
+ async function login(){
+  var u=document.getElementById('u').value.trim(),p=document.getElementById('p').value,m=document.getElementById('m');
+  m.className='msg';
+  if(!u||!p){m.textContent='Enter your id and passphrase.';return;}
+  m.textContent='Verifying…';
+  try{
+   var r=await fetch('/api/rpc',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({jsonrpc:'2.0',method:'kernel.auth.verify',params:{data:{user_id:u,passphrase:p}},id:'auth'})}).then(x=>x.json());
+   if(r.error) throw new Error(r.error.message||'Auth failed');
+   if(r.result&&r.result.status==='authenticated'){
+    document.cookie='akt='+encodeURIComponent(r.result.session_token)+'; path=/; max-age=86400; SameSite=Strict';
+    try{localStorage.setItem('akasha_user',r.result.user_id||'');localStorage.setItem('akt',r.result.session_token);}catch(e){}
+    location.reload();
+   }else{m.className='msg err';m.textContent='Access denied.';}
+  }catch(e){m.className='msg err';m.textContent='Login error: '+e.message;}
+ }
+</script></body></html>"""
+
+
 class BaseWebHandler(SimpleHTTPRequestHandler):
     """
     HTTP Request Handler.
@@ -66,11 +130,69 @@ class BaseWebHandler(SimpleHTTPRequestHandler):
     """
     routes: Dict[str, Dict[str, Any]] = {}
     gw = None  # injected by BaseWebService.start() via dynamic subclass
+    gw_holder = None  # {"gw": <gw|None>} for deferred (Lever C) builds; drives the live gateway
     static_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "static"))
 
     def __init__(self, *args, **kwargs):
         # Allow dynamic subclass to override static_dir via class attribute
         super().__init__(*args, directory=self.static_dir, **kwargs)
+
+    # ── Lever C — warming state (port bound, substrate still loading) ───────────────────
+    def _live_gw(self):
+        """The live gateway. In deferred (warming) mode it comes from the shared holder and is
+        None until the background build finishes; otherwise the injected/singleton gateway."""
+        if self.gw_holder is not None:
+            return self.gw_holder.get("gw")
+        return self._live_gw()
+
+    def _warming(self) -> bool:
+        """True while the port is bound but the gateway substrate is still loading."""
+        return self.gw_holder is not None and self.gw_holder.get("gw") is None
+
+    def _serve_warming_page(self):
+        """The 'warming up' HTML — shown for every page GET while the substrate loads, so the
+        site is never a refused connection or a broken shell. Reuses the shared ASGI page."""
+        try:
+            from api.portals.asgi import _WARMING_HTML as _html
+        except Exception:
+            _html = ("<!doctype html><meta charset=utf-8><title>Akasha — warming up</title>"
+                     "<meta http-equiv=refresh content=3>"
+                     "<body style='font-family:sans-serif;text-align:center;padding-top:20vh'>"
+                     "<h1>Akasha is warming up…</h1><p>The substrate is loading. "
+                     "This page refreshes automatically.</p></body>")
+        body = _html.encode("utf-8")
+        self.send_response(200)
+        self._send_cors_headers()
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Retry-After", "3")
+        self.end_headers()
+        try:
+            self.wfile.write(body)
+        except Exception:
+            pass
+
+    def _serve_warming_json(self):
+        """The API-side warming answer — a 503 (still an HTTP response → 'alive' to the health
+        probe) so programmatic clients and the Supervisor tick know to retry, not that we're dead."""
+        self._send_json({"jsonrpc": "2.0", "id": None, "status": "warming",
+                         "error": {"code": -32002,
+                                   "message": "Akasha is warming up — loading the substrate. Retry shortly."}},
+                        status=503, extra_headers={"Retry-After": "3"})
+
+    def _handle_health_get(self):
+        """GET /health → sys.ping JSON (parity with the ASGI portal), so the warming page's
+        poll flips to the live site promptly once the gateway is ready."""
+        gw = self._live_gw()
+        try:
+            resp = gw.dispatch({"jsonrpc": "2.0", "method": "sys.ping",
+                                "params": {"session_token": "_health_"}, "id": "health"})
+            result = resp.get("result", {}) if isinstance(resp, dict) else {}
+            result.setdefault("status", "ok")
+            self._send_json(result)
+        except Exception as exc:
+            self._send_json({"status": "degraded", "error": str(exc)}, status=200)
 
     def do_OPTIONS(self):
         self._send_cors_headers()
@@ -86,7 +208,15 @@ class BaseWebHandler(SimpleHTTPRequestHandler):
         parsed_path = urllib.parse.urlparse(self.path)
         path = parsed_path.path
 
-        if path == '/api/rpc':
+        # Lever C — while the substrate is still loading every RPC/beacon/MCP path needs the
+        # gateway, so answer a 503 'warming' (an HTTP response → 'alive' to the health probe).
+        if self._warming():
+            return self._serve_warming_json()
+
+        # F25a: the archives-derived rooms (word/field/worldmap/philosophy/…) POST to /rpc, while the
+        # apps (cosmos/note/…) POST to /api/rpc. The ASGI portal serves both; accept both here too so the
+        # seeds simplified-archives rooms work byte-identical to their archives originals (no JS fork).
+        if path in ('/api/rpc', '/rpc'):
             self._handle_rpc()
         elif path == '/pulse':
             self._handle_pulse_beacon()
@@ -97,15 +227,74 @@ class BaseWebHandler(SimpleHTTPRequestHandler):
         else:
             self._send_json({"error": "Endpoint not found."}, status=404)
 
+    @staticmethod
+    def _portal_gate_on() -> bool:
+        """Whether the docroot-wide auth gate is armed (the seeds simplified-archives line). OFF by
+        default so the guest-open thesaurus archives and the public seeds portal are unaffected."""
+        return os.environ.get("AKASHA_PORTAL_GATE", "").strip().lower() in ("1", "true", "yes", "on")
+
+    def _gate_authed(self) -> bool:
+        """True iff the request carries an akt: token (cookie `akt`, else a Bearer header) that resolves
+        to an AUTHENTICATED (non-guest) identity — the same resolver the ASGI labo gate uses."""
+        tok = ""
+        ck = self.headers.get("Cookie", "")
+        if ck:
+            try:
+                jar = http.cookies.SimpleCookie(); jar.load(ck)
+                if "akt" in jar:
+                    tok = jar["akt"].value
+            except Exception:
+                tok = ""
+        if not tok:
+            auth = self.headers.get("Authorization", "")
+            if auth.startswith("Bearer "):
+                tok = auth[7:].strip()
+        if not tok:
+            return False
+        try:
+            gw = self._live_gw()
+            cid, role = gw.kernel_client.iam.resolve_session_token(tok)
+            rv = str(getattr(role, "value", role)).lower()
+            return bool(cid) and rv not in ("guest", "")
+        except Exception:
+            return False
+
+    def _serve_login_gate(self):
+        body = _PORTAL_GATE_HTML.encode("utf-8")
+        self.send_response(401)
+        self._send_cors_headers()
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store, must-revalidate")
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self):
         parsed_path = urllib.parse.urlparse(self.path)
         path = parsed_path.path
 
-        if path == '/api/readme':
+        # Lever C — during warming show the loading page for EVERY GET (no half-built shell whose
+        # RPC calls would just 503). The page self-polls /health and opens the real site when ready.
+        if self._warming():
+            return self._serve_warming_page()
+
+        if path == '/health':
+            self._handle_health_get()
+        elif path == '/api/readme':
             self._serve_readme()
         elif path in self.routes and self.routes[path]['method'] == 'GET':
             self._execute_custom_handler(self.routes[path]['handler'])
         else:
+            # Auth gate: for the seeds simplified-archives, an unauthenticated request for an HTML PAGE
+            # gets the login wall instead. Non-HTML assets pass (the login page is self-contained; page
+            # DATA is separately token-gated at the kernel), so nothing sensitive leaks pre-auth.
+            if self._portal_gate_on():
+                try:
+                    fp = self.translate_path(self.path)
+                except Exception:
+                    fp = ""
+                if fp.endswith('.html') and not self._gate_authed():
+                    return self._serve_login_gate()
             super().do_GET()
 
     def _serve_readme(self):
@@ -146,6 +335,19 @@ class BaseWebHandler(SimpleHTTPRequestHandler):
         Only static GETs reach here — the RPC/readme endpoints are handled in
         do_POST/do_GET before this — so no reserved-path exclusion is needed.
         """
+        # /docs/ (the documentation viewer + its markdown) lives at the repo root, NOT under the static
+        # docroot — serve it from there so the seeds Academy's Docs link resolves. Traversal-safe.
+        _pure = path.split('?', 1)[0].split('#', 1)[0]
+        if _pure == '/docs' or _pure.startswith('/docs/'):
+            docs_root = os.path.abspath(os.path.join(self.static_dir, '..', '..', 'docs'))
+            rel = _pure[len('/docs/'):] if _pure.startswith('/docs/') else ''
+            fs = os.path.normpath(os.path.join(docs_root, rel))
+            if fs == docs_root or fs.startswith(docs_root + os.sep):
+                if os.path.isdir(fs):
+                    idx = os.path.join(fs, 'index.html')
+                    if os.path.isfile(idx):
+                        return idx
+                return fs
         host_dir = self._host_dir()
         if host_dir:
             pure = path.split('?', 1)[0].split('#', 1)[0]
@@ -186,7 +388,7 @@ class BaseWebHandler(SimpleHTTPRequestHandler):
         is minted for anonymous callers (read-only), a Bearer akt: token acts with its scopes."""
         content_length = int(self.headers.get('Content-Length', 0))
         raw = self.rfile.read(content_length) if content_length > 0 else b""
-        gw = self.gw or _gw_module.gateway
+        gw = self._live_gw()
         try:
             from api.portals.mcp import mcp_http_process
             resp, status, extra = mcp_http_process(
@@ -220,7 +422,7 @@ class BaseWebHandler(SimpleHTTPRequestHandler):
                 if method in pre_auth and not params.get("session_token"):
                     req.setdefault("params", {})["session_token"] = "guest"
             
-            gw = self.gw or _gw_module.gateway
+            gw = self._live_gw()
             res = gw.dispatch(req)
             self._send_json(res)
             
@@ -243,7 +445,7 @@ class BaseWebHandler(SimpleHTTPRequestHandler):
             data = {}
         try:
             from lib.harmonia.pulse_recorder import recorder as _rec
-            gw = self.gw or _gw_module.gateway
+            gw = self._live_gw()
             if not _rec.configured and gw is not None:
                 _rec.configure(gw.dispatch)
             concept = (data or {}).get("concept") or ""
@@ -336,8 +538,11 @@ class _QuietHTTPServer(ThreadingHTTPServer):
 
 class BaseWebService:
     """Manager for the HTTP Server lifecycle."""
-    def __init__(self, gw=None, port: int = 8080, host: str = '0.0.0.0', static_dir: str = None):
+    def __init__(self, gw=None, port: int = 8080, host: str = '0.0.0.0', static_dir: str = None,
+                 gw_factory=None):
         self.gw           = gw
+        self.gw_factory   = gw_factory   # Lever C: zero-arg builder run on a bg thread after bind
+        self._gw_holder   = {"gw": gw}   # shared with the handler; the live gw once built
         self.host         = host
         self.target_port  = port
         self.port         = port
@@ -380,9 +585,30 @@ class BaseWebService:
         startup output before showing an interactive prompt — otherwise this
         message, printed from the portal thread, races the genesis/auth prompt."""
         self.port = self._find_free_port()
+        # Lever C — if a factory is given, bind the port NOW and build the gateway (the heavy
+        # ~1GB substrate load) on a background thread; the handler serves a warming page until the
+        # holder is populated. The site is never a refused connection during boot.
+        if self.gw_factory is not None:
+            import threading
+
+            def _build():
+                try:
+                    self._gw_holder["gw"] = self.gw_factory()
+                    logger.info("[HTTP] Live gateway ready — serving real content.")
+                except Exception as exc:
+                    logger.error("[HTTP] Gateway build failed — exiting so the Supervisor "
+                                 "respawns: %s", exc, exc_info=True)
+                    try:
+                        self.stop()
+                    finally:
+                        os._exit(1)   # never serve the warming page forever
+
+            threading.Thread(target=_build, name="portal-gateway-build", daemon=True).start()
+
         attrs = {
-            'routes': self.routes,
-            'gw':     self.gw or _gw_module.gateway,
+            'routes':    self.routes,
+            'gw':        self.gw,            # may be None when deferred; the holder drives the live one
+            'gw_holder': self._gw_holder,
         }
         if self._static_dir:
             attrs['static_dir'] = os.path.abspath(self._static_dir)

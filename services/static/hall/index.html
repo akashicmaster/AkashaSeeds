@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Reading Hall · Akashic Archives</title>
+    <meta name="description" content="The reading hall of the Akashic Archives — the reading desk opens the index & reference, the wall map opens the world map, and the central door opens the curation gallery.">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            background: #000;
+            color: #f0d8a8;
+            font-family: 'Courier New', Courier, monospace;
+            min-height: 100vh; min-height: 100dvh;
+            width: 100%; overflow-x: hidden;
+            -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
+        }
+
+        /* warm lamplit atmosphere */
+        .nebula {
+            position: fixed; inset: 0; pointer-events: none; z-index: 0;
+            background:
+                radial-gradient(ellipse 70% 60% at 50% 6%,  rgba(80,45,10,0.5)  0%, transparent 62%),
+                radial-gradient(ellipse 60% 60% at 50% 96%, rgba(30,15,4,0.7)   0%, transparent 66%);
+        }
+
+        .stage {
+            position: relative; z-index: 2;
+            min-height: 100vh; min-height: 100dvh;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            padding-top:    max(34px, calc(env(safe-area-inset-top) + 26px));
+            padding-bottom: max(28px, calc(env(safe-area-inset-bottom) + 26px));
+            padding-left:   max(16px, env(safe-area-inset-left));
+            padding-right:  max(16px, env(safe-area-inset-right));
+        }
+
+        .crumb {
+            font-size: 0.62rem; letter-spacing: 3px; text-transform: uppercase;
+            color: rgba(230,180,100,0.55); text-decoration: none;
+            border: 1px solid rgba(200,140,55,0.3); padding: 6px 16px; border-radius: 18px;
+            margin-bottom: 16px; transition: color 0.2s, border-color 0.2s, box-shadow 0.2s;
+        }
+        .crumb:hover { color: rgba(255,205,110,1); border-color: rgba(210,150,60,0.7);
+            box-shadow: 0 0 14px rgba(200,130,40,0.25); }
+
+        .hall-title {
+            font-size: clamp(1.4rem, 5vw, 2.6rem);
+            font-weight: bold; letter-spacing: clamp(4px, 2.2vw, 12px);
+            color: rgba(255,200,105,0.95); text-align: center; line-height: 1.1;
+            text-shadow: 0 0 16px rgba(220,140,40,0.55), 0 0 46px rgba(220,140,40,0.2);
+        }
+        .hall-sub {
+            font-size: clamp(0.58rem, 1.7vw, 0.76rem);
+            letter-spacing: clamp(3px, 1.1vw, 5px);
+            color: rgba(230,180,100,0.4); font-style: italic; text-transform: lowercase;
+            margin-top: 6px; margin-bottom: 14px; text-align: center;
+        }
+
+        /* ── The reading-room scene ──────────────────────────────────── */
+        .scene {
+            width: min(920px, 96vw); height: auto; display: block;
+        }
+        .scene .hot { cursor: pointer; }
+        .scene .hot.soon { cursor: default; }
+        .scene .obj { transition: filter 0.3s ease; }
+        .scene .hot:hover .obj {
+            filter: brightness(1.22) drop-shadow(0 0 7px rgba(255,190,80,0.65));
+        }
+        .scene .lbl-bg { fill: rgba(20,10,3,0.72); stroke: rgba(200,130,40,0.5); stroke-width: 1; }
+        .scene .lbl-jp { fill: rgba(255,220,150,0.95); font-family: 'Courier New', monospace; }
+        .scene .lbl-en { fill: rgba(220,160,80,0.7);  font-family: 'Courier New', monospace; letter-spacing: 2px; }
+        .scene .hot:hover .lbl-jp { fill: #ffe6b0; }
+        .scene .hot:hover .lbl-bg { stroke: rgba(255,180,60,0.9); }
+        .scene .hot.soon .lbl-jp { fill: rgba(230,190,130,0.6); }
+        .scene .badge-bg { fill: rgba(40,22,6,0.85); stroke: rgba(200,130,40,0.5); stroke-width: 0.8; }
+        .scene .badge-tx { fill: rgba(235,175,95,0.85); font-family: 'Courier New', monospace; letter-spacing: 1px; }
+
+        /* ── Text legend (mirrors the scene; primary nav on small screens) ─ */
+        .legend {
+            /* Small-screen menu ONLY. On wide screens the scene's own fixture
+               labels ARE the menu; showing this list too was a duplicate and
+               pushed the layout out of alignment. It reappears ≤640px, where the
+               scene labels are hidden and this list becomes the tap target. */
+            display: none; grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px 14px; width: min(720px, 96vw); margin-top: 20px;
+        }
+        .leg {
+            display: flex; align-items: baseline; gap: 8px;
+            font-size: 0.62rem; letter-spacing: 1px; text-decoration: none;
+            padding: 8px 12px; border: 1px solid rgba(200,130,35,0.28);
+            background: rgba(50,27,7,0.25); color: rgba(230,200,160,0.8);
+            transition: border-color 0.25s, background 0.25s, color 0.25s;
+        }
+        .leg.live:hover { border-color: rgba(255,180,60,0.8); background: rgba(80,45,12,0.4); color: #ffe6b0; }
+        .leg.soon { opacity: 0.6; cursor: default; }
+        .leg b { font-size: 0.82rem; letter-spacing: 1px; color: rgba(255,215,140,0.92); font-weight: normal; }
+        .leg .en { font-size: 0.52rem; letter-spacing: 2px; text-transform: uppercase; color: rgba(220,160,80,0.55); }
+        .leg .sn { margin-left: auto; font-size: 0.5rem; letter-spacing: 1.5px; text-transform: uppercase;
+                   color: rgba(230,175,95,0.7); border: 1px solid rgba(200,130,40,0.4); padding: 2px 6px; border-radius: 8px; }
+
+        .footer-credit {
+            margin-top: 22px; font-size: 0.58rem; letter-spacing: 3px;
+            color: rgba(230,180,100,0.28); text-transform: uppercase; text-align: center;
+        }
+        .footer-credit a { color: rgba(230,180,100,0.5); text-decoration: none; transition: color 0.2s; }
+        .footer-credit a:hover { color: rgba(255,205,110,1); }
+
+        /* ── the radar terminal (Live Telemetry) — a green tech console in the warm library ─ */
+        .scene-radar .sweep { transform-box: view-box; transform-origin: 90px 508px;
+            animation: radar-spin 4s linear infinite; }
+        @keyframes radar-spin { to { transform: rotate(360deg); } }
+        .scene-radar .blip { animation: blip-pulse 2.4s ease-in-out infinite; }
+        @keyframes blip-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .scene-radar .badge-bg { fill: rgba(8,32,20,0.9); stroke: rgba(80,210,140,0.6); }
+        .scene-radar .badge-tx { fill: rgba(120,240,170,0.9); }
+        .scene .hot.scene-radar:hover .obj {
+            filter: brightness(1.18) drop-shadow(0 0 8px rgba(80,235,150,0.7)); }
+        @media (prefers-reduced-motion: reduce) { .scene-radar .sweep, .scene-radar .blip { animation: none; } }
+
+        @media (max-width: 640px) {
+            .stage { padding: 24px 12px 30px; }
+            .hall-sub { letter-spacing: 2px; font-size: 0.56rem; padding: 0 6px; max-width: 100%; }
+            /* labels in the scene get small when scaled down — lean on the legend */
+            .scene .scene-labels { display: none; }
+            .legend { display: grid; grid-template-columns: 1fr; gap: 10px; max-width: 440px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="nebula"></div>
+
+<div class="stage">
+
+    <a href="/" class="crumb">◄ your archives</a>
+    <h1 class="hall-title">READING HALL</h1>
+    <div class="hall-sub">your reading room — every fixture is a doorway · showing the core (A) canopy, load more packs to expand</div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         The reading room. Click a fixture:
+           · reading desk (cases + open book) → index & reference
+           · wall map                         → world map
+           · central door                     → curation gallery
+    ══════════════════════════════════════════════════════════════ -->
+    <svg class="scene" viewBox="0 0 960 600" xmlns="http://www.w3.org/2000/svg"
+         xmlns:xlink="http://www.w3.org/1999/xlink" role="group" aria-label="Reading room">
+      <defs>
+        <linearGradient id="room" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"  stop-color="#2a1808"/>
+          <stop offset="55%" stop-color="#160c04"/>
+          <stop offset="100%" stop-color="#0a0602"/>
+        </linearGradient>
+        <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"  stop-color="#7a4a1c"/>
+          <stop offset="100%" stop-color="#3c230d"/>
+        </linearGradient>
+        <linearGradient id="floor" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stop-color="#3a2410"/>
+          <stop offset="100%" stop-color="#1a0f06"/>
+        </linearGradient>
+        <radialGradient id="doorglow" cx="50%" cy="42%" r="60%">
+          <stop offset="0%"  stop-color="rgba(255,232,160,0.98)"/>
+          <stop offset="45%" stop-color="rgba(240,170,70,0.8)"/>
+          <stop offset="100%" stop-color="rgba(80,40,10,0.15)"/>
+        </radialGradient>
+        <!-- cool computational glow for the Concept Laboratory door (vs the warm curation door) -->
+        <radialGradient id="labglow" cx="50%" cy="42%" r="62%">
+          <stop offset="0%"  stop-color="rgba(184,240,226,0.95)"/>
+          <stop offset="45%" stop-color="rgba(74,178,172,0.72)"/>
+          <stop offset="100%" stop-color="rgba(10,40,44,0.15)"/>
+        </radialGradient>
+        <radialGradient id="lamp" cx="50%" cy="30%" r="70%">
+          <stop offset="0%"  stop-color="rgba(255,220,130,0.85)"/>
+          <stop offset="100%" stop-color="rgba(255,160,60,0)"/>
+        </radialGradient>
+        <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"  stop-color="rgba(180,220,235,0.22)"/>
+          <stop offset="100%" stop-color="rgba(120,170,190,0.06)"/>
+        </linearGradient>
+        <linearGradient id="mapsea" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%"  stop-color="#123b52"/>
+          <stop offset="100%" stop-color="#0b2536"/>
+        </linearGradient>
+        <!-- marble for the philosophy statue (cool stone, warm torch rim) -->
+        <linearGradient id="marble" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%"   stop-color="#e6dfce"/>
+          <stop offset="42%"  stop-color="#c3baa6"/>
+          <stop offset="100%" stop-color="#847b68"/>
+        </linearGradient>
+        <linearGradient id="plinth" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stop-color="#c9c0ac"/>
+          <stop offset="100%" stop-color="#6e6656"/>
+        </linearGradient>
+        <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
+          <feGaussianBlur stdDeviation="2" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <radialGradient id="globe" cx="40%" cy="34%" r="78%">
+          <stop offset="0%"   stop-color="#e8dcbe"/>
+          <stop offset="58%"  stop-color="#d6c096"/>
+          <stop offset="100%" stop-color="#a98a5e"/>
+        </radialGradient>
+        <!-- radar terminal screen + rotating sweep -->
+        <radialGradient id="radarScreen" cx="50%" cy="50%" r="50%">
+          <stop offset="0%"  stop-color="#0e4327"/>
+          <stop offset="68%" stop-color="#072615"/>
+          <stop offset="100%" stop-color="#03130a"/>
+        </radialGradient>
+        <radialGradient id="radarSweep" gradientUnits="userSpaceOnUse" cx="90" cy="508" r="34">
+          <stop offset="0%"  stop-color="rgba(90,245,150,0.5)"/>
+          <stop offset="100%" stop-color="rgba(90,245,150,0)"/>
+        </radialGradient>
+      </defs>
+
+      <!-- room shell -->
+      <rect x="0" y="0" width="960" height="600" fill="url(#room)"/>
+
+      <!-- ── vaulted / coffered ceiling ─────────────────────────────── -->
+      <g opacity="0.9">
+        <rect x="0" y="0" width="960" height="96" fill="#1d1005"/>
+        <!-- soft beam shading along the ceiling (replaces the old coffer outlines,
+             which read as stray empty picture frames) -->
+        <rect x="0" y="0" width="960" height="96" fill="url(#room)" opacity="0.35"/>
+        <rect x="0" y="92" width="960" height="4" fill="rgba(120,75,30,0.35)"/>
+        <!-- central skylight glow -->
+        <ellipse cx="480" cy="60" rx="70" ry="30" fill="rgba(255,205,110,0.18)"/>
+        <!-- hanging lamp -->
+        <line x1="480" y1="80" x2="480" y2="120" stroke="rgba(150,95,45,0.7)" stroke-width="1.6"/>
+        <circle cx="480" cy="128" r="26" fill="url(#lamp)"/>
+        <circle cx="480" cy="126" r="6"  fill="rgba(255,235,160,0.95)" filter="url(#soft)"/>
+      </g>
+
+      <!-- ── back wall + perspective floor ──────────────────────────── -->
+      <rect x="150" y="96" width="660" height="300" fill="#180d05"/>
+      <polygon points="0,600 960,600 700,300 260,300" fill="url(#floor)"/>
+      <!-- floor board seams (converging) -->
+      <g stroke="rgba(120,75,30,0.35)" stroke-width="1">
+        <line x1="480" y1="300" x2="480" y2="600"/>
+        <line x1="380" y1="300" x2="180" y2="600"/>
+        <line x1="580" y1="300" x2="780" y2="600"/>
+        <line x1="300" y1="300" x2="-40" y2="600"/>
+        <line x1="660" y1="300" x2="1000" y2="600"/>
+      </g>
+
+      <!-- ══ LEFT bookcase wall (perspective) ══ -->
+      <g class="obj">
+        <!-- receding side wall (room corner, depth) -->
+        <polygon points="0,110 168,150 168,470 0,540" fill="#160c04"/>
+        <!-- flat, front-facing bookcase cabinet -->
+        <rect x="26" y="152" width="132" height="322" fill="#241407"/>
+        <rect x="22" y="146" width="140" height="10" fill="url(#wood)"/>
+        <rect x="22" y="470" width="140" height="10" fill="url(#wood)"/>
+        <rect x="26" y="152" width="132" height="322" fill="none" stroke="url(#wood)" stroke-width="7"/>
+        <!-- shelf planks -->
+          <rect x="30" y="224" width="124" height="6" fill="url(#wood)"/>
+          <rect x="30" y="298" width="124" height="6" fill="url(#wood)"/>
+          <rect x="30" y="372" width="124" height="6" fill="url(#wood)"/>
+          <rect x="30" y="446" width="124" height="6" fill="url(#wood)"/>
+        <!-- book spines, each row resting on its plank -->
+        <g>
+          <rect x="32" y="162" width="12" height="62" fill="#8a3f16"/>
+          <rect x="45" y="158" width="14" height="66" fill="#6a3410"/>
+          <rect x="60" y="166" width="11" height="58" fill="#a4551a"/>
+          <rect x="72" y="160" width="13" height="64" fill="#7a4012"/>
+          <rect x="86" y="164" width="12" height="60" fill="#93481a"/>
+          <rect x="99" y="158" width="14" height="66" fill="#5f3210"/>
+          <rect x="114" y="168" width="11" height="56" fill="#3e5f4a"/>
+          <rect x="126" y="162" width="13" height="62" fill="#496066"/>
+          <rect x="140" y="164" width="11" height="60" fill="#9a5a20"/>
+          <rect x="32" y="238" width="12" height="60" fill="#6a3410"/>
+          <rect x="45" y="234" width="14" height="64" fill="#a4551a"/>
+          <rect x="60" y="242" width="11" height="56" fill="#7a4012"/>
+          <rect x="72" y="232" width="13" height="66" fill="#93481a"/>
+          <rect x="86" y="240" width="12" height="58" fill="#5f3210"/>
+          <rect x="99" y="236" width="14" height="62" fill="#3e5f4a"/>
+          <rect x="114" y="238" width="11" height="60" fill="#496066"/>
+          <rect x="126" y="242" width="13" height="56" fill="#9a5a20"/>
+          <rect x="140" y="234" width="11" height="64" fill="#8a3f16"/>
+          <rect x="32" y="308" width="12" height="64" fill="#a4551a"/>
+          <rect x="45" y="314" width="14" height="58" fill="#7a4012"/>
+          <rect x="60" y="310" width="11" height="62" fill="#93481a"/>
+          <rect x="72" y="312" width="13" height="60" fill="#5f3210"/>
+          <rect x="86" y="306" width="12" height="66" fill="#3e5f4a"/>
+          <rect x="99" y="316" width="14" height="56" fill="#496066"/>
+          <rect x="114" y="310" width="11" height="62" fill="#9a5a20"/>
+          <rect x="126" y="308" width="13" height="64" fill="#8a3f16"/>
+          <rect x="140" y="314" width="11" height="58" fill="#6a3410"/>
+          <rect x="32" y="388" width="12" height="58" fill="#7a4012"/>
+          <rect x="45" y="384" width="14" height="62" fill="#93481a"/>
+          <rect x="60" y="386" width="11" height="60" fill="#5f3210"/>
+          <rect x="72" y="390" width="13" height="56" fill="#3e5f4a"/>
+          <rect x="86" y="382" width="12" height="64" fill="#496066"/>
+          <rect x="99" y="386" width="14" height="60" fill="#9a5a20"/>
+          <rect x="114" y="388" width="11" height="58" fill="#8a3f16"/>
+          <rect x="126" y="384" width="13" height="62" fill="#6a3410"/>
+          <rect x="140" y="386" width="11" height="60" fill="#a4551a"/>
+        </g>
+      </g>
+
+      <!-- ══ RADAR TERMINAL on the floor under the left bookcase → HOTSPOT: Live Telemetry ══ -->
+      <a class="hot live scene-radar" xlink:href="/live/" href="/live/" aria-label="live telemetry radar">
+        <g class="obj">
+          <!-- console pedestal on the floor -->
+          <polygon points="64,566 116,566 110,556 70,556" fill="#121814"/>
+          <rect x="74" y="536" width="32" height="22" fill="#0f1512" stroke="#274a3d" stroke-width="1"/>
+          <rect x="90" y="544" width="12" height="4" rx="1" fill="#173028" stroke="#2f5a4a" stroke-width="0.6"/>
+          <circle cx="80" cy="546" r="1.6" fill="#4fd08a"/>
+          <circle cx="85" cy="546" r="1.6" fill="#e0a13a"/>
+          <!-- radar screen -->
+          <circle cx="90" cy="508" r="34" fill="#03130a" stroke="#2f6b4c" stroke-width="2"/>
+          <circle cx="90" cy="508" r="33" fill="url(#radarScreen)"/>
+          <g stroke="rgba(90,220,150,0.32)" stroke-width="0.7" fill="none">
+            <circle cx="90" cy="508" r="11"/><circle cx="90" cy="508" r="22"/>
+            <line x1="90" y1="475" x2="90" y2="541"/><line x1="57" y1="508" x2="123" y2="508"/>
+          </g>
+          <!-- rotating sweep -->
+          <g class="sweep">
+            <polygon points="90,508 124,508 123,499.8 120,492 115.3,485.3 109.5,480.2" fill="url(#radarSweep)"/>
+            <line x1="90" y1="508" x2="124" y2="508" stroke="rgba(150,255,185,0.9)" stroke-width="1.2"/>
+          </g>
+          <!-- blips (aircraft-style contacts) -->
+          <circle class="blip" cx="78" cy="498" r="1.8" fill="#e0554e"/>
+          <circle cx="104" cy="502" r="1.8" fill="#e8a13a"/>
+          <circle class="blip" cx="99" cy="522" r="1.6" fill="#e0554e" style="animation-delay:0.9s"/>
+          <circle cx="82" cy="519" r="1.5" fill="#e8a13a"/>
+          <!-- rim glow -->
+          <circle cx="90" cy="508" r="34" fill="none" stroke="rgba(80,240,150,0.45)" stroke-width="1"/>
+        </g>
+        <g class="lbl scene-labels">
+          <rect class="lbl-bg" x="138" y="430" width="158" height="34" rx="4"/>
+          <text class="lbl-jp" x="217" y="446" text-anchor="middle" font-size="13">Live Telemetry</text>
+          <text class="lbl-en" x="217" y="458" text-anchor="middle" font-size="7">live radar · earth, right now</text>
+          <rect class="badge-bg live" x="256" y="424" width="36" height="14" rx="6"/>
+          <text class="badge-tx" x="274" y="434" text-anchor="middle" font-size="7">OPEN</text>
+        </g>
+      </a>
+
+      <!-- ══ RIGHT bookcase wall (mirror) → HOTSPOT: Oriental Archives ══ -->
+      <a class="hot live scene-oriental" xlink:href="/oriental/" href="/oriental/" aria-label="oriental archives">
+      <g class="obj">
+        <!-- receding side wall (room corner, depth) -->
+        <polygon points="960,110 792,150 792,470 960,540" fill="#160c04"/>
+        <!-- flat, front-facing bookcase cabinet -->
+        <rect x="802" y="152" width="132" height="322" fill="#241407"/>
+        <rect x="798" y="146" width="140" height="10" fill="url(#wood)"/>
+        <rect x="798" y="470" width="140" height="10" fill="url(#wood)"/>
+        <rect x="802" y="152" width="132" height="322" fill="none" stroke="url(#wood)" stroke-width="7"/>
+        <!-- shelf planks -->
+          <rect x="806" y="224" width="124" height="6" fill="url(#wood)"/>
+          <rect x="806" y="298" width="124" height="6" fill="url(#wood)"/>
+          <rect x="806" y="372" width="124" height="6" fill="url(#wood)"/>
+          <rect x="806" y="446" width="124" height="6" fill="url(#wood)"/>
+        <!-- book spines, each row resting on its plank -->
+        <g>
+          <rect x="808" y="162" width="12" height="62" fill="#8a3f16"/>
+          <rect x="821" y="158" width="14" height="66" fill="#6a3410"/>
+          <rect x="836" y="166" width="11" height="58" fill="#a4551a"/>
+          <rect x="848" y="160" width="13" height="64" fill="#7a4012"/>
+          <rect x="862" y="164" width="12" height="60" fill="#93481a"/>
+          <rect x="875" y="158" width="14" height="66" fill="#5f3210"/>
+          <rect x="890" y="168" width="11" height="56" fill="#3e5f4a"/>
+          <rect x="902" y="162" width="13" height="62" fill="#496066"/>
+          <rect x="916" y="164" width="11" height="60" fill="#9a5a20"/>
+          <rect x="808" y="238" width="12" height="60" fill="#6a3410"/>
+          <rect x="821" y="234" width="14" height="64" fill="#a4551a"/>
+          <rect x="836" y="242" width="11" height="56" fill="#7a4012"/>
+          <rect x="848" y="232" width="13" height="66" fill="#93481a"/>
+          <rect x="862" y="240" width="12" height="58" fill="#5f3210"/>
+          <rect x="875" y="236" width="14" height="62" fill="#3e5f4a"/>
+          <rect x="890" y="238" width="11" height="60" fill="#496066"/>
+          <rect x="902" y="242" width="13" height="56" fill="#9a5a20"/>
+          <rect x="916" y="234" width="11" height="64" fill="#8a3f16"/>
+          <rect x="808" y="308" width="12" height="64" fill="#a4551a"/>
+          <rect x="821" y="314" width="14" height="58" fill="#7a4012"/>
+          <rect x="836" y="310" width="11" height="62" fill="#93481a"/>
+          <rect x="848" y="312" width="13" height="60" fill="#5f3210"/>
+          <rect x="862" y="306" width="12" height="66" fill="#3e5f4a"/>
+          <rect x="875" y="316" width="14" height="56" fill="#496066"/>
+          <rect x="890" y="310" width="11" height="62" fill="#9a5a20"/>
+          <rect x="902" y="308" width="13" height="64" fill="#8a3f16"/>
+          <rect x="916" y="314" width="11" height="58" fill="#6a3410"/>
+          <rect x="808" y="388" width="12" height="58" fill="#7a4012"/>
+          <rect x="821" y="384" width="14" height="62" fill="#93481a"/>
+          <rect x="836" y="386" width="11" height="60" fill="#5f3210"/>
+          <rect x="848" y="390" width="13" height="56" fill="#3e5f4a"/>
+          <rect x="862" y="382" width="12" height="64" fill="#496066"/>
+          <rect x="875" y="386" width="14" height="60" fill="#9a5a20"/>
+          <rect x="890" y="388" width="11" height="58" fill="#8a3f16"/>
+          <rect x="902" y="384" width="13" height="62" fill="#6a3410"/>
+          <rect x="916" y="386" width="11" height="60" fill="#a4551a"/>
+        </g>
+      </g>
+        <g class="lbl scene-labels">
+          <rect class="lbl-bg" x="786" y="300" width="164" height="34" rx="4"/>
+          <text class="lbl-jp" x="868" y="316" text-anchor="middle" font-size="14">Oriental Archives</text>
+          <text class="lbl-en" x="868" y="328" text-anchor="middle" font-size="7">oriental archives</text>
+          <rect class="badge-bg live" x="908" y="294" width="36" height="14" rx="6"/>
+          <text class="badge-tx" x="926" y="304" text-anchor="middle" font-size="7">OPEN</text>
+        </g>
+      </a>
+
+      <!-- ══ HOTSPOT: antique globe (lower-right, below Oriental Archives) → Ancient Civilizations ══ -->
+      <a class="hot live scene-ancient" xlink:href="/ancient/" href="/ancient/" aria-label="ancient civilizations archives">
+        <g class="obj">
+          <!-- floor shadow + warm glow -->
+          <ellipse cx="870" cy="516" rx="44" ry="8" fill="rgba(0,0,0,0.42)"/>
+          <ellipse cx="870" cy="470" rx="52" ry="58" fill="rgba(255,190,110,0.07)"/>
+          <!-- wooden tripod stand -->
+          <g stroke="url(#wood)" stroke-width="5" stroke-linecap="round">
+            <line x1="870" y1="498" x2="848" y2="514"/>
+            <line x1="870" y1="498" x2="892" y2="514"/>
+            <line x1="870" y1="500" x2="870" y2="516"/>
+          </g>
+          <rect x="844" y="510" width="52" height="7" rx="3" fill="url(#wood)"/>
+          <!-- brass meridian ring behind the globe -->
+          <ellipse cx="870" cy="470" rx="36" ry="36" fill="none" stroke="#9a6f2e" stroke-width="3" opacity="0.92"/>
+          <circle cx="870" cy="434" r="3" fill="#b98a3c"/>
+          <!-- the terrestrial globe -->
+          <circle cx="870" cy="470" r="31" fill="url(#globe)" stroke="#7a5a30" stroke-width="1.2"/>
+          <!-- graticule -->
+          <g stroke="rgba(70,46,18,0.32)" stroke-width="0.8" fill="none">
+            <ellipse cx="870" cy="470" rx="31" ry="11"/>
+            <ellipse cx="870" cy="470" rx="12" ry="31"/>
+            <line x1="839" y1="470" x2="901" y2="470"/>
+          </g>
+          <!-- faint antique continents -->
+          <g fill="rgba(96,116,78,0.55)">
+            <path d="M855,456 q10,-6 18,-1 q6,6 -3,10 q-12,3 -17,-4 z"/>
+            <path d="M876,478 q11,-3 13,7 q-5,9 -14,3 q-5,-8 1,-10 z"/>
+            <path d="M851,480 q8,-1 8,6 q-6,4 -10,-2 z"/>
+          </g>
+          <!-- specular highlight -->
+          <ellipse cx="859" cy="460" rx="9" ry="6" fill="rgba(255,250,235,0.22)"/>
+        </g>
+        <g class="lbl scene-labels">
+          <rect class="lbl-bg" x="786" y="520" width="168" height="30" rx="4"/>
+          <text class="lbl-jp" x="870" y="534" text-anchor="middle" font-size="12.5">Ancient Civilizations</text>
+          <text class="lbl-en" x="870" y="544" text-anchor="middle" font-size="6.5">the ancient world, by region</text>
+          <rect class="badge-bg live" x="922" y="515" width="32" height="13" rx="6"/>
+          <text class="badge-tx" x="938" y="524" text-anchor="middle" font-size="6.5">OPEN</text>
+        </g>
+      </a>
+
+      <!-- ══════════════ HOTSPOT: central door → curation gallery ══════════════ -->
+      <a class="hot scene-door" xlink:href="/curation/" href="/curation/" aria-label="curation gallery">
+        <g class="obj">
+          <!-- door surround -->
+          <path d="M406,392 L406,250 Q406,168 480,168 Q554,168 554,250 L554,392 Z"
+                fill="#0d0703" stroke="rgba(120,72,26,0.9)" stroke-width="4"/>
+          <!-- warm interior glow -->
+          <path d="M420,392 L420,254 Q420,182 480,182 Q540,182 540,254 L540,392 Z"
+                fill="url(#doorglow)"/>
+          <!-- silhouette figures stepping through -->
+          <ellipse cx="462" cy="360" rx="8" ry="20" fill="rgba(30,16,4,0.7)"/>
+          <ellipse cx="498" cy="356" rx="9" ry="22" fill="rgba(30,16,4,0.75)"/>
+          <!-- keystone -->
+          <circle cx="480" cy="176" r="5" fill="rgba(255,220,140,0.9)" filter="url(#soft)"/>
+        </g>
+        <g class="lbl scene-labels">
+          <rect class="lbl-bg" x="398" y="404" width="164" height="34" rx="4"/>
+          <text class="lbl-jp" x="480" y="420" text-anchor="middle" font-size="14">curation gallery</text>
+          <text class="lbl-en" x="480" y="432" text-anchor="middle" font-size="7">curation gallery</text>
+        </g>
+      </a>
+
+      <!-- ══════════════ HOTSPOT: wall map → world-map index ══════════════ -->
+      <!-- hung lower on the wall so it balances against the door and cases -->
+      <a class="hot live scene-map" transform="translate(13,4) translate(271,206) scale(0.6) translate(-271,-206)" xlink:href="/worldmap/" href="/worldmap/" aria-label="world map index">
+        <g class="obj">
+          <!-- frame on the left wall -->
+          <rect x="196" y="150" width="150" height="112" rx="2" fill="#2a1708"
+                stroke="rgba(200,140,60,0.85)" stroke-width="4"/>
+          <rect x="204" y="158" width="134" height="96" fill="url(#mapsea)"/>
+          <!-- graticule -->
+          <g stroke="rgba(150,190,210,0.25)" stroke-width="0.7">
+            <line x1="204" y1="190" x2="338" y2="190"/>
+            <line x1="204" y1="222" x2="338" y2="222"/>
+            <line x1="248" y1="158" x2="248" y2="254"/>
+            <line x1="294" y1="158" x2="294" y2="254"/>
+          </g>
+          <!-- rough continents -->
+          <path d="M214,178 q14,-8 26,2 q8,10 -2,20 q-16,8 -26,-4 q-6,-10 2,-18 Z" fill="rgba(96,140,80,0.85)"/>
+          <path d="M264,196 q22,-6 34,6 q6,14 -8,22 q-24,8 -34,-6 q-4,-14 8,-22 Z" fill="rgba(110,150,86,0.85)"/>
+          <path d="M300,172 q16,-4 22,6 q2,10 -8,14 q-16,4 -20,-6 q-2,-10 6,-14 Z" fill="rgba(96,140,80,0.8)"/>
+          <!-- compass -->
+          <circle cx="322" cy="240" r="7" fill="none" stroke="rgba(255,210,130,0.7)" stroke-width="1"/>
+          <path d="M322,234 L324,240 L322,246 L320,240 Z" fill="rgba(255,210,130,0.8)"/>
+        </g>
+        <g class="lbl scene-labels">
+          <rect class="lbl-bg" x="188" y="266" width="166" height="34" rx="4"/>
+          <text class="lbl-jp" x="271" y="282" text-anchor="middle" font-size="14">World Map Index</text>
+          <text class="lbl-en" x="271" y="294" text-anchor="middle" font-size="7">world-map index</text>
+          <rect class="badge-bg live" x="330" y="260" width="36" height="14" rx="6"/>
+          <text class="badge-tx" x="348" y="270" text-anchor="middle" font-size="7">OPEN</text>
+        </g>
+      </a>
+
+      <!-- ══════════════ HOTSPOT: framed picture → star chart ══════════════ -->
+      <!-- two small framed pictures on the left wall, below the (shrunk, raised) map -->
+      <a class="hot live scene-starchart" xlink:href="/starchart/" href="/starchart/" aria-label="star chart">
+        <g class="obj">
+          <rect x="186" y="288" width="86" height="82" rx="2" fill="#241407"
+                stroke="rgba(190,170,120,0.85)" stroke-width="4"/>
+          <rect x="193" y="295" width="72" height="68" fill="#0a1024"/>
+          <!-- a wisp of nebula -->
+          <ellipse cx="229" cy="329" rx="34" ry="24" fill="rgba(90,110,200,0.14)"/>
+          <!-- asterism (a little Orion-belt tilt) + stars -->
+          <g stroke="rgba(150,180,255,0.4)" stroke-width="0.8">
+            <line x1="210" y1="312" x2="224" y2="326"/><line x1="224" y1="326" x2="240" y2="336"/>
+            <line x1="240" y1="336" x2="252" y2="318"/>
+          </g>
+          <g fill="#eaf1ff">
+            <circle cx="210" cy="312" r="2.4"/><circle cx="224" cy="326" r="1.8"/><circle cx="240" cy="336" r="2.6"/>
+            <circle cx="252" cy="318" r="1.8"/><circle cx="204" cy="345" r="1.4"/><circle cx="258" cy="302" r="1.5"/>
+            <circle cx="235" cy="305" r="1.3"/><circle cx="218" cy="350" r="1.6"/><circle cx="248" cy="352" r="1.2"/>
+          </g>
+          <!-- crescent -->
+          <path d="M256,313 a7,7 0 1 0 0.1,0.1 a5,5 0 1 1 -0.1,-0.1 Z" fill="rgba(230,220,180,0.75)"/>
+        </g>
+        <g class="lbl scene-labels">
+          <rect class="lbl-bg" x="163" y="376" width="132" height="30" rx="4"/>
+          <text class="lbl-jp" x="229" y="390" text-anchor="middle" font-size="12">Star Chart</text>
+          <text class="lbl-en" x="229" y="400" text-anchor="middle" font-size="6.5">the celestial sphere</text>
+          <rect class="badge-bg live" x="263" y="371" width="34" height="13" rx="6"/>
+          <text class="badge-tx" x="280" y="380" text-anchor="middle" font-size="6.5">OPEN</text>
+        </g>
+      </a>
+
+      <!-- ══════════════ HOTSPOT: framed picture → periodic table ══════════════ -->
+      <a class="hot live scene-periodic" xlink:href="/periodic/" href="/periodic/" aria-label="periodic table">
+        <g class="obj">
+          <rect x="292" y="288" width="86" height="82" rx="2" fill="#241407"
+                stroke="rgba(190,170,120,0.85)" stroke-width="4"/>
+          <rect x="299" y="295" width="72" height="68" fill="#0c1118"/>
+          <!-- a mini periodic grid -->
+          <g>
+            <rect x="305" y="303" width="9" height="9" fill="#5aa0c8"/><rect x="359" y="303" width="9" height="9" fill="#b06ac8"/>
+            <rect x="305" y="314" width="9" height="9" fill="#d9634c"/><rect x="316" y="314" width="9" height="9" fill="#e0954a"/>
+            <rect x="338" y="314" width="9" height="9" fill="#7ba85a"/><rect x="349" y="314" width="9" height="9" fill="#5aa0c8"/><rect x="359" y="314" width="9" height="9" fill="#7d8fd8"/>
+            <rect x="305" y="325" width="9" height="9" fill="#d9634c"/><rect x="316" y="325" width="9" height="9" fill="#e0954a"/>
+            <rect x="327" y="325" width="9" height="9" fill="#c8a44a"/><rect x="338" y="325" width="9" height="9" fill="#c8a44a"/><rect x="349" y="325" width="9" height="9" fill="#c8a44a"/><rect x="359" y="325" width="9" height="9" fill="#c8a44a"/>
+            <rect x="305" y="336" width="9" height="9" fill="#c8a44a"/><rect x="316" y="336" width="9" height="9" fill="#c8a44a"/>
+            <rect x="327" y="336" width="9" height="9" fill="#c8a44a"/><rect x="338" y="336" width="9" height="9" fill="#5f9a9a"/><rect x="349" y="336" width="9" height="9" fill="#5aa0c8"/><rect x="359" y="336" width="9" height="9" fill="#7d8fd8"/>
+            <rect x="327" y="349" width="9" height="9" fill="#cf7a9e"/><rect x="338" y="349" width="9" height="9" fill="#cf7a9e"/><rect x="349" y="349" width="9" height="9" fill="#9a7ac8"/>
+          </g>
+        </g>
+        <g class="lbl scene-labels">
+          <rect class="lbl-bg" x="269" y="376" width="132" height="30" rx="4"/>
+          <text class="lbl-jp" x="335" y="390" text-anchor="middle" font-size="12">Periodic Table</text>
+          <text class="lbl-en" x="335" y="400" text-anchor="middle" font-size="6.5">the elements</text>
+          <rect class="badge-bg live" x="369" y="371" width="34" height="13" rx="6"/>
+          <text class="badge-tx" x="386" y="380" text-anchor="middle" font-size="6.5">OPEN</text>
+        </g>
+      </a>
+
+
+      <!-- ══════════════ HOTSPOT: Socrates statue → philosophy world ══════════════ -->
+      <!-- a marble bust on the right wall, mirroring the map on the left -->
+      <a class="hot live scene-statue" transform="translate(22,0)" xlink:href="/philosophy/" href="/philosophy/" aria-label="philosophy world">
+        <g class="obj">
+          <!-- floor shadow + warm torch glow behind the stone -->
+          <ellipse cx="688" cy="372" rx="58" ry="10" fill="rgba(0,0,0,0.4)"/>
+          <ellipse cx="688" cy="250" rx="66" ry="110" fill="rgba(255,190,110,0.09)"/>
+          <!-- ═ plinth ═ -->
+          <rect x="644" y="356" width="88" height="16" rx="2" fill="url(#plinth)"/>
+          <rect x="656" y="278" width="64" height="80" fill="url(#plinth)"/>
+          <rect x="650" y="268" width="76" height="12" rx="2" fill="url(#marble)"/>
+          <g stroke="rgba(90,84,68,0.5)" stroke-width="1.1">
+            <line x1="668" y1="284" x2="668" y2="352"/>
+            <line x1="683" y1="284" x2="683" y2="352"/>
+            <line x1="698" y1="284" x2="698" y2="352"/>
+            <line x1="712" y1="284" x2="712" y2="352"/>
+          </g>
+          <rect x="656" y="278" width="3" height="80" fill="rgba(255,210,140,0.32)"/>
+          <!-- ═ bust ═ -->
+          <path d="M660,268 L668,244 Q688,234 708,244 L716,268 Z" fill="url(#marble)"
+                stroke="rgba(120,112,96,0.5)" stroke-width="1"/>
+          <path d="M678,248 L688,266 L698,248" fill="none" stroke="rgba(120,112,96,0.5)" stroke-width="1.2"/>
+          <rect x="681" y="230" width="14" height="16" fill="url(#marble)"/>
+          <!-- bald dome -->
+          <ellipse cx="688" cy="208" rx="20" ry="23" fill="url(#marble)"
+                   stroke="rgba(120,112,96,0.4)" stroke-width="1"/>
+          <!-- full beard -->
+          <path d="M670,210 Q669,242 688,246 Q707,242 706,210 Q699,230 688,232 Q677,230 670,210 Z"
+                fill="url(#marble)" stroke="rgba(110,102,86,0.5)" stroke-width="1"/>
+          <g stroke="rgba(110,102,86,0.45)" stroke-width="1" fill="none">
+            <path d="M679,216 q1,14 1,24"/>
+            <path d="M688,218 q0,14 0,24"/>
+            <path d="M697,216 q-1,14 -1,24"/>
+          </g>
+          <!-- brow · deep-set eyes · snub nose -->
+          <path d="M676,202 q12,-5 24,0" fill="none" stroke="rgba(110,102,86,0.6)" stroke-width="1.3"/>
+          <ellipse cx="681" cy="206" rx="3" ry="2" fill="rgba(70,64,52,0.7)"/>
+          <ellipse cx="695" cy="206" rx="3" ry="2" fill="rgba(70,64,52,0.7)"/>
+          <path d="M688,206 q-3,6 -1,9 q2,2 5,0" fill="none" stroke="rgba(110,102,86,0.6)" stroke-width="1.2"/>
+          <!-- left torch rim light -->
+          <path d="M673,198 Q669,210 673,224" fill="none" stroke="rgba(255,215,150,0.4)" stroke-width="2"/>
+        </g>
+        <g class="lbl scene-labels">
+          <rect class="lbl-bg" x="606" y="376" width="164" height="34" rx="4"/>
+          <text class="lbl-jp" x="688" y="392" text-anchor="middle" font-size="14">Philosophy World</text>
+          <text class="lbl-en" x="688" y="404" text-anchor="middle" font-size="7">philosophy world</text>
+          <rect class="badge-bg live" x="744" y="370" width="36" height="14" rx="6"/>
+          <text class="badge-tx" x="762" y="380" text-anchor="middle" font-size="7">OPEN</text>
+        </g>
+      </a>
+
+      <!-- ══════════════ HOTSPOT: display cases → concept-space index ══════════════ -->
+      <a class="hot live scene-index" xlink:href="/field/" href="/field/" aria-label="concept-space index">
+        <g class="obj">
+          <!-- ═ left display case (near wall) ═ -->
+          <!-- glass top surface -->
+          <polygon points="168,470 452,454 452,470 150,488" fill="url(#glass)"/>
+          <!-- front wood face -->
+          <polygon points="150,488 452,470 452,528 150,548" fill="url(#wood)"/>
+          <!-- left end panel (shows thickness) -->
+          <polygon points="150,488 168,470 168,528 150,548" fill="#2a1809"/>
+          <!-- top edge highlight + base plinth -->
+          <line x1="150" y1="489" x2="452" y2="471" stroke="rgba(220,175,95,0.7)" stroke-width="1.5"/>
+          <polygon points="150,540 452,522 452,528 150,548" fill="rgba(60,34,12,0.9)"/>
+          <!-- recessed front panels -->
+          <line x1="250" y1="482" x2="250" y2="537" stroke="rgba(70,42,16,0.6)" stroke-width="1"/>
+          <line x1="350" y1="476" x2="350" y2="531" stroke="rgba(70,42,16,0.6)" stroke-width="1"/>
+          <!-- feet -->
+          <rect x="152" y="546" width="6" height="11" fill="#241407"/>
+          <rect x="444" y="528" width="6" height="10" fill="#241407"/>
+          <!-- glass reflection streak -->
+          <polygon points="205,481 250,479 315,465 270,467" fill="rgba(225,240,250,0.10)"/>
+          <!-- exhibits under glass -->
+          <rect x="202" y="461" width="9" height="13" fill="rgba(216,186,126,0.9)"/>
+          <ellipse cx="256" cy="468" rx="8" ry="4.5" fill="rgba(202,172,112,0.9)"/>
+          <rect x="306" y="459" width="8" height="14" fill="rgba(226,196,136,0.9)"/>
+          <circle cx="372" cy="466" r="5.5" fill="rgba(208,178,118,0.9)"/>
+
+          <!-- ═ right display case (mirror) ═ -->
+          <polygon points="792,470 508,454 508,470 810,488" fill="url(#glass)"/>
+          <polygon points="810,488 508,470 508,528 810,548" fill="url(#wood)"/>
+          <polygon points="810,488 792,470 792,528 810,548" fill="#2a1809"/>
+          <line x1="810" y1="489" x2="508" y2="471" stroke="rgba(220,175,95,0.7)" stroke-width="1.5"/>
+          <polygon points="810,540 508,522 508,528 810,548" fill="rgba(60,34,12,0.9)"/>
+          <line x1="710" y1="482" x2="710" y2="537" stroke="rgba(70,42,16,0.6)" stroke-width="1"/>
+          <line x1="610" y1="476" x2="610" y2="531" stroke="rgba(70,42,16,0.6)" stroke-width="1"/>
+          <rect x="802" y="546" width="6" height="11" fill="#241407"/>
+          <rect x="510" y="528" width="6" height="10" fill="#241407"/>
+          <polygon points="755,481 710,479 645,465 690,467" fill="rgba(225,240,250,0.10)"/>
+          <rect x="749" y="461" width="9" height="13" fill="rgba(216,186,126,0.9)"/>
+          <ellipse cx="704" cy="468" rx="8" ry="4.5" fill="rgba(202,172,112,0.9)"/>
+          <rect x="646" y="459" width="8" height="14" fill="rgba(226,196,136,0.9)"/>
+          <circle cx="588" cy="466" r="5.5" fill="rgba(208,178,118,0.9)"/>
+        </g>
+        <g class="lbl scene-labels">
+          <rect class="lbl-bg" x="150" y="530" width="176" height="34" rx="4"/>
+          <text class="lbl-jp" x="238" y="546" text-anchor="middle" font-size="14">Semantic-Space Index</text>
+          <text class="lbl-en" x="238" y="558" text-anchor="middle" font-size="7">concept-space index</text>
+        </g>
+      </a>
+
+      <!-- ══════════════ HOTSPOT: lectern + open book → reference ══════════════ -->
+      <a class="hot live scene-ref" xlink:href="/reference/" href="/reference/" aria-label="reference glossary">
+        <g class="obj">
+          <!-- lectern stand -->
+          <polygon points="452,560 508,560 500,600 460,600" fill="#3c230d"/>
+          <rect x="448" y="548" width="64" height="14" fill="url(#wood)"/>
+          <!-- open book, two pages -->
+          <path d="M480,516 C462,510 442,512 428,520 L432,556 C446,548 466,546 480,552 Z"
+                fill="rgba(238,226,196,0.95)" stroke="rgba(150,120,70,0.6)" stroke-width="1"/>
+          <path d="M480,516 C498,510 518,512 532,520 L528,556 C514,548 494,546 480,552 Z"
+                fill="rgba(246,236,208,0.97)" stroke="rgba(150,120,70,0.6)" stroke-width="1"/>
+          <!-- text lines -->
+          <g stroke="rgba(120,95,55,0.55)" stroke-width="1">
+            <line x1="438" y1="524" x2="472" y2="522"/>
+            <line x1="438" y1="530" x2="472" y2="528"/>
+            <line x1="438" y1="536" x2="472" y2="534"/>
+            <line x1="488" y1="522" x2="522" y2="524"/>
+            <line x1="488" y1="528" x2="522" y2="530"/>
+            <line x1="488" y1="534" x2="522" y2="536"/>
+          </g>
+          <!-- reading candle -->
+          <line x1="540" y1="536" x2="540" y2="552" stroke="rgba(180,150,90,0.7)" stroke-width="2"/>
+          <circle cx="540" cy="530" r="3.5" fill="rgba(255,225,140,0.95)" filter="url(#soft)"/>
+        </g>
+        <g class="lbl scene-labels">
+          <rect class="lbl-bg" x="392" y="566" width="176" height="30" rx="4"/>
+          <text class="lbl-jp" x="480" y="581" text-anchor="middle" font-size="14">Reference</text>
+          <text class="lbl-en" x="480" y="591" text-anchor="middle" font-size="7">reference · glossary</text>
+        </g>
+      </a>
+
+    </svg>
+
+    <!-- ── Text legend: mirrors the scene, and is the tap target on phones ── -->
+    <div class="legend">
+        <a class="leg live" href="/field/">
+            <b>Semantic-Space Index</b><span class="en">index</span>
+        </a>
+        <a class="leg live" href="/reference/">
+            <b>Reference</b><span class="en">reference</span>
+        </a>
+        <a class="leg live" href="/worldmap/">
+            <b>World Map Index</b><span class="en">map</span>
+        </a>
+        <a class="leg live" href="/starchart/">
+            <b>Star Chart</b><span class="en">the celestial sphere</span>
+        </a>
+        <a class="leg live" href="/periodic/">
+            <b>Periodic Table</b><span class="en">the elements</span>
+        </a>
+        <a class="leg live" href="/philosophy/">
+            <b>Philosophy World</b><span class="en">philosophy</span>
+        </a>
+        <a class="leg live" href="/curation/">
+            <b>curation gallery</b><span class="en">gallery</span>
+        </a>
+        <a class="leg live" href="/live/">
+            <b>Live Telemetry</b><span class="en">live radar · earth, right now</span>
+        </a>
+        <a class="leg live" href="/oriental/">
+            <b>Oriental Archives</b><span class="en">eastern wisdom</span>
+        </a>
+        <a class="leg live" href="/ancient/">
+            <b>Ancient Civilizations</b><span class="en">the ancient world by region</span>
+        </a>
+    </div>
+
+    <div class="footer-credit">powered by <a href="https://github.com/henrigrohmann/AkashicTree" target="_blank" rel="noopener">AKASHA</a></div>
+
+</div>
+<!-- pulse beacon (F18) — fire-and-forget access analytics; never breaks the page -->
+<script>
+(function () {
+  try {
+    var prev = ''; try { prev = sessionStorage.getItem('pulse_prev') || ''; } catch (e) {}
+    var concept = 'site:archives_hall';
+    var payload = { concept: concept, surface: 'hall', prev: prev,
+                    page_referrer: document.referrer || '' };
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon('/pulse', new Blob([JSON.stringify(payload)],
+                                              { type: 'application/json' }));
+    }
+    try { sessionStorage.setItem('pulse_prev', concept); } catch (e) {}
+  } catch (e) { /* analytics must never break a page */ }
+})();
+</script>
+</body>
+</html>

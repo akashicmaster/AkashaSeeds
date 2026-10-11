@@ -24,7 +24,6 @@ import os, sys, time, tempfile, shutil
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 os.environ["AKASHA_SKIP_AUTOINSTALL"] = "1"
-os.environ["AKASHA_NO_AUTOLEARN"] = "1"
 os.environ["AKASHA_BACKEND"] = "silica"
 os.environ["AKASHA_SILICA_VALUES"] = "disk"          # the environment the bug lives in
 

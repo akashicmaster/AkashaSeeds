@@ -87,9 +87,9 @@ interactive use cases arise in game and multi-participant entertainment contexts
 
 ## 2. Soma — Mech Frame Model
 
-**File:** `lib/akasha/concepts/soma.py`  
+**File:** `app/concepts/soma.py`  
 **Prefix:** `soma`  
-**CLI prefix:** `som.*`
+**CLI prefix:** `soma.*`
 
 ### 2.1 Design Rationale
 
@@ -151,12 +151,12 @@ None. The repair event is recorded automatically in Cortex.
 
 ### 2.4 CLI Shorthand Reference
 
-| CLI | Full method | Key args |
-|-----|-------------|----------|
-| `som.new` | `soma.new` | `name`, `max_capacity?` |
-| `som.equip` | `soma.equip` | `part_id`, `slot`, `cost?` |
-| `som.status` | `soma.status` | — |
-| `som.repair` | `soma.repair` | — |
+| Command | Key args |
+|---------|----------|
+| `soma.new` | `name`, `max_capacity?` |
+| `soma.equip` | `part_id`, `slot`, `cost?` |
+| `soma.status` | — |
+| `soma.repair` | — |
 
 ### 2.5 Slot System
 
@@ -169,23 +169,23 @@ None. The repair event is recorded automatically in Cortex.
 | `booster` | 2 | Propulsion units |
 | `weapon` | 3 | Armaments |
 
-Calling `soma.equip` on a full slot raises a `RuntimeError`. Unequipping a part (`soma.unequip`) to free a slot is planned for Phase 2.
+Calling `soma.equip` on a full slot raises a `RuntimeError`. Unequipping a part (`soma.unequip`) is not implemented in this release.
 
 ### 2.6 Workflow Example
 
 ```
-akasha/user $ som.new name="Unit-01"
+akasha/user $ soma.new name="Unit-01"
 {"status": "constructed", "soma_id": "a1b2...ef01", "name": "Unit-01"}
 
 akasha/user $ w "Positron Rifle"         → part_id = c3d4...ab02
-akasha/user $ som.equip part_id=c3d4...ab02 slot=weapon
+akasha/user $ soma.equip part_id=c3d4...ab02 slot=weapon
 {"status": "equipped", "slot": "weapon"}
 
 akasha/user $ w "AT Field Generator"     → part_id = e5f6...cd03
-akasha/user $ som.equip part_id=e5f6...cd03 slot=core
+akasha/user $ soma.equip part_id=e5f6...cd03 slot=core
 {"status": "equipped", "slot": "core"}
 
-akasha/user $ som.status
+akasha/user $ soma.status
 {
   "soma_id": "a1b2...ef01",
   "name": "Unit-01",
@@ -198,7 +198,7 @@ akasha/user $ som.status
   }
 }
 
-akasha/user $ som.repair
+akasha/user $ soma.repair
 {"status": "repaired", "record_id": "f7a8...de04"}
 ```
 
@@ -206,9 +206,9 @@ akasha/user $ som.repair
 
 ## 3. Engram — Psyche Model
 
-**File:** `lib/akasha/concepts/engram.py`  
+**File:** `app/concepts/engram.py`  
 **Prefix:** `engram`  
-**CLI prefix:** `eng.*`
+**CLI prefix:** `engram.*`
 
 ### 3.1 Design Rationale
 
@@ -280,12 +280,12 @@ EngramRoot  (concept="engram", role="root")
 
 ### 3.4 CLI Shorthand Reference
 
-| CLI | Full method | Key args |
-|-----|-------------|----------|
-| `eng.new` | `engram.new` | `name` |
-| `eng.talk` | `engram.talk` | `text`, `mood?` |
-| `eng.bond` | `engram.bond` | `target_engram_id`, `resonance_boost?` |
-| `eng.metaphor` | `engram.metaphor` | `target_user_context`, `location_id` |
+| Command | Key args |
+|---------|----------|
+| `engram.new` | `name` |
+| `engram.talk` | `text`, `mood?` |
+| `engram.bond` | `target_engram_id`, `resonance_boost?` |
+| `engram.metaphor` | `target_user_context`, `location_id` |
 
 ### 3.5 Bond System
 
@@ -308,7 +308,7 @@ To read the current resonance strength, inspect the latest Bond atom in `set:eng
 
 ```
 # A psyche leaves a cryptic message at a ruin
-eng.metaphor target_user_context="meaning of sync ratio" location_id=<ruins_id>
+engram.metaphor target_user_context="meaning of sync ratio" location_id=<ruins_id>
 {"status": "metaphor_cast", "msg_id": "k1l2...mn09"}
 # → "(A soliloquy hinting at 'meaning of sync ratio', unclear to whom it is addressed)"
 #   stored with view:public scope
@@ -317,24 +317,24 @@ eng.metaphor target_user_context="meaning of sync ratio" location_id=<ruins_id>
 ### 3.7 Workflow Example
 
 ```
-akasha/user $ eng.new name="Pilot-Rei"
+akasha/user $ engram.new name="Pilot-Rei"
 {"status": "created", "engram_id": "b2c3...fg05", "name": "Pilot-Rei"}
 
-akasha/user $ eng.talk text="First sync. I feel nothing." mood="dissociative"
+akasha/user $ engram.talk text="First sync. I feel nothing." mood="dissociative"
 {"status": "recorded", "memory_id": "d4e5...hi06", "mood": "dissociative"}
 
-akasha/user $ eng.new name="Pilot-Asuka"
+akasha/user $ engram.new name="Pilot-Asuka"
 {"engram_id": "f6g7...jk07", ...}
 
 akasha/user $ instance.focus slot=rei   # switch focus back to Rei
 
-akasha/user $ eng.bond target_engram_id=f6g7...jk07 resonance_boost=0.3
+akasha/user $ engram.bond target_engram_id=f6g7...jk07 resonance_boost=0.3
 {"status": "bonded", "bond_id": "h8i9...lm08", "added_weight": 0.3}
 
 akasha/user $ wd.place name="Area-3 Ruins" place_type="ruin" category="battlefield"
 {"place_id": "j0k1...op10", ...}
 
-akasha/user $ eng.metaphor target_user_context="memory of angel contact" location_id=j0k1...op10
+akasha/user $ engram.metaphor target_user_context="memory of angel contact" location_id=j0k1...op10
 {"status": "metaphor_cast", "msg_id": "l2m3...qr11"}
 ```
 
@@ -344,7 +344,7 @@ akasha/user $ eng.metaphor target_user_context="memory of angel contact" locatio
 
 **File:** `lib/akasha/concepts/operator.py`  
 **Prefix:** `operator`  
-**CLI prefix:** `op.*`
+**CLI prefix:** `operator.*`
 
 ### 4.1 Design Rationale
 
@@ -381,9 +381,9 @@ AttackerSomaRoot ──sys:state_change:damaged▶ CombatEvent      (on failure 
 
 ### 4.4 CLI Shorthand Reference
 
-| CLI | Full method | Key args |
-|-----|-------------|----------|
-| `op.clash` | `operator.clash` | `attacker_soma_id`, `defender_id`, `tactics_jcl`, `mode` |
+| Command | Key args |
+|---------|----------|
+| `operator.clash` | `attacker_soma_id`, `defender_id`, `tactics_jcl`, `mode` |
 
 ### 4.5 Clash Modes
 
@@ -401,7 +401,7 @@ Results are persisted as event atoms in both modes (Savepoint principle).
 tactics = {"name": "Positron Strike", "complexity_score": 75}
 
 # Verify in simulation first
-akasha/user $ op.clash attacker_soma_id=<unit01_id> defender_id=<angel_id> \
+akasha/user $ operator.clash attacker_soma_id=<unit01_id> defender_id=<angel_id> \
                        tactics_jcl=tactics mode=simulation
 {
   "tactics_used": "Positron Strike",
@@ -413,7 +413,7 @@ akasha/user $ op.clash attacker_soma_id=<unit01_id> defender_id=<angel_id> \
 }
 
 # Deploy for real
-akasha/user $ op.clash attacker_soma_id=<unit01_id> defender_id=<angel_id> \
+akasha/user $ operator.clash attacker_soma_id=<unit01_id> defender_id=<angel_id> \
                        tactics_jcl=tactics mode=real
 {
   "tactics_used": "Positron Strike",
@@ -428,9 +428,9 @@ akasha/user $ op.clash attacker_soma_id=<unit01_id> defender_id=<angel_id> \
 
 ## 5. Eidolon — Spatial Model
 
-**File:** `lib/akasha/concepts/eidolon.py`  
+**File:** `app/concepts/eidolon.py`  
 **Prefix:** `eidolon`  
-**CLI prefix:** `eid.*`
+**CLI prefix:** `eidolon.*`
 
 ### 5.1 Design Rationale
 
@@ -493,15 +493,15 @@ ActorAtom ──sys:located_in──▶ EidolonRoot  (actor's current location)
 
 ### 5.4 CLI Shorthand Reference
 
-| CLI | Full method | Key args |
-|-----|-------------|----------|
-| `eid.new` | `eidolon.new` | `name`, `location_type` |
-| `eid.open` | `eidolon.open` | `eidolon_id` |
-| `eid.ls` | `eidolon.ls` | — |
-| `eid.link` | `eidolon.link` | `child_location_id` |
-| `eid.move` | `eidolon.move` | `actor_id` |
-| `eid.map` | `eidolon.map` | — |
-| `eid.rm` | `eidolon.rm` | — |
+| Command | Key args |
+|---------|----------|
+| `eidolon.new` | `name`, `location_type` |
+| `eidolon.open` | `eidolon_id` |
+| `eidolon.ls` | — |
+| `eidolon.link` | `child_location_id` |
+| `eidolon.move` | `actor_id` |
+| `eidolon.map` | — |
+| `eidolon.rm` | — |
 
 ### 5.5 Single-Presence Invariant
 
@@ -514,7 +514,7 @@ Before adding the actor to the new location, all existing `sys:located_in` links
 Unit-01 ──sys:located_in──▶ EidolonA
 set:eidolon:{A}:occupants = [Unit-01]
 
-# eid.move actor_id=<unit01_id> called on EidolonB
+# eidolon.move actor_id=<unit01_id> called on EidolonB
 # → removes old link and old set entry
 # → adds new link
 
@@ -527,24 +527,24 @@ set:eidolon:{B}:occupants = [Unit-01]
 
 ```
 # Build the world
-akasha/user $ eid.new name="City-3" location_type="city"
+akasha/user $ eidolon.new name="City-3" location_type="city"
 {"status": "manifested", "concept_id": "a1b2...ef01", "name": "City-3", "location_type": "city"}
 
-akasha/user $ eid.new name="NERV HQ" location_type="facility"
+akasha/user $ eidolon.new name="NERV HQ" location_type="facility"
 {"concept_id": "b2c3...fg02", ...}
 
 # Hierarchy: City-3 contains NERV HQ
-akasha/user $ eid.open eidolon_id=a1b2...ef01
-akasha/user $ eid.link child_location_id=b2c3...fg02
+akasha/user $ eidolon.open eidolon_id=a1b2...ef01
+akasha/user $ eidolon.link child_location_id=b2c3...fg02
 {"status": "linked", "parent": "a1b2...ef01", "child": "b2c3...fg02"}
 
 # Place Unit-01 inside NERV HQ
-akasha/user $ eid.open eidolon_id=b2c3...fg02
-akasha/user $ eid.move actor_id=<unit01_soma_id>
+akasha/user $ eidolon.open eidolon_id=b2c3...fg02
+akasha/user $ eidolon.move actor_id=<unit01_soma_id>
 {"status": "moved", "actor": "...", "destination": "b2c3...fg02"}
 
 # Check topology
-akasha/user $ eid.map
+akasha/user $ eidolon.map
 {
   "name": "NERV HQ",
   "location_type": "facility",
@@ -553,8 +553,8 @@ akasha/user $ eid.map
 }
 
 # Move Unit-01 to City-3 surface — auto-exits NERV HQ
-akasha/user $ eid.open eidolon_id=a1b2...ef01
-akasha/user $ eid.move actor_id=<unit01_soma_id>
+akasha/user $ eidolon.open eidolon_id=a1b2...ef01
+akasha/user $ eidolon.move actor_id=<unit01_soma_id>
 {"status": "moved", "actor": "...", "destination": "a1b2...ef01"}
 # → Unit-01 removed from NERV HQ occupants automatically
 ```
@@ -591,10 +591,10 @@ Even if a frame is destroyed and its Soma removed, the Engram is fully preserved
 soma.rm   # → SomaRoot is soft-deleted (subordinate atoms retained in v1)
 
 # The psyche lives on
-eng.talk text="I lost the frame. But I'm still here." mood="disoriented"
+engram.talk text="I lost the frame. But I'm still here." mood="disoriented"
 
 # Transplant into a new frame
-som.new name="Unit-02-Alpha"
+soma.new name="Unit-02-Alpha"
 instance.unmount slot=unit
 instance.mount model=soma slot=unit id=<new_soma_id>
 
@@ -615,10 +615,10 @@ instance.mount model=engram slot=pilot  name="Pilot-Rei"
 wd.event description="Angel appears in Area 3" intensity=0.9
 
 # Human judgment: record the psychological impact in the Engram
-eng.talk text="It came again." mood="resigned"
+engram.talk text="It came again." mood="resigned"
 
 # Update the frame's state
-som.repair
+soma.repair
 
 # Associate everything with an episode via a collection
 wd.col label="Episode-01"

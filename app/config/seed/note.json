@@ -1,0 +1,18 @@
+{
+  "_": "A first-run SEED RECIPE (group 4, 4.4): how a seed capsule of this doc_type is re-created through the application's own ops. `create` runs once with the seed's metadata; `item` runs once per atom of the capsule's sys:top → sys:next chain. `{…}` fills from the seed metadata (`title`, `project`, …), the item (`text`) or the item's atom_meta (`meta.<key>`); an empty value drops the argument, and `a|b` falls back left to right. The platform's SeedManager names no Concept Model: it reads these recipes and dispatches the ops they name.",
+  "doc_types": [
+    "note"
+  ],
+  "create": {
+    "op": "note.new",
+    "args": {
+      "title": "{title}"
+    }
+  },
+  "item": {
+    "op": "note.add",
+    "args": {
+      "text": "{text}"
+    }
+  }
+}

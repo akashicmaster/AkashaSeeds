@@ -3,137 +3,26 @@
   "packages": [
     {
       "name": "lexicon",
-      "autoload": true
+      "autoload": true,
+      "tier": "A"
     },
     {
-      "name": "base1",
-      "autoload": true
+      "name": "scenario",
+      "autoload": true,
+      "tier": "A",
+      "consumer": "scenario.* (the scenario port)"
     },
     {
-      "name": "base2",
-      "autoload": true
+      "name": "whiteboard",
+      "autoload": true,
+      "tier": "A",
+      "consumer": "whiteboard.* (the whiteboard port)"
     },
     {
-      "name": "base3",
-      "autoload": true
-    },
-    {
-      "name": "vocab",
-      "autoload": false
-    },
-    {
-      "name": "world",
-      "autoload": false
-    },
-    {
-      "name": "tech",
-      "autoload": false
-    },
-    {
-      "name": "domain",
-      "autoload": false
-    },
-    {
-      "name": "archaeology",
-      "autoload": false
-    },
-    {
-      "name": "art",
-      "autoload": false
-    },
-    {
-      "name": "philosophy",
-      "autoload": false
-    },
-    {
-      "name": "biology",
-      "autoload": false
-    },
-    {
-      "name": "film",
-      "autoload": false
-    },
-    {
-      "name": "geology",
-      "autoload": false
-    },
-    {
-      "name": "law",
-      "autoload": false
-    },
-    {
-      "name": "literature",
-      "autoload": false
-    },
-    {
-      "name": "medicine",
-      "autoload": false
-    },
-    {
-      "name": "music",
-      "autoload": false
-    },
-    {
-      "name": "people",
-      "autoload": false
-    },
-    {
-      "name": "resources",
-      "autoload": false
-    },
-    {
-      "name": "space",
-      "autoload": false
-    },
-    {
-      "name": "war",
-      "autoload": false
-    },
-    {
-      "name": "weather",
-      "autoload": false
-    },
-    {
-      "name": "wine",
-      "autoload": false
-    },
-    {
-      "name": "curation",
-      "autoload": true
-    },
-    {
-      "name": "recipe",
-      "autoload": true
-    },
-    {
-      "name": "nutrition",
-      "autoload": false,
-      "tier": "C"
-    },
-    {
-      "name": "drinks_c",
-      "autoload": false,
-      "tier": "C"
-    },
-    {
-      "name": "smallplates_c",
-      "autoload": false,
-      "tier": "C"
-    },
-    {
-      "name": "sweets_bread_c",
-      "autoload": false,
-      "tier": "C"
-    },
-    {
-      "name": "kitchen_index",
-      "autoload": false,
-      "tier": "C"
-    },
-    {
-      "name": "primary_examples",
-      "autoload": false,
-      "tier": "C"
+      "name": "workbench",
+      "autoload": true,
+      "tier": "A",
+      "consumer": "the bench autorun driver (every scheduled workload)"
     }
   ]
 }

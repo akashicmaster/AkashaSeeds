@@ -143,10 +143,10 @@ class TableSink(Sink):
         cols = ",".join(c for c in stream.columns if c)
         if not cols:
             raise ValueError("no columns to import")
-        self.dispatch("table.new",
+        self.dispatch("pipeline.table.create",
                       {"name": self.name, "cols": cols,
                        "description": f"imported via pipeline from {stream.origin or 'source'}"})
-        r = self.dispatch("table.import", {"table": self.name, "csv": stream.csv()}) or {}
+        r = self.dispatch("pipeline.table.import", {"table": self.name, "csv": stream.csv()}) or {}
         res = r.get("result") or r.get("error") or {}
         return {"kind": "table", "table": self.name, "columns": stream.columns,
                 "imported": res.get("imported"), "errors": res.get("errors")}
@@ -157,7 +157,7 @@ class TableSource(Source):
         self.dispatch, self.name = dispatch, name
 
     def read(self) -> Stream:
-        exp = self.dispatch("table.export", {"table": self.name}) or {}
+        exp = self.dispatch("pipeline.table.export", {"table": self.name}) or {}
         r = exp.get("result") or {}
         if "csv" not in r:
             raise ValueError((exp.get("error") or {}).get("message", f"table '{self.name}' not found"))
@@ -326,7 +326,7 @@ class ResponseIngestSink(Sink):
             if not label:
                 continue
             r_atom = self._result(self.dispatch(
-                "survey.res.add", {"respondent_id": label})).get("respondent_atom")
+                "pipeline.survey.respondent", {"respondent_id": label})).get("respondent_atom")
             if not r_atom:
                 errors += 1
                 continue
@@ -336,7 +336,7 @@ class ResponseIngestSink(Sink):
                 if answer is None or str(answer).strip() == "":
                     continue
                 resp_id = self._result(self.dispatch(
-                    "survey.ans",
+                    "pipeline.survey.answer",
                     {"question_id": q_id, "respondent_atom": r_atom, "answer": answer}
                 )).get("response_id")
                 if not resp_id:
@@ -429,7 +429,12 @@ class PresentTableSink(Sink):
 class ScatterSink(Sink):
     """Present rows as 2-D scatter points positioned by the Consciousness substrate. Each row
     must carry a `key`; `coords(key) -> (x, y, label, color)` reads generate_view's cosmos_nd
-    for that atom. Rows without a key or coordinates are skipped."""
+    for that atom. Rows without a key or coordinates are skipped.
+
+    This is the SEMANTIC scatter (positioned by the cosmos_nd meaning vector). Its statistical
+    counterpart — points positioned by raw metadata fields — is `analysis.run plugin=scatter:fx,fy`
+    (concepts/analysis.py), which emits this exact `{kind:"present","format":"scatter"}` primitive
+    tagged `"source":"statistical"`. Same render shape, distinct positioning axis; do not merge."""
     def __init__(self, coords: Callable[[str], Optional[tuple]]):
         self.coords = coords
 
@@ -523,7 +528,7 @@ class CurationPathSource(Source):
         self.dispatch, self.curation_id = dispatch, curation_id
 
     def read(self) -> Stream:
-        r = self.dispatch("curation.narrate", {"curation_id": self.curation_id}) or {}
+        r = self.dispatch("pipeline.curation.narrate", {"curation_id": self.curation_id}) or {}
         res = r.get("result")
         if not res:
             raise ValueError((r.get("error") or {}).get("message", "curation not found"))
@@ -549,17 +554,17 @@ class PresentationSink(Sink):
         if stream.kind != Stream.TABLE:
             raise ValueError("PresentationSink requires a table stream")
         title = self.title or stream.meta.get("title") or "Curation"
-        pr = self.dispatch("pres.new", {"title": title,
+        pr = self.dispatch("pipeline.deck.new", {"title": title,
                                         "thesis": stream.meta.get("thesis", ""),
                                         "grounds": stream.meta.get("grounds", {})}) or {}
         pres_id = (pr.get("result") or {}).get("presentation_id")
         if not pres_id:
             raise ValueError((pr.get("error") or {}).get("message", "pres.new failed"))
-        dr = self.dispatch("pres.deck.add", {"title": title}) or {}
+        dr = self.dispatch("pipeline.deck.add", {"title": title}) or {}
         deck_id = (dr.get("result") or {}).get("deck_id")
         n = 0
         for row in stream.rows:
-            fr = self.dispatch("pres.frame.add", {
+            fr = self.dispatch("pipeline.frame.add", {
                 "deck_id": deck_id,
                 "title": row.get("name") or f"Scene {row.get('order')}",
                 "order": float(row.get("order") or 0),
@@ -598,7 +603,7 @@ class PresentationSceneSource(Source):
     def _card(self, ref_id, headword):
         desc, image, refs, links, href = "", None, [], [], ""
         if ref_id:
-            cr = self.dispatch("thesaurus.concept", {"atom_id": ref_id}) or {}
+            cr = self.dispatch("pipeline.concept.card", {"atom_id": ref_id}) or {}
             cc = cr.get("result")
             if cc:
                 atom = cc.get("atom") or {}
@@ -639,10 +644,10 @@ class PresentationSceneSource(Source):
         return blocks
 
     def read(self) -> Stream:
-        o = self.dispatch("pres.open", {"pres_id": self.pres_id}) or {}
+        o = self.dispatch("pipeline.deck.open", {"pres_id": self.pres_id}) or {}
         if not (o.get("result")):
             raise ValueError((o.get("error") or {}).get("message", "presentation not found"))
-        inv = (self.dispatch("pres.list", {}) or {}).get("result") or {}
+        inv = (self.dispatch("pipeline.deck.list", {}) or {}).get("result") or {}
         frames = sorted(((float((self.get_meta(fk) or {}).get("order", 0) or 0), fk,
                           self.get_meta(fk) or {}) for fk in (inv.get("frames") or [])),
                         key=lambda t: t[0])

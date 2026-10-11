@@ -431,6 +431,13 @@ class ConsciousnessEngine:
     _HUB_SIGNPOST_DISPLAY = 48
     _HUB_SCAN_CAP = 600
 
+    # Cross-language bridge: a foreign proto-word (祖語) links to its English proto-word via this
+    # single relation, and the exploration folds the English proto's neighbourhood + set-bearing
+    # senses into the foreign atom's view — so a non-English atom instantly reuses the English graph's
+    # links and sets. Bridge the proto-words only; traversal reuses everything downstream.
+    _BRIDGE_REL = "lex:bridge"
+    _BRIDGE_TARGET_CAP = 4          # bound the fan-out (a word rarely bridges to >1 English proto)
+
     # Primary fan-out bound. A high-degree HUB — a domain super-concept (`ingredient` with
     # every food `sys:is_a` it, `lexeme` with every proto-word), a role, or any popular node —
     # can have thousands of 1-hop edges. Building a signpost per edge is O(degree) graph reads
@@ -440,6 +447,14 @@ class ConsciousnessEngine:
     # enumerating via `concept.children`. Comfortably above any normal atom's degree, so an
     # ordinary dive is unaffected.
     _MAGNETIC_DISPLAY_CAP = 96
+
+    # F19b — the cross-language bridge fold-in (below) walks each bridge target's English proto AND
+    # every one of its senses, building a signpost per edge. An English mega-proto (many senses ×
+    # many edges) does unbounded work + bloats the payload, wall-clock budget or not. Mirror the
+    # sense-expand bounds: a SCAN cap on edges examined and a DISPLAY bound on signposts appended
+    # (the remainder counted into hub_overflow — explicit overflow, never a silent cut).
+    _BRIDGE_SCAN_CAP = 600
+    _BRIDGE_DISPLAY_CAP = _HUB_SIGNPOST_DISPLAY + _MAGNETIC_DISPLAY_CAP     # 144
 
     def _build_signpost(self, link: Dict[str, Any], focus_key: str,
                         allowed_scopes: List[str], idx: int) -> Optional[Dict[str, Any]]:
@@ -474,26 +489,25 @@ class ConsciousnessEngine:
         if not dst_aliases:
             dst_aliases = self._group_fallback(neighbor_key, "get_aliases_by_key") or []
 
-        dst_content = self.cortex.get_chunk(neighbor_key) or ""
-        if not dst_content and self.nucleus:
-            dst_content = self.nucleus.get_chunk(neighbor_key) or ""
-        if not dst_content:
-            dst_content = self._group_fallback(neighbor_key, "get_chunk") or ""
-
-        # Per-signpost DISPLAY count ("N branches ahead"). This only needs the NUMBER of
-        # outgoing edges, never their contents — so it must NOT fetch them. The old
-        # get_adjacent_links(limit=256, order_by_weight=True) preads every outgoing value of
-        # the neighbour to rank the top-256, then throws all but the count away; across ~700
-        # signposts of a dense-hub dive under the disk-value store that pread storm was the
-        # dominant dive latency (measured ~13s at 120k density). count_adjacent_links reads
-        # keys only (no value pread / a single COUNT(*)), so the cue is effectively free.
-        branch_count = self.cortex.count_adjacent_links(neighbor_key)
-        preview = dst_content[:30].replace('\n', ' ') + "..." if len(dst_content) > 30 else dst_content.replace('\n', ' ')
-
+        # ONE record read per signpost — content + meta together. get_chunk_raw returns both, so
+        # fetching it once (local → nucleus → group) and deriving content from it replaces the
+        # previous SEPARATE get_chunk here AND get_chunk_raw below — i.e. TWO disk preads of the
+        # SAME atom per signpost. Under the disk-value store a dense dive builds hundreds of
+        # signposts, so that redundant second pread DOUBLED the neighbourhood's cold-read cost; with
+        # the F19b dive time-budget, the extra latency truncated the VISIBLE neighbourhood mid-build
+        # (the "dream shows only 2 neighbours cold, but 10 warm" symptom). One read halves it.
         dst_meta_row = self.cortex.core.get_chunk_raw(neighbor_key)
         if not dst_meta_row and self.nucleus:
             dst_meta_row = self.nucleus.get_chunk_raw(neighbor_key)
-        dst_meta = json.loads(dst_meta_row["meta"]) if dst_meta_row and dst_meta_row["meta"] else {}
+        if not dst_meta_row:
+            dst_meta_row = self._group_fallback(neighbor_key, "get_chunk_raw")
+        dst_content = (dst_meta_row.get("content") if dst_meta_row else "") or ""
+        dst_meta = json.loads(dst_meta_row["meta"]) if dst_meta_row and dst_meta_row.get("meta") else {}
+
+        # Per-signpost DISPLAY count ("N branches ahead"). This only needs the NUMBER of outgoing
+        # edges, never their contents — so it reads keys only (count_adjacent_links, no value pread).
+        branch_count = self.cortex.count_adjacent_links(neighbor_key)
+        preview = dst_content[:30].replace('\n', ' ') + "..." if len(dst_content) > 30 else dst_content.replace('\n', ' ')
 
         sp_nd = CosmosMapper.calculate_nd(self.cortex, neighbor_key, dst_content, dst_meta, origin_key=focus_key, depth=1)
 
@@ -519,13 +533,33 @@ class ConsciousnessEngine:
             "_svec": svec,
         }
 
-    def generate_view(self, focus_key: str, allowed_scopes: List[str] = None) -> Dict[str, Any]:
-        """Generates the field of view including N-D vectors and signposts."""
+    def generate_view(self, focus_key: str, allowed_scopes: List[str] = None,
+                      budget_s: float = None) -> Dict[str, Any]:
+        """Generates the field of view including N-D vectors and signposts.
+
+        F19b — a wall-clock DIVE BUDGET bounds the many-small-steps enrichment (mega-hub / mega-set
+        enumeration) so one pathological dive can't tie up a dispatch-pool thread indefinitely.
+        `budget_s` seconds (env AKASHA_DIVE_BUDGET, default 10; 0 disables; callers may override — SSR
+        smaller, batch/JCL 0). The checks run BETWEEN iterations: they bound many-small-steps work,
+        they CANNOT interrupt one blocked C-level call (a single SQLite/Silica read stuck on a lock) —
+        that is F19a's job (the pooled dispatch keeps the loop alive while the one thread blocks). On
+        a trip: stop adding, keep what is built, skip the remaining enrichment phases, never raise."""
         logger.info("[dive] focus=%s phase=start", str(focus_key)[:24])
+        if budget_s is None:
+            budget_s = float(os.environ.get("AKASHA_DIVE_BUDGET", "").strip() or 10.0)
+        _t_start = time.monotonic()
+        deadline = (_t_start + budget_s) if budget_s > 0 else None
+        truncated = {"hit": False, "phase": ""}
+        def _over(phase):
+            if deadline is not None and time.monotonic() > deadline:
+                truncated["hit"] = True
+                truncated["phase"] = truncated["phase"] or phase
+                return True
+            return False
         is_col = self.cortex.core.collection_exists(focus_key)
 
         if is_col:
-            return self.generate_collection_view(focus_key, allowed_scopes)
+            return self.generate_collection_view(focus_key, allowed_scopes, budget_s=budget_s)
 
         # Retrieve chunk respecting security boundaries; fall back to unscoped
         # read when scope check fails but atom exists (e.g. universal atoms
@@ -535,7 +569,12 @@ class ConsciousnessEngine:
         else:
             content = self.cortex.get_chunk(focus_key)
 
-        if not content:
+        # P4/F39 — DEADLINE COVERAGE INSIDE THE RESOLVE LADDER. Each fallback below is a real DB read
+        # (alias resolve, nucleus resolve, then a per-group resolve+read); on a drowning daemon the
+        # whole chain ran 10-21 s before the post-ladder budget check (the `magnetic=0 phase=resolve
+        # elapsed=10.7-21.6 s` production lines). Check the budget BETWEEN steps so an overloaded
+        # daemon stops descending the ladder (progressively slower fallbacks) and sheds work early.
+        if not content and not _over("resolve"):
             resolved = self.cortex.resolve_alias(focus_key)
             if resolved:
                 focus_key = resolved
@@ -544,19 +583,22 @@ class ConsciousnessEngine:
 
         # Last resort: unscoped read (handles universal atoms whose chunk_access
         # row is absent from this cell's local DB)
-        if not content:
+        if not content and not _over("resolve"):
             content = self.cortex.get_chunk(focus_key)
 
         # Nucleus fallback: universal atoms (proto-words, DNA atoms) shared across cells
-        if not content and self.nucleus:
+        if not content and self.nucleus and not _over("resolve"):
             nucleus_key = self.nucleus.resolve_alias(focus_key)
             if nucleus_key:
                 focus_key = nucleus_key
             content = self.nucleus.get_chunk(focus_key)
 
-        # Group space fallback: atoms shared within the user's groups
-        if not content and self.group_engines:
+        # Group space fallback: atoms shared within the user's groups (the most expensive step — it
+        # iterates every group engine, so re-check the budget on each iteration).
+        if not content and self.group_engines and not _over("resolve"):
             for geng in self.group_engines.values():
+                if _over("resolve"):
+                    break
                 gkey = geng.resolve_alias(focus_key)
                 if gkey:
                     focus_key = gkey
@@ -565,8 +607,12 @@ class ConsciousnessEngine:
                     content = c
                     break
 
-
         if not content:
+            # Distinguish "ran out of budget mid-resolve" (a drowning daemon — retriable) from a
+            # genuine miss, so the caller/UI does not read an overload as a permanent 'dissolved'.
+            if truncated["hit"]:
+                return {"error": "Server busy — resolve budget exceeded; retry shortly.",
+                        "truncated": True, "phase": "resolve", "retry": True}
             return {"error": "Focal point dissolved or locked behind scope boundaries."}
 
         # Prefer local aliases; fall back to nucleus/group aliases for remote atoms
@@ -587,34 +633,45 @@ class ConsciousnessEngine:
         focus_nd = CosmosMapper.calculate_nd(self.cortex, focus_key, content, meta, depth=0)
 
         signposts = []
+        magnetic_links: List[Dict[str, Any]] = []
+        signpost_overflow = 0
+        seen_keys = {focus_key}
         # Phase breadcrumbs — each is FLUSHED before the phase runs (logging.FileHandler flushes
         # per emit, so a line survives even a SIGKILL/OOM of this process). The LAST [dive] line in
         # system.log therefore names the phase that died, with the size that drove it. This is the
         # decisive instrument for the "dive of a real mega-hub still OOMs" case.
-        logger.info("[dive] focus=%s phase=magnetic-fetch", focus_key[:24])
-        magnetic_links = self.cortex.get_magnetic_neighborhood(focus_key)
-        logger.info("[dive] focus=%s magnetic=%d phase=signpost-build",
-                    focus_key[:24], len(magnetic_links))
+        # F19b: the resolve/fallback chain above did real DB reads; if already over budget, skip the
+        # enrichment entirely and return a focus-only partial view.
+        if not _over("resolve"):
+            logger.info("[dive] focus=%s phase=magnetic-fetch", focus_key[:24])
+            magnetic_links = self.cortex.get_magnetic_neighborhood(focus_key)
+            logger.info("[dive] focus=%s magnetic=%d phase=signpost-build",
+                        focus_key[:24], len(magnetic_links))
 
-        # Bound the primary fan-out (see _MAGNETIC_DISPLAY_CAP): a mega-hub's thousands of edges
-        # would otherwise each cost a signpost build. Prioritise by edge weight, build up to the
-        # cap, count the rest as overflow. `magnetic_links` stays the full (reordered) list so the
-        # proto-word sense scan below still sees every `specializes` edge.
-        signpost_overflow = 0
-        if len(magnetic_links) > self._MAGNETIC_DISPLAY_CAP:
-            magnetic_links = sorted(magnetic_links,
-                                    key=lambda l: float(l.get("w", 1.0) or 1.0), reverse=True)
-            signpost_overflow = len(magnetic_links) - self._MAGNETIC_DISPLAY_CAP
-            build_links = magnetic_links[:self._MAGNETIC_DISPLAY_CAP]
-        else:
-            build_links = magnetic_links
+            # Bound the primary fan-out (see _MAGNETIC_DISPLAY_CAP): a mega-hub's thousands of edges
+            # would otherwise each cost a signpost build. Prioritise by edge weight, build up to the
+            # cap, count the rest as overflow. `magnetic_links` stays the full (reordered) list so the
+            # proto-word sense scan below still sees every `specializes` edge.
+            if len(magnetic_links) > self._MAGNETIC_DISPLAY_CAP:
+                magnetic_links = sorted(magnetic_links,
+                                        key=lambda l: float(l.get("w", 1.0) or 1.0), reverse=True)
+                signpost_overflow = len(magnetic_links) - self._MAGNETIC_DISPLAY_CAP
+                build_links = magnetic_links[:self._MAGNETIC_DISPLAY_CAP]
+            else:
+                build_links = magnetic_links
 
-        seen_keys = {focus_key}
-        for link in build_links:
-            sp = self._build_signpost(link, focus_key, allowed_scopes, len(signposts))
-            if sp is not None:
-                signposts.append(sp)
-                seen_keys.add(sp["key"])
+            for link in build_links:
+                if _over("signpost-build"):       # F19b: stop adding, keep what is built
+                    break
+                _sp_t0 = time.monotonic()
+                sp = self._build_signpost(link, focus_key, allowed_scopes, len(signposts))
+                _sp_dt = time.monotonic() - _sp_t0
+                if _sp_dt > 1.0:                   # F19b: name the slow edge (the 8/15 hub instrument)
+                    logger.info("[dive] slow signpost focus=%s link=%s rel=%s took=%.1fs",
+                                focus_key[:24], str(link.get("key", ""))[:24], link.get("rel", ""), _sp_dt)
+                if sp is not None:
+                    signposts.append(sp)
+                    seen_keys.add(sp["key"])
 
         # ── Proto-word hub expansion ──────────────────────────────────────────────
         # A bare proto-word (e.g. `apple`) is a lexical disambiguation stub: when
@@ -633,15 +690,16 @@ class ConsciousnessEngine:
         #      any beyond it are reported as an explicit overflow (never a silent cut),
         #      and every sense stays independently navigable so nothing is truly hidden.
         overflow = 0
-        sense_keys = [l["key"] for l in magnetic_links
-                      if l.get("rel") == "specializes" and l.get("direction") == "in"]
+        sense_keys = ([l["key"] for l in magnetic_links
+                       if l.get("rel") == "specializes" and l.get("direction") == "in"]
+                      if not truncated["hit"] else [])       # F19b: skip remaining phases once tripped
         logger.info("[dive] focus=%s senses=%d phase=sense-expand", focus_key[:24], len(sense_keys))
         if sense_keys:
             focus_svec = meta.get("semantic_vector") if isinstance(meta, dict) else None
             candidates: List[Dict[str, Any]] = []
             scanned = 0
             for sk in sense_keys:
-                if scanned >= self._HUB_SCAN_CAP:
+                if scanned >= self._HUB_SCAN_CAP or _over("sense-expand"):
                     break
                 # Fail-closed: only traverse through a sense the caller may read
                 # (its own signpost already passed this check; this guards the
@@ -652,7 +710,7 @@ class ConsciousnessEngine:
                                      sk, ["scope:sys:universal"])):
                     continue
                 for link in self.cortex.get_magnetic_neighborhood(sk):
-                    if scanned >= self._HUB_SCAN_CAP:
+                    if scanned >= self._HUB_SCAN_CAP or _over("sense-expand"):
                         break
                     nk = link["key"]
                     # Skip the scaffolding (sense→hub, hub→sense, sibling senses) and
@@ -699,6 +757,74 @@ class ConsciousnessEngine:
                 c["index"] = len(signposts)
                 signposts.append(c)
 
+        # ── Cross-language bridge fold-in (lex:bridge) ────────────────────────────
+        # If the focus is a foreign proto-word (or a foreign atom whose proto-word bridges),
+        # follow the ONE interlingual bridge to the English proto-word and fold ITS neighbourhood
+        # + set-bearing senses into THIS view — tagged `bridged`. This is what makes a non-English
+        # atom "instantly reuse the English links & sets": bridge the proto-words only, the explorer
+        # reuses everything downstream. Additive (runs after the native expansion; never displaces it).
+        def _readable(k: str) -> bool:
+            if not allowed_scopes:
+                return True
+            if self.cortex.check_access(k, allowed_scopes):
+                return True
+            return bool(self.nucleus and "scope:sys:universal" in allowed_scopes
+                        and self.nucleus.core.check_chunk_access_any(k, ["scope:sys:universal"]))
+
+        # bridge sources: the focus itself, and the proto-word(s) it specializes (so a foreign
+        # CONTENT atom reaches the bridge through its proto, not only a bare proto focus).
+        bridge_targets: List[str] = []
+        _seen_bt = set()
+        if not truncated["hit"]:                      # F19b: skip the bridge fold-in once tripped
+            _sources = [(focus_key, magnetic_links)]
+            for l in magnetic_links:
+                if l.get("rel") == "specializes" and l.get("direction") == "out":
+                    _sources.append((l["key"], None))
+            for src, links in _sources:
+                nbrs = links if links is not None else self.cortex.get_magnetic_neighborhood(src)
+                for l in nbrs:
+                    if l.get("rel") == self._BRIDGE_REL and l["key"] not in _seen_bt and _readable(l["key"]):
+                        _seen_bt.add(l["key"])
+                        bridge_targets.append(l["key"])
+                        if len(bridge_targets) >= self._BRIDGE_TARGET_CAP:
+                            break
+
+        # F19b: bound the fold-in like sense-expand — a SCAN cap on edges walked (an English mega-proto
+        # has many senses × many edges) and a DISPLAY bound on signposts appended (remainder → overflow).
+        _bridge_scanned = 0
+        for bt in bridge_targets:
+            if _bridge_scanned >= self._BRIDGE_SCAN_CAP or _over("bridge"):
+                break
+            bt_alias = next((a for a in (self.cortex.get_aliases_by_key(bt) or []) if ":" not in a),
+                            (self.cortex.get_aliases_by_key(bt) or [bt[:12]])[0])
+            # the English proto's own edges (antonym/associated/emotion hang on the bare proto), plus
+            # its set-bearing senses (word:en:*, ingred:* …) reached via incoming `specializes`.
+            hubs = [bt] + [l["key"] for l in self.cortex.get_magnetic_neighborhood(bt)
+                           if l.get("rel") == "specializes" and l.get("direction") == "in"]
+            for hk in hubs:
+                if _bridge_scanned >= self._BRIDGE_SCAN_CAP or _over("bridge"):
+                    break
+                if not _readable(hk):
+                    continue
+                for link in self.cortex.get_magnetic_neighborhood(hk):
+                    if _bridge_scanned >= self._BRIDGE_SCAN_CAP or _over("bridge"):
+                        break
+                    _bridge_scanned += 1
+                    nk = link["key"]
+                    if nk in seen_keys or link.get("rel") == "specializes" or link.get("rel") == self._BRIDGE_REL:
+                        continue
+                    if len(signposts) >= self._BRIDGE_DISPLAY_CAP:   # display bound → explicit overflow
+                        overflow += 1
+                        continue
+                    sp = self._build_signpost(link, focus_key, allowed_scopes, len(signposts))
+                    if sp is None:
+                        continue
+                    sp["bridged"] = True
+                    sp["via"] = bt_alias          # provenance: which English proto carried the edge
+                    sp["index"] = len(signposts)
+                    seen_keys.add(nk)
+                    signposts.append(sp)
+
         # Strip internal ranking hints from the public payload.
         for sp in signposts:
             sp.pop("_affect", None)
@@ -735,8 +861,8 @@ class ConsciousnessEngine:
         resonance: List[Dict[str, Any]] = []
         seen_2hop = signpost_keys | {focus_key}
 
-        for sp in signposts[:10]:
-            if len(resonance) >= 15:
+        for sp in ((signposts[:10]) if not truncated["hit"] else []):   # F19b: skip once tripped
+            if len(resonance) >= 15 or _over("resonance"):
                 break
             sp_key   = sp["key"]
             sp_alias = sp.get("alias") or sp_key[:12]
@@ -745,6 +871,8 @@ class ConsciousnessEngine:
             # signpost would OOM here. Fetch the top-15 by weight directly.
             for hop_key, _hop_rel in self.cortex.get_adjacent_links(sp_key, limit=15,
                                                                     order_by_weight=True):
+                if _over("resonance"):
+                    break
                 if hop_key in seen_2hop:
                     continue
                 seen_2hop.add(hop_key)
@@ -769,7 +897,13 @@ class ConsciousnessEngine:
 
         logger.info("[dive] focus=%s signposts=%d resonance=%d phase=done",
                     focus_key[:24], len(signposts), len(resonance))
-        return {
+        # F19b — exactly ONE WARNING per tripped dive (the operator's hub-atom watch list), guarded
+        # here at return time (not per checkpoint).
+        if truncated["hit"]:
+            logger.warning("[dive] budget exceeded focus=%s magnetic=%d phase=%s elapsed=%.1fs budget=%ss",
+                           str(focus_key)[:24], len(magnetic_links), truncated["phase"],
+                           time.monotonic() - _t_start, budget_s)
+        out = {
             "type": "atom",
             "focus": {
                 "key": focus_key,
@@ -788,15 +922,32 @@ class ConsciousnessEngine:
             # reachable by diving it directly or via `concept.children`.
             "hub_overflow": overflow + signpost_overflow,
         }
+        if truncated["hit"]:                 # partial view: same shape + three extra fields
+            out["truncated"] = True
+            out["truncated_phase"] = truncated["phase"]
+            out["budget_s"] = budget_s
+        return out
 
-    def generate_collection_view(self, name: str, allowed_scopes: List[str] = None) -> Dict[str, Any]:
-        """Generates a macro view for a specific Collection (Set)."""
+    def generate_collection_view(self, name: str, allowed_scopes: List[str] = None,
+                                 budget_s: float = None) -> Dict[str, Any]:
+        """Generates a macro view for a specific Collection (Set). F19b: the member loop runs
+        calculate_nd on EVERY member, uncapped — a mega-set (a `:all` set) is a budget case of its
+        own, so it is bounded by the same wall-clock dive budget (env AKASHA_DIVE_BUDGET, 0 disables)."""
         members = self.cortex.list_set(name, allowed_scopes)
         signposts = []
+
+        if budget_s is None:
+            budget_s = float(os.environ.get("AKASHA_DIVE_BUDGET", "").strip() or 10.0)
+        _t_start = time.monotonic()
+        deadline = (_t_start + budget_s) if budget_s > 0 else None
+        _truncated = False
 
         focus_nd = [0.0, 0.0, 0.0, 0.0, -1, "#FFFFFF"]
 
         for idx, m in enumerate(members):
+            if deadline is not None and time.monotonic() > deadline:   # F19b: keep what is built
+                _truncated = True
+                break
             k, c = m["key"], m["content"] or ""
             preview = c[:40].replace('\n', ' ') + "..." if len(c) > 40 else c.replace('\n', ' ')
             als = self.cortex.get_aliases_by_key(k)
@@ -833,7 +984,11 @@ class ConsciousnessEngine:
             }
             break
 
-        return {
+        if _truncated:
+            logger.warning("[dive] budget exceeded focus=%s magnetic=%d phase=%s elapsed=%.1fs budget=%ss",
+                           str(name)[:24], len(members), "collection-members",
+                           time.monotonic() - _t_start, budget_s)
+        out = {
             "type": "collection",
             "focus": {
                 "key":     name,
@@ -845,6 +1000,11 @@ class ConsciousnessEngine:
             "signposts": signposts,
             "concept":   concept_info,
         }
+        if _truncated:                       # partial view: same shape + three extra fields
+            out["truncated"] = True
+            out["truncated_phase"] = "collection-members"
+            out["budget_s"] = budget_s
+        return out
 
     def zoom_out(self, focus_key: str, allowed_scopes: List[str] = None) -> Dict[str, Any]:
         """Generates the macro environment data, respecting security boundaries."""

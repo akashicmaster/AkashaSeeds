@@ -222,6 +222,6 @@ lens.flatten into=myth_snapshot
 - Applying to existing Atoms, cast routes → Quick Reference §Concept Model Casting
 - `table.view` → tabular display of table-type data
 - `lens.*` → Quick Reference §Lens
-- `TextViewConcept` → `lib/akasha/concepts/textview.py`
-- `QuadrantConcept` → `lib/akasha/concepts/quadrant.py`
+- `TextViewConcept` → `app/concepts/textview.py`
+- `QuadrantConcept` → `app/concepts/quadrant.py`
 - Scatter plot renderer → `api/shell/renderer.py` `_render_tv_scatter()`

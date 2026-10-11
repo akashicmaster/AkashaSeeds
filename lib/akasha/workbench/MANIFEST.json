@@ -1,0 +1,296 @@
+{
+  "package": "workbench",
+  "version": 1,
+  "depends_on": [
+    "concepts",
+    "source",
+    "ontology"
+  ],
+  "ops": {
+    "x.key": {
+      "fn": "lib.akasha.workbench.x_broadcast:handle_x_key",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "x.key": {
+          "args": [
+            "action",
+            "consumer_key",
+            "consumer_secret",
+            "access_token",
+            "access_secret"
+          ],
+          "desc": "Store the four X/Twitter OAuth 1.0a creds once on this host (no export): x.key set <consumer_key> <consumer_secret> <access_token> <access_secret> | ls | rm  (librarian/admin; chmod-0600 file, never in repo/seed)"
+        }
+      }
+    },
+    "llm.key": {
+      "fn": "lib.akasha.workbench.llm:handle_llm_key",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "llm.key": {
+          "args": [
+            "action",
+            "provider",
+            "key",
+            "base"
+          ],
+          "desc": "Store an LLM API key once on this host (no export): llm.key set <provider> <key> [base=<url>] | ls | rm <provider>  (librarian/admin; chmod-0600 file, never in repo/seed)"
+        }
+      }
+    },
+    "llm.diag": {
+      "fn": "lib.akasha.workbench.llm:handle_llm_diag",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "llm.diag": {
+          "args": [
+            "provider",
+            "model"
+          ],
+          "desc": "Ask the model provider why it is refusing, now: one minimal call, reporting status, the provider's own message and its rate-limit headers (bypasses the back-off, not the budget; the key is never shown). llm.diag [provider=mistral] [model=]  (librarian/admin)"
+        }
+      }
+    },
+    "llm.budget": {
+      "fn": "lib.akasha.workbench.llm:handle_llm_budget",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "llm.budget": {
+          "args": [
+            "action",
+            "provider",
+            "calls",
+            "tokens_day",
+            "tokens_month",
+            "force"
+          ],
+          "desc": "Read or set the self-imposed LLM spending ceiling (on a paid tier this is the money knob): llm.budget | llm.budget set <provider> [calls=N] [tokens_day=N] [tokens_month=N]. Applied live, persisted host-side, never in the repo or a seed  (librarian/admin)"
+        }
+      }
+    },
+    "job.submit": {
+      "fn": "lib.akasha.workbench.admission:handle_job_submit",
+      "stage": "pre",
+      "access": "run",
+      "cli": {
+        "job.submit": {
+          "args": [
+            "steps",
+            "label",
+            "fail_fast"
+          ],
+          "desc": "Submit a JCL job (admin/librarian only); steps= JSON array of {method, params}"
+        }
+      }
+    },
+    "job.ls": {
+      "fn": "lib.akasha.workbench.admission:handle_job_ls",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "job.ls": {
+          "args": [
+            "owner"
+          ],
+          "desc": "List background JCL jobs (owner filter for admins)"
+        }
+      }
+    },
+    "job.stat": {
+      "fn": "lib.akasha.workbench.admission:handle_job_stat",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "job.stat": {
+          "args": [
+            "job_id"
+          ],
+          "desc": "Show status of a specific JCL job"
+        }
+      }
+    },
+    "job.cancel": {
+      "fn": "lib.akasha.workbench.admission:handle_job_cancel",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "job.cancel": {
+          "args": [
+            "job_id"
+          ],
+          "desc": "Cancel a pending JCL job (admin/librarian only)"
+        }
+      }
+    },
+    "workflow.def": {
+      "fn": "lib.akasha.workbench.admission:handle_workflow_def",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "workflow.def": {
+          "args": [
+            "name",
+            "script",
+            "description"
+          ],
+          "desc": "Save (or overwrite) a CSL script as a named workflow: workflow.def name= script="
+        }
+      }
+    },
+    "workflow.run": {
+      "fn": "lib.akasha.workbench.admission:handle_workflow_run",
+      "stage": "pre",
+      "access": "run",
+      "cli": {
+        "workflow.run": {
+          "args": [
+            "name"
+          ],
+          "desc": "Run a saved workflow as one background job (librarian/admin)"
+        }
+      }
+    },
+    "workflow.ls": {
+      "fn": "lib.akasha.workbench.admission:handle_workflow_ls",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "workflow.ls": {
+          "args": [],
+          "desc": "List saved workflows"
+        }
+      }
+    },
+    "workflow.get": {
+      "fn": "lib.akasha.workbench.admission:handle_workflow_get",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "workflow.get": {
+          "args": [
+            "name"
+          ],
+          "desc": "Show a saved workflow's script"
+        }
+      }
+    },
+    "workflow.rm": {
+      "fn": "lib.akasha.workbench.admission:handle_workflow_rm",
+      "stage": "pre",
+      "access": "record",
+      "cli": {
+        "workflow.rm": {
+          "args": [
+            "name"
+          ],
+          "desc": "Remove a workflow from the saved index"
+        }
+      }
+    },
+    "workload.status": {
+      "fn": "lib.akasha.workbench.wl_state:handle_status",
+      "stage": "pre",
+      "access": "read",
+      "cli": {
+        "workload.status": {
+          "args": [
+            "key"
+          ],
+          "desc": "What the platform recorded and what the gate answers for one workload: last run {ok, job_ok, reason, effect_count, spent, by, job_id}, gate.run, next_at, spent_today. workload.status key=<bench>/<slug>  (e.g. key=studio_ai/news_show). A read: the one that says why a programme is not running"
+        }
+      }
+    }
+  },
+  "schedules": {
+    "workload_stores": {
+      "fn": "lib.akasha.workbench.workload_provision:install_workload_stores",
+      "phase": "writer",
+      "order": 40,
+      "when": "every_boot"
+    },
+    "mirror_gc": {
+      "fn": "lib.akasha.workbench.wl_state:schedule_mirror_gc",
+      "phase": "writer",
+      "order": 50,
+      "when": "every_boot"
+    },
+    "bench_autorun": {
+      "fn": "lib.akasha.workbench.autorun:schedule_bench_autorun",
+      "phase": "writer",
+      "order": 120,
+      "when": "every_boot"
+    },
+    "workload_provision": {
+      "fn": "lib.akasha.workbench.provision:schedule_workload_provision",
+      "phase": "writer",
+      "order": 115,
+      "when": "every_boot",
+      "after": "ontology.loaded"
+    },
+    "run_facts_reconcile": {
+      "fn": "lib.akasha.workbench.provision:reconcile_run_facts",
+      "phase": "writer",
+      "order": 8,
+      "when": "every_boot"
+    }
+  },
+  "thread_units": [],
+  "provision": {},
+  "hydrate": {
+    "leaderboard": "lib.akasha.workbench.autorun:leaderboard_hydrate_all",
+    "cronon": null,
+    "research_layer": null
+  },
+  "declarations": [
+    "config/workbench/workloads/*.json",
+    "config/workbench/workloads/*.ak",
+    "config/workbench/*/templates/*.ak",
+    "config/workbench/*/sweeps/*.json",
+    "config/workbench/*/*.ak"
+  ],
+  "code_paths": [
+    "lib/akasha/workbench/",
+    "config/workbench/",
+    "config/profiles/"
+  ],
+  "data_paths": [],
+  "evals": [
+    "test/workbench_*_eval.py",
+    "test/station_*_eval.py",
+    "test/sweep_*_eval.py",
+    "test/bench_*_eval.py",
+    "test/llm_*_eval.py",
+    "test/x_broadcast_eval.py",
+    "test/workload_profile_eval.py"
+  ],
+  "_comment": "workbench — the driver: workloads, schedules, provisioning (the one admin authority), admission, states, the LLM gate, the channel client. May import concepts / source / ontology.",
+  "hooks": {
+    "workload.for_society": "lib.akasha.workbench.workload:for_society",
+    "workload.by_key": "lib.akasha.workbench.workload:by_key",
+    "workload_appetite": "lib.akasha.workbench.workload:workload_appetite",
+    "llm_health_segment": "lib.akasha.workbench.llm_pool:health_segment",
+    "llm_over_allotment": "lib.akasha.workbench.llm_pool:over_allotment",
+    "llm_begin_run": "lib.akasha.workbench.llm_pool:begin_run",
+    "llm_end_run": "lib.akasha.workbench.llm_pool:end_run",
+    "llm_settle": "lib.akasha.workbench.llm_pool:settle",
+    "llm_program_spent": "lib.akasha.workbench.llm_pool:program_spent",
+    "llm_generate": "lib.akasha.workbench.llm_provider:generate",
+    "llm_default_model": "lib.akasha.workbench.llm_provider:default_model",
+    "llm_quota": "lib.akasha.workbench.llm_provider:quota",
+    "llm_backoff_seconds": "lib.akasha.workbench.llm_provider:backoff_seconds",
+    "workload_health_segment": "lib.akasha.workbench.wl_state:health_segment",
+    "channel.x.post_thread": "lib.akasha.workbench.x_broadcast:post_thread_hook",
+    "llm_active_provider": "lib.akasha.workbench.llm_provider:active",
+    "source_ready_changed": "lib.akasha.workbench.provision:source_ready_changed",
+    "llm_state_headroom": "lib.akasha.workbench.admission:state_headroom"
+  },
+  "owner": "platform",
+  "effectful_families": [
+    "x_broadcast"
+  ],
+  "_effectful_families": "Capability families this package's ops take OUT of the cell (group 4): `x_broadcast:post` is the X channel client, which is this package's. `cap.ls` reads it; the platform no longer lists a family in code."
+}

@@ -31,7 +31,12 @@ logger = logging.getLogger("Harmonia.PulseRecorder")
 _SYSTEM_IDENTITY = "system.librarian"   # holds WRITE; internal-only, never a network login
 _TRUST_INTERNAL  = "internal"
 _BUFFER_MAX      = 4096                  # bounded — oldest pending events drop under overload
-_DRAIN_IDLE_S    = 2.0                   # coalesce window: how long the drainer waits when idle
+_DRAIN_IDLE_S    = 30.0                  # F47-1.4 — idle re-check cadence. New events wake the drainer
+                                         # IMMEDIATELY via _wake.set(), so this timeout only paces the
+                                         # coarse hourly-flush / daily-compact predicate checks. It was
+                                         # 2 s (a wakeup every 2 s forever, each a GIL slice that widens
+                                         # a concurrent render); 30 s cuts idle wakeups 15× with no effect
+                                         # on drain latency or maintenance granularity (hour/day).
 
 
 def _classify_ua(ua: str) -> str:
@@ -79,7 +84,23 @@ class PulseRecorder:
         self._recorded = 0
         self._rejected = 0                  # emits the kernel REJECTED (never silent again — F16)
         self._last_reject: Optional[str] = None
-        self._compact_day = self._today()   # compaction runs once when the UTC day rolls over
+        # C4/F44 — bots NEVER write a raw per-hit atom (that is the per-request permanent-RAM exhaust
+        # that OOMs the writer under a crawl storm). Their hits accumulate in an in-memory per-day
+        # aggregate (concept × surface × ref → count) flushed hourly as ONE summary write; only HUMANS
+        # write raw per-hit atoms. Bounded: a flush is forced if the key count crosses the cap.
+        self._bot_agg = {}                  # (day, concept, surface, ref) -> count
+        self._bot_hits = 0
+        self._bot_hour = self._hour()
+        self._bot_summaries = 0
+        self._BOT_AGG_MAX = 50000
+        # C1/F44 — init to YESTERDAY, not today: the recorder lives in the web-portal process, which
+        # respawns every deploy (and, lately, every ~15 min), so a portal born mid-day that inits
+        # _compact_day=today never sees a rollover and never compacts (same bug class as F26's
+        # never-called checkpoint). Seeding yesterday makes a freshly-started portal run one
+        # (idempotent — already-summarised days are skipped) compaction pass. The AUTHORITATIVE
+        # nightly compaction now runs writer-side (kernel _schedule_pulse_compact), boot-if-behind;
+        # this portal trigger is the belt-and-suspenders.
+        self._compact_day = self._yesterday()
 
     # ── configuration ─────────────────────────────────────────────────────────
     def configure(self, dispatch: Callable[[dict, str], dict]) -> None:
@@ -125,6 +146,14 @@ class PulseRecorder:
     def _today() -> str:
         return time.strftime("%Y-%m-%d", time.gmtime())
 
+    @staticmethod
+    def _yesterday() -> str:
+        return time.strftime("%Y-%m-%d", time.gmtime(time.time() - 86400))
+
+    @staticmethod
+    def _hour() -> str:
+        return time.strftime("%Y-%m-%dT%H", time.gmtime())
+
     def _visit(self, ip: str, ua: str) -> str:
         today = self._today()
         if today != self._salt_day:
@@ -145,7 +174,35 @@ class PulseRecorder:
                         break
                     ev = self._buf.popleft()
                 self._record(ev)
+            self._maybe_flush_bots()
             self._maybe_compact()
+
+    def _maybe_flush_bots(self) -> None:
+        """Flush the bot aggregate when the UTC hour rolls over (bounded: ≤24 summary writes/day)."""
+        h = self._hour()
+        if h != self._bot_hour and self._bot_agg:
+            self._flush_bots()
+        self._bot_hour = h
+
+    def _flush_bots(self) -> None:
+        """Write the accumulated bot hits as ONE bulk summary emit and clear the aggregate — so a
+        crawl storm costs a handful of atoms per day, not one per hit. Never blocks; volatile."""
+        if not self._bot_agg or self._dispatch is None:
+            return
+        rows = [{"day": d, "concept": c, "surface": s, "ref": r, "count": n}
+                for (d, c, s, r), n in self._bot_agg.items()]
+        self._bot_agg = {}
+        params = {"client_id": _SYSTEM_IDENTITY, "records": rows}
+        payload = {"jsonrpc": "2.0", "method": "pulse.emit_bulk", "id": "pulse-bulk", "params": params}
+        self._sign_internal(payload, "pulse.emit_bulk", params)
+        try:
+            resp = self._dispatch(payload, _TRUST_INTERNAL)
+            if isinstance(resp, dict) and resp.get("error"):
+                self._note_reject(resp["error"])
+            else:
+                self._bot_summaries += 1
+        except Exception as exc:
+            self._note_reject({"message": str(exc)})
 
     def _maybe_compact(self) -> None:
         """Nightly roll-up: when the UTC day rolls over, compact day-old raw events into per-day
@@ -192,6 +249,16 @@ class PulseRecorder:
                            self._rejected, self._last_reject)
 
     def _record(self, ev: dict) -> None:
+        # C4 — a BOT hit never becomes a raw atom: fold it into the in-memory per-day aggregate. Only
+        # humans fall through to a raw per-hit emit below.
+        if ev.get("ua") == "bot":
+            day = self._today()
+            key = (day, ev["concept"], ev["surface"], ev["ref"])
+            self._bot_agg[key] = self._bot_agg.get(key, 0) + 1
+            self._bot_hits += 1
+            if len(self._bot_agg) >= self._BOT_AGG_MAX:
+                self._flush_bots()
+            return
         params = {
             "client_id": _SYSTEM_IDENTITY,
             "concept": ev["concept"], "surface": ev["surface"], "ref": ev["ref"],
@@ -209,9 +276,13 @@ class PulseRecorder:
             self._note_reject({"message": str(exc)})
 
     def stats(self) -> dict:
+        # C3 — recorded (raw human emits), rejected (kernel refused — never silent, F16), dropped
+        # (buffer overflow), plus the C4 bot path: bot hits folded + hourly summaries flushed.
         return {"recorded": self._recorded, "dropped": self._dropped,
                 "rejected": self._rejected, "last_reject": self._last_reject,
-                "buffered": len(self._buf), "configured": self.configured}
+                "buffered": len(self._buf), "configured": self.configured,
+                "bot_hits": self._bot_hits, "bot_summaries": self._bot_summaries,
+                "bot_pending": len(self._bot_agg)}
 
 
 # Process-wide singleton.

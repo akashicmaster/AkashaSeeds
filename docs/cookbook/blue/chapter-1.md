@@ -54,7 +54,7 @@ Every concept model is a Python class that extends `BaseConcept`.
 ### BaseConcept
 
 ```python
-from lib.akasha.concepts.base import BaseConcept
+from lib.akasha.api.concepts import BaseConcept
 ```
 
 `BaseConcept.__init__` receives a `session` object and wires up two key attributes:
@@ -125,7 +125,7 @@ When an `op_*` method wants the CLI to render structured output, it returns
 a dict produced by one of the `TextViewConcept` factory methods.
 
 ```python
-from lib.akasha.concepts.textview import TextViewConcept
+from app.concepts.textview import TextViewConcept
 ```
 
 There are three you will use most often:
@@ -195,7 +195,7 @@ with the named set, so you can limit results to, say, `set:fruits:mediterranean`
 
 ### The complete class
 
-Save this file as `lib/akasha/concepts/rating.py`.
+Save this file as `app/concepts/rating.py` — in the application's tree, never in the platform's `lib/`.
 No other file needs to be edited — auto-discovery registers it on the next startup.
 
 ```python
@@ -211,8 +211,8 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
-from lib.akasha.concepts.base import BaseConcept
-from lib.akasha.concepts.textview import TextViewConcept
+from lib.akasha.api.concepts import BaseConcept
+from app.concepts.textview import TextViewConcept
 
 logger = logging.getLogger("Harmonia.Rating")
 
@@ -399,10 +399,10 @@ class RatingConcept(BaseConcept):
 Place the file at:
 
 ```
-lib/akasha/concepts/rating.py
+app/concepts/rating.py
 ```
 
-The concept registry scans every `.py` file in that directory at startup.
+The concept registry scans every `.py` file in the application's `app/concepts/` at startup.
 Any class that defines both `CONCEPT_PREFIX` and `CONCEPT_METHODS` is registered
 automatically. There is no central registry file to edit.
 
@@ -599,7 +599,7 @@ the appropriate layout. You never set `_view` yourself.
 Import it at the top of your concept model file:
 
 ```python
-from lib.akasha.concepts.textview import TextViewConcept
+from app.concepts.textview import TextViewConcept
 ```
 
 ### Table view — `TextViewConcept.table`
@@ -686,7 +686,7 @@ return TextViewConcept.keyval(
 ### The direct edit approach
 
 If you want to add `rec.rank` and you have write access to the codebase,
-open `lib/akasha/concepts/rec.py` and:
+open `app/concepts/rec.py` and:
 
 1. Add a `"rank"` entry to `CONCEPT_METHODS`.
 2. Add an `op_rank` method to the class.
@@ -768,16 +768,16 @@ Ranked by sweetness  ·  set:fruits:mediterranean
 
 When you want to add a command to a model without modifying its source file —
 for instance, when working in a fork or adding project-specific extensions —
-drop a new file into `lib/akasha/concepts/` with a subclass that declares
+drop a new file into `app/concepts/` with a subclass that declares
 **only the new commands** in its own `CONCEPT_METHODS`.
 The registry will register those commands alongside the parent class's commands
 because both share the same `CONCEPT_PREFIX`.
 
 ```python
-# lib/akasha/concepts/rec_rank.py
+# app/concepts/rec_rank.py
 
-from lib.akasha.concepts.rec import RecConcept
-from lib.akasha.concepts.textview import TextViewConcept
+from app.concepts.rec import RecConcept
+from app.concepts.textview import TextViewConcept
 
 
 class RecRankExtension(RecConcept):
@@ -835,8 +835,8 @@ The new command appears in `help` output as soon as the server restarts.
 
 **Specification references:**
 - `lib/akasha/concepts/base.py` — `BaseConcept`, staging, span annotations
-- `lib/akasha/concepts/textview.py` — all `TextViewConcept` factory methods and signatures
+- `app/concepts/textview.py` — all `TextViewConcept` factory methods and signatures
 - `lib/akasha/concepts/registry.py` — `ConceptRegistry.discover` and `ConceptRegistry.dispatch`
-- `lib/akasha/concepts/rec.py` — production example: schema-free record model
+- `app/concepts/rec.py` — production example: schema-free record model
 - `lib/akasha/composite.py` — `AkashaEngine` cortex methods in full detail
 - `docs/for-llm/` — LLM-oriented reference for concept model construction

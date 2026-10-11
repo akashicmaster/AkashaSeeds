@@ -34,7 +34,6 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
 sys.path.insert(0, ROOT)
 os.environ["AKASHA_SKIP_AUTOINSTALL"] = "1"
-os.environ["AKASHA_NO_AUTOLEARN"] = "1"
 
 _results = []
 
@@ -226,6 +225,58 @@ def c4_recipe_env():
            f"in_allow_list={in_allow} spec_valid={bool(spec)} argv_env_kept={kept}")
 
 
+def c17_writer_env_scrub():
+    """F60 §1 (A13(b)) — _writer_env() must DROP every portal-role key (so a writer spawned from the
+    portal is never serve-only) and re-apply deployment.env, without mutating os.environ."""
+    import akasha
+    saved = {k: os.environ.get(k) for k in akasha._PORTAL_ROLE_ENV_KEYS + ("AKASHA_KEEP_C17",)}
+    try:
+        for k in akasha._PORTAL_ROLE_ENV_KEYS:
+            os.environ[k] = "1"
+        os.environ["AKASHA_KEEP_C17"] = "yes"
+        env = akasha._writer_env(akasha._root)
+        dropped = all(k not in env for k in akasha._PORTAL_ROLE_ENV_KEYS)
+        kept = env.get("AKASHA_KEEP_C17") == "yes"                 # unrelated key survives
+        untouched = os.environ.get("AKASHA_SERVE_ONLY") == "1"     # os.environ not mutated
+        record("C17 writer-env scrub", dropped and kept and untouched,
+               f"dropped={dropped} kept_unrelated={kept} os.environ_untouched={untouched}")
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
+def c18_daemon_serve_only_clear():
+    """F60 §1.2 (A13(b)) — a --daemon boot with AKASHA_SERVE_ONLY set logs the ERROR and clears the
+    var; a non-daemon boot leaves it alone."""
+    import akasha
+
+    class _Cap:
+        def __init__(self): self.errs = []
+        def error(self, *a): self.errs.append(a[0] if a else "")
+
+    _saved = os.environ.get("AKASHA_SERVE_ONLY")
+    try:
+        os.environ["AKASHA_SERVE_ONLY"] = "1"
+        cap = _Cap()
+        cleared = akasha._scrub_daemon_serve_only(True, cap)
+        gone = "AKASHA_SERVE_ONLY" not in os.environ
+        logged = any("never" in str(m) and "serve-only" in str(m) for m in cap.errs)
+        # a non-daemon boot must NOT clear it
+        os.environ["AKASHA_SERVE_ONLY"] = "1"
+        not_cleared = (akasha._scrub_daemon_serve_only(False, cap) is False
+                       and os.environ.get("AKASHA_SERVE_ONLY") == "1")
+        record("C18 --daemon clears leaked SERVE_ONLY", cleared and gone and logged and not_cleared,
+               f"cleared={cleared} gone={gone} logged={logged} nondaemon_left={not_cleared}")
+    finally:
+        if _saved is None:
+            os.environ.pop("AKASHA_SERVE_ONLY", None)
+        else:
+            os.environ["AKASHA_SERVE_ONLY"] = _saved
+
+
 def c5_no_self_kill():
     """B2 — _stop_recorded_portal must skip its OWN pid (the watchdog's revive path passes
     web-portal.pid, which names the watchdog itself → signalling it is self-suicide)."""
@@ -398,12 +449,19 @@ def c11_readiness_gate(base):
     within boot_grace_s) even though its probe fails; once it signals readiness OR the grace
     expires, the normal probe/debounce resumes. Uses a live child pid + a non-respawnable spec so
     the assertion never triggers a real stop/respawn."""
-    import subprocess
+    import subprocess, signal
     from lib.harmonia import supervisor as sv
     os.makedirs(sv.run_dir(base), exist_ok=True)
-    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"],
+    # A SIGSTOP'd child is alive but DETERMINISTICALLY NOT ADVANCING (F29-R3.4) — so the busy-gate
+    # never interferes with the readiness/debounce assertions below (before the gate was bounded, a
+    # child's Python startup CPU made it look 'advancing' and the debounce never incremented → C11
+    # red). A separate CPU-busy child exercises the bounded busy-gate.
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"],
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    busy = subprocess.Popen([sys.executable, "-c", "x=0\nwhile True:\n x+=1"],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
+        time.sleep(0.3); os.kill(child.pid, signal.SIGSTOP)   # freeze → not advancing
         sup = sv.Supervisor(base)
         H = {"kind": "http", "target": "http://127.0.0.1:59999/api/rpc",
              "method": "sys.ping", "timeout": 1.0}                    # always fails (dead port)
@@ -424,14 +482,32 @@ def c11_readiness_gate(base):
         sv.mark_unit_ready(base, "svc:web-portal")
         sup.maintain()
         ready_probed = sup._health_fails.get("svc:web-portal", 0) >= 1
-        ok = booting_skipped and expired_probed and ready_probed
-        record("C11 F9 readiness", ok,
+        # (d) BOUNDED busy-gate (F29-R3): a CPU-advancing but probe-failing unit is DEFERRED (no
+        # debounce) — but only up to _BUSY_DEFER_MAX; past the bound the debounce path resumes.
+        sup._health_fails.clear(); sup._busy_defers.clear()
+        u = sv.read_unit(base, "svc:web-portal")
+        u["pid"] = busy.pid; u["started_at"] = time.time() - 10000
+        sv.write_unit(base, u); sv.mark_unit_ready(base, "svc:web-portal")
+        sup.maintain()                                    # busy + failing → deferred, not debounced
+        busy_deferred = (sup._health_fails.get("svc:web-portal", 0) == 0
+                         and sup._busy_defers.get("svc:web-portal", 0) == 1)
+        sup._busy_defers["svc:web-portal"] = sv.Supervisor._BUSY_DEFER_MAX - 1   # one below the bound
+        sup.maintain()                                    # reaches the bound → falls through
+        bound_resumes = (sup._busy_defers.get("svc:web-portal", 0) == 0
+                         and sup._health_fails.get("svc:web-portal", 0) >= 1)
+        ok = (booting_skipped and expired_probed and ready_probed
+              and busy_deferred and bound_resumes)
+        record("C11 F9 readiness + bounded busy-gate", ok,
                f"booting_skipped={booting_skipped} expired_probed={expired_probed} "
-               f"ready_probed={ready_probed}")
+               f"ready_probed={ready_probed} busy_deferred={busy_deferred} "
+               f"bound_resumes={bound_resumes}")
     finally:
-        child.terminate()
-        try: child.wait(timeout=3)
-        except Exception: child.kill()
+        for _c in (child, busy):
+            try: os.kill(_c.pid, signal.SIGCONT)
+            except OSError: pass
+            _c.terminate()
+            try: _c.wait(timeout=3)
+            except Exception: _c.kill()
 
 
 def c12_respawn_settle():
@@ -482,6 +558,110 @@ def c13_guard():
            f"unit={unit_ok} cron={cron_ok} tick(heal={heal_logged},gone_nonzero={rc_gone==1})")
 
 
+def c14_advancing_guard():
+    """The infinite-respawn guard: `_daemon_advancing` must keep a SLOW-BUT-WORKING boot (CPU /
+    major-faults progressing) from being reaped as 'wedged', while still flagging a genuinely
+    frozen (SIGSTOPped) process as not-advancing. This is what stops the reap→respawn storm that a
+    swap-thrash-starved boot heartbeat used to trigger."""
+    import signal
+    import akasha
+    # A CPU-busy process → advancing True (must be KEPT, not reaped).
+    busy = subprocess.Popen([sys.executable, "-c", "x=0\nwhile True:\n x+=1"])
+    # A frozen process (SIGSTOP) → no CPU, no faults → advancing False (reap-eligible).
+    frozen = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        time.sleep(0.3)
+        os.kill(frozen.pid, signal.SIGSTOP)
+        busy_adv = akasha._daemon_advancing(busy.pid, window=0.8)
+        frozen_adv = akasha._daemon_advancing(frozen.pid, window=0.8)
+        dead_adv = akasha._daemon_advancing(2 ** 22, window=0.1)   # unused pid → False
+        ok = busy_adv is True and frozen_adv is False and dead_adv is False
+        record("C14 advancing", ok,
+               f"busy_kept={busy_adv} frozen_reapable={not frozen_adv} dead_reapable={not dead_adv}")
+    finally:
+        try: os.kill(frozen.pid, signal.SIGCONT)
+        except OSError: pass
+        for p in (busy, frozen):
+            p.kill(); p.wait()
+
+
+def c15_boot_reaps_orphan_daemon(base):
+    """The 'never ask the operator to pkill' guard: the SHARED reclamation a writer boot runs
+    (`_reap_orphans`) must reap an ORPHANED writer daemon (a respawn-race / pre-reinstall survivor
+    the run-dir no longer tracks) for THIS data dir — exactly as `stop` does — while sparing itself.
+    Before the fix a boot swept only leaked portals, leaving the orphaned WRITER (feed poller + ~GB
+    engine) alive and forcing a manual `pkill` — a design violation (process management is code-side)."""
+    import akasha
+    import tempfile as _tf
+    # A fake orphan that matches _akasha_daemon_pids: argv = [python, <…/akasha.py>, --daemon] and
+    # AKASHA_DATA_DIR == base. A throwaway akasha.py that just sleeps (never boots the engine).
+    d = _tf.mkdtemp(prefix="akasha_orphan_")
+    fake = os.path.join(d, "akasha.py")
+    with open(fake, "w") as fh:
+        fh.write("import time\ntime.sleep(60)\n")
+    env = dict(os.environ, AKASHA_DATA_DIR=base)
+    orphan = subprocess.Popen([sys.executable, fake, "--daemon"], env=env)
+    try:
+        time.sleep(0.4)
+        seen = [pid for pid, _c in akasha._akasha_daemon_pids(base)]
+        reaped = akasha._reap_orphans(base)            # SIGTERM→grace→SIGKILL; blocks until done
+        # The orphan is a CHILD of this test process, so after it is killed it lingers as a zombie
+        # that kill -0 still sees as 'alive' (in production it is re-parented to init and truly
+        # vanishes). poll() reaps the zombie and returns its exit status → proof it terminated.
+        gone = orphan.poll() is not None
+        self_spared = os.getpid() not in reaped
+        ok = (orphan.pid in seen) and (orphan.pid in reaped) and gone and self_spared
+        record("C15 boot reaps orphan daemon", ok,
+               f"detected={orphan.pid in seen} reaped={orphan.pid in reaped} gone={gone} "
+               f"self_spared={self_spared}")
+    finally:
+        try: orphan.kill(); orphan.wait()
+        except Exception: pass
+        import shutil as _sh
+        _sh.rmtree(d, ignore_errors=True)
+
+
+def c16_start_reclaims_orphan_spares_recorded(base):
+    """`_reclaim_orphans_on_start` (run at the head of EVERY launch — no operator stop/pkill) must
+    reap an ORPHAN writer daemon while SPARING the RECORDED one (cell.pid), and must STAND DOWN while
+    a boot heartbeat is fresh (a mid-boot daemon may not have recorded its pid yet)."""
+    import akasha
+    import tempfile as _tf
+    def _fake_daemon():
+        d = _tf.mkdtemp(prefix="akasha_fk_")
+        fp = os.path.join(d, "akasha.py")
+        with open(fp, "w") as fh:
+            fh.write("import time\ntime.sleep(60)\n")
+        p = subprocess.Popen([sys.executable, fp, "--daemon"], env=dict(os.environ, AKASHA_DATA_DIR=base))
+        return p, d
+    recorded, d1 = _fake_daemon()
+    orphan, d2 = _fake_daemon()
+    import shutil as _sh
+    try:
+        # Record `recorded` as the live cell daemon; leave `orphan` untracked.
+        os.makedirs(os.path.join(base, "central"), exist_ok=True)
+        with open(akasha._cell_pid_path(base), "w") as fh:
+            fh.write(str(recorded.pid))
+        akasha._boot_heartbeat_clear(base)
+        time.sleep(0.4)
+        reaped = akasha._reclaim_orphans_on_start(base)
+        spared_recorded = (recorded.poll() is None) and (recorded.pid not in reaped)
+        reaped_orphan = (orphan.pid in reaped) and (orphan.poll() is not None)
+        # Fresh boot heartbeat → stand down entirely (reap nothing).
+        akasha._boot_heartbeat_touch(base)
+        stood_down = (akasha._reclaim_orphans_on_start(base) == [])
+        akasha._boot_heartbeat_clear(base)
+        ok = spared_recorded and reaped_orphan and stood_down
+        record("C16 start-reclaim spares recorded", ok,
+               f"spared_recorded={spared_recorded} reaped_orphan={reaped_orphan} "
+               f"stood_down_while_booting={stood_down}")
+    finally:
+        for p in (recorded, orphan):
+            try: p.kill(); p.wait()
+            except Exception: pass
+        _sh.rmtree(d1, ignore_errors=True); _sh.rmtree(d2, ignore_errors=True)
+
+
 def main():
     print("\n  daemon convergence eval — R1 shared convergence · R3 wedge probe · R4 heartbeat\n")
     if not sys.platform.startswith("linux") or not os.path.isdir("/proc"):
@@ -506,6 +686,11 @@ def main():
     c11_readiness_gate(base)
     c12_respawn_settle()
     c13_guard()
+    c14_advancing_guard()
+    c15_boot_reaps_orphan_daemon(base)
+    c16_start_reclaims_orphan_spares_recorded(base)
+    c17_writer_env_scrub()
+    c18_daemon_serve_only_clear()
 
     print()
     passed = sum(1 for _, ok, _ in _results if ok)

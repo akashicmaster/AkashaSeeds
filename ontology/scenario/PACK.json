@@ -1,0 +1,7 @@
+{
+  "label": "Aspect — the scenario / chronon time coordinate",
+  "description": "The seeds13 aspect vocabulary, declared as Set membership: `aspect:prospective` (authored in advance) and `aspect:perfective` (the record), with the two Sets a coordinate is joined to. Membership is ADDITIVE — a coordinate that was planned and then happened holds both, so the difference between plan and occurrence stays readable instead of being overwritten. Declared ahead of the scenario port so no Set is minted that the lexicon does not define.",
+  "license": "MIT",
+  "source": "internal",
+  "version": "1.0"
+}

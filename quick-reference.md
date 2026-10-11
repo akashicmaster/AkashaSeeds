@@ -22,7 +22,7 @@ These directives are handled by the shell itself and are not sent to the kernel.
 | `!-n` | Repeat *n*-th from last (`!-1` = last) |
 | `!prefix` | Repeat last command starting with *prefix* |
 | `csl` | Open the CSL interactive interpreter |
-| `ont.load` | Load acquired ontology (`.ak` files from `ontology/acquired/`) |
+| `ont.load [match]` | Pick a pack's `.ak` file from the pack roots (`ontology/`, `app/ontology/`, `ontology/user/`) and load it as a background job |
 | `run <file>` | Submit a `.ak` file as a background JCL batch job |
 | `<cmd> > <file>` | Redirect command output to a local file |
 | `su root` | Unrestricted root mode — all scope restrictions lifted *(admin only)* |
@@ -30,7 +30,7 @@ These directives are handled by the shell itself and are not sent to the kernel.
 | `su <user>` | Impersonate another user *(admin only)* |
 | `su exit` | Return to normal identity |
 | `svc ls` | List background services and connected session count |
-| `svc start <name>` | Start a stopped service *(admin only)* |
+| `svc start <name>` | Start a service this run has registered *(admin only)*; after `svc stop`, use `svc restart` |
 | `svc stop <name>` | Stop a running service *(admin only)* |
 | `svc restart <name>` | Restart a service *(admin only)* |
 | `exit` | Disconnect and end the session |
@@ -100,6 +100,7 @@ explicit graph. All are read-only.
 | `search` | `query=<text> [limit=]` | Free-text semantic search (rank atoms by cosine to a query string). |
 | `node.sim` | `<id> [limit=]` | Atoms **connected the same way** — structural (node-walk) similarity, complementary to `sim`. |
 | `node.learn` | *(admin)* | Learn/refresh the structural node-embedding model from the link graph (numpy). |
+| `semantic.learn` | *(admin)* `[limit=]` | Learn/refresh the content (meaning) model behind `sim`/`search` (numpy). On the seeds line nothing is learned at startup: run it (and `node.learn`) once the ontology load is complete. |
 | `gap.scan` | `[limit=]` | **Important-but-thin concepts** — atoms referenced a lot but under-linked. The self-expanding-ontology loop's "what to enrich next" signal. |
 | `emotion.find` | `emo=<name> [limit=]` | The atoms that **feel** an emotion (reverse of `emotion.profile`), e.g. `emotion.find emo=awe`. |
 | `emotion.profile` | `<id>` | The emotion **vector** of an atom (which `emo:*` atoms it links, weighted). |

@@ -58,11 +58,6 @@ MCP_TOOLS: List[Dict[str, Any]] = [
                                     "ns": {"type": "string"},
                                     "limit": {"type": "integer", "default": 20}},
                      "required": ["query"]}},
-    {"name": "akasha_concept", "access": "read", "rpc_method": "thesaurus.concept",
-     "description": "Concept page for a word: neighbourhood, synonyms/broader/narrower, usage, "
-                    "and external references — the primary lookup before writing prose.",
-     "inputSchema": {"type": "object",
-                     "properties": {"name": {"type": "string"}, "id": {"type": "string"}}}},
     {"name": "akasha_search", "access": "read", "rpc_method": "semantic.search",
      "description": "Semantic (meaning) search — nearest atoms by learned embedding. Give "
                     "`query` (text) or `id` (an atom to find neighbours of).",
@@ -143,7 +138,34 @@ MCP_TOOLS: List[Dict[str, Any]] = [
                      "required": ["group"]}},
 ]
 
-_TOOL_BY_NAME = {t["name"]: t for t in MCP_TOOLS}
+def mcp_tools() -> List[Dict[str, Any]]:
+    """The platform's tools above, plus every tool an op DECLARES — `"projection": {"mcp":
+    {"name", "description", "inputSchema", "access"}}` on its manifest entry (group 4, 4.7). The
+    concept-page tool used to be a row here naming the thesaurus's method; a Concept Model that
+    wants an MCP tool now says so beside its own op."""
+    out = list(MCP_TOOLS)
+    have = {t["name"] for t in out}
+    try:
+        from lib.akasha.api import manifest as _manifest
+        declared = _manifest.declared_projection("mcp")
+    except Exception:
+        declared = {}
+    for method, spec in sorted(declared.items()):
+        if not isinstance(spec, dict) or not spec.get("name") or spec["name"] in have:
+            continue
+        out.append({"name": str(spec["name"]), "access": str(spec.get("access") or "read"),
+                    "rpc_method": method,
+                    "description": str(spec.get("description") or method),
+                    "inputSchema": spec.get("inputSchema") or {"type": "object", "properties": {}}})
+        have.add(spec["name"])
+    return out
+
+
+def _tool_by_name(name: str) -> Optional[Dict[str, Any]]:
+    for t in mcp_tools():
+        if t["name"] == name:
+            return t
+    return None
 
 
 def _rpc_ok(rid, result):
@@ -189,11 +211,11 @@ class AkashaMCPPortal:
     # -- MCP protocol --
     def list_tools(self) -> List[Dict[str, Any]]:
         return [{"name": t["name"], "description": t["description"],
-                 "inputSchema": t["inputSchema"]} for t in MCP_TOOLS]
+                 "inputSchema": t["inputSchema"]} for t in mcp_tools()]
 
     def call_tool(self, name: str, arguments: dict, session_token: str) -> Dict[str, Any]:
         """Dispatch a tool to its kernel method; wrap the result as MCP tool content."""
-        tool = _TOOL_BY_NAME.get(name)
+        tool = _tool_by_name(name)
         if not tool:
             return {"content": [{"type": "text", "text": f"Unknown tool: {name}"}], "isError": True}
         resp = self.gw.dispatch({

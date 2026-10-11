@@ -1,0 +1,44 @@
+{
+  "spec": "mobility_stance_map",
+  "version": "v1",
+  "dataset": "eu_travel_survey_2014 (doi:10.7910/DVN/P82V9X v1.1)",
+  "principle": "A mapped stance is a DECLARED reading of a coded answer — data, not code. Every reading below is disputable and versioned; changing a reading is a new spec version, never a silent edit. Codes the spec does not read map to no_reading (counted, visible, never given a stance they did not earn). The verbatim coded answer stays the operand; no opinion text is ever synthesized.",
+  "items": [
+    {
+      "field": "Preference_tolls_or_traffic_limitation",
+      "proposition": "Demand-management measures (congestion charges or road-traffic limitation) are acceptable to reduce congestion.",
+      "rationale": "Both instruments are demand-management; choosing either signals acceptance of the proposition. 'Definitely' answers are unambiguous; 'Probably' answers still declare a lean. 'No preferences' expresses no acceptance or rejection - it is not read.",
+      "readings": {
+        "Definitely more acceptable to pay for less congestion": "support",
+        "Definitely more acceptable to limit road traffic": "support",
+        "Probably more acceptable to pay for less congestion": "conditional",
+        "Probably more acceptable to limit road traffic": "conditional",
+        "No preferences": "no_reading"
+      }
+    },
+    {
+      "field": "Concern_environmental_impacts",
+      "proposition": "Transport's environmental impacts are a serious concern.",
+      "rationale": "A declared 1-10 self-rating: 8-10 reads as strong agreement, 1-3 as disagreement, the 4-7 middle band as neutral (a rating was given, but it does not commit either way). 'Don't know' is not read.",
+      "readings": {
+        "8": "support", "9": "support", "10": "support",
+        "4": "neutral", "5": "neutral", "6": "neutral", "7": "neutral",
+        "1": "oppose", "2": "oppose", "3": "oppose",
+        "Don't know": "no_reading"
+      }
+    },
+    {
+      "field": "Considering_electric_or_hybrid_vehicle_next_purchase",
+      "proposition": "I would consider an electric or hybrid vehicle for my next purchase.",
+      "rationale": "Certainly/Probably yes read as support, Certainly/Probably not as oppose; the explicit 'Maybe yes maybe not' is a genuinely two-sided answer (conditional). 'Don't know/no answer' is not read.",
+      "readings": {
+        "Certainly yes": "support",
+        "Probably yes": "support",
+        "Maybe yes maybe not": "conditional",
+        "Probably not": "oppose",
+        "Certainly not": "oppose",
+        "Don't know/no answer": "no_reading"
+      }
+    }
+  ]
+}

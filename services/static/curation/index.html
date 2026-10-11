@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Curation Gallery · Akashic Archives</title>
+    <meta name="description" content="The curation gallery of the Akashic Archives — curated exhibitions on the left, and the shelf of concepts ranked by salience on the right.">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            background:
+                radial-gradient(1100px 700px at 50% -8%, #1c130a 0%, #0c0803 62%, #060402 100%) fixed;
+            color: #f0d8a8;
+            font-family: 'Courier New', Courier, monospace;
+            min-height: 100vh; min-height: 100dvh; width: 100%;
+            -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
+        }
+        .wrap {
+            max-width: 1120px; margin: 0 auto;
+            padding-top:    max(30px, calc(env(safe-area-inset-top) + 24px));
+            padding-bottom: max(40px, calc(env(safe-area-inset-bottom) + 40px));
+            padding-left:   max(18px, env(safe-area-inset-left));
+            padding-right:  max(18px, env(safe-area-inset-right));
+        }
+
+        .crumb {
+            display: inline-block;
+            font-size: 0.62rem; letter-spacing: 3px; text-transform: uppercase;
+            color: rgba(230,180,100,0.55); text-decoration: none;
+            border: 1px solid rgba(200,140,55,0.3); padding: 6px 16px; border-radius: 18px;
+            transition: color 0.2s, border-color 0.2s, box-shadow 0.2s;
+        }
+        .crumb:hover { color: rgba(255,205,110,1); border-color: rgba(210,150,60,0.7);
+            box-shadow: 0 0 14px rgba(200,130,40,0.25); }
+        .head { margin: 18px 0 6px; }
+        h1 {
+            font-size: clamp(1.5rem, 4.6vw, 2.6rem); font-weight: bold;
+            letter-spacing: clamp(4px, 2vw, 11px); color: rgba(255,200,105,0.95); line-height: 1.1;
+            text-shadow: 0 0 16px rgba(220,140,40,0.5), 0 0 44px rgba(220,140,40,0.18);
+        }
+        .sub { margin-top: 6px; font-size: clamp(0.6rem, 1.6vw, 0.78rem);
+               letter-spacing: 4px; color: rgba(230,180,100,0.42); font-style: italic; text-transform: lowercase; }
+
+        /* ── two columns: exhibitions (left) · concept shelf (right) ──── */
+        .gallery {
+            display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+            gap: clamp(20px, 3vw, 40px); margin-top: 26px; align-items: start;
+        }
+        .panel-title {
+            font-size: 0.72rem; letter-spacing: 4px; text-transform: uppercase;
+            color: rgba(150,215,205,0.85); border-bottom: 1px solid rgba(70,150,150,0.3);
+            padding-bottom: 7px; margin-bottom: 16px; display: flex; align-items: baseline; gap: 10px;
+        }
+        .panel-title .jp { font-size: 0.86rem; letter-spacing: 2px; color: rgba(190,235,228,0.78); text-transform: none; }
+
+        /* ── LEFT — exhibitions (cool box, matching the glossy blue-green orbs) ── */
+        .feature {
+            border: 1px solid rgba(70,150,150,0.4);
+            background: linear-gradient(160deg, rgba(14,52,58,0.42), rgba(8,24,30,0.3));
+            padding: clamp(16px, 2.4vw, 22px); margin-bottom: 22px;
+        }
+        .feature .tag { font-size: 0.52rem; letter-spacing: 2.5px; text-transform: uppercase; color: rgba(120,215,200,0.72); }
+        .feature h3 { font-size: clamp(1.05rem, 2.6vw, 1.4rem); font-weight: normal; letter-spacing: 1px;
+                      color: rgba(224,246,240,0.96); margin: 8px 0 6px; }
+        .feature h3 a { color: inherit; text-decoration: none; border-bottom: 1px solid transparent; }
+        .feature h3 a:hover { border-color: rgba(150,215,205,0.5); }
+        .feature h3 .feat-sub { display: block; font-size: 0.78rem; letter-spacing: 1px;
+                                color: rgba(180,218,213,0.74); margin-top: 4px; }
+        .feature .feat-en { font-size: 0.6rem; letter-spacing: 2px; text-transform: uppercase;
+                            color: rgba(130,195,192,0.58); margin-bottom: 8px; }
+        .feature .thesis { font-size: 0.76rem; line-height: 1.7; letter-spacing: 0.4px; color: rgba(198,222,219,0.74); }
+        .sub-ex { list-style: none; margin-top: 16px; border-top: 1px dashed rgba(70,150,150,0.28); padding-top: 12px; }
+        .sub-ex .lead { font-size: 0.54rem; letter-spacing: 2.5px; text-transform: uppercase; color: rgba(140,205,197,0.62); margin-bottom: 8px; }
+        .sub-ex a {
+            display: flex; gap: 10px; align-items: baseline; text-decoration: none;
+            padding: 7px 8px; border-left: 2px solid rgba(70,155,150,0.42);
+            color: rgba(206,228,224,0.86); transition: background 0.2s, border-color 0.2s, color 0.2s; margin-bottom: 3px;
+        }
+        .sub-ex a:hover { background: rgba(12,55,58,0.4); border-color: rgba(90,220,205,0.9); color: #dffcf6; }
+        .sub-ex .n { font-size: 0.6rem; color: rgba(120,215,200,0.62); min-width: 1.4em; }
+        .sub-ex .t { font-size: 0.82rem; }
+        .sub-ex .p { font-size: 0.62rem; color: rgba(180,205,202,0.5); margin-left: auto; text-align: right;
+                     max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .past { list-style: none; }
+        .past li { margin-bottom: 6px; }
+        .past button {
+            width: 100%; text-align: left; cursor: pointer; font-family: inherit;
+            display: flex; align-items: baseline; gap: 10px;
+            background: rgba(10,40,44,0.26); border: 1px solid rgba(70,150,150,0.26);
+            color: rgba(205,225,221,0.84); padding: 10px 12px; transition: border-color 0.2s, background 0.2s, color 0.2s;
+        }
+        .past button:hover { border-color: rgba(90,220,205,0.8); background: rgba(12,55,58,0.42); color: #dffcf6; }
+        .past a.past-exhibit {
+            width: 100%; text-decoration: none; display: flex; align-items: baseline; gap: 10px;
+            background: rgba(10,40,44,0.26); border: 1px solid rgba(70,150,150,0.26);
+            color: rgba(205,225,221,0.84); padding: 10px 12px; transition: border-color 0.2s, background 0.2s, color 0.2s;
+        }
+        .past a.past-exhibit:hover { border-color: rgba(90,220,205,0.8); background: rgba(12,55,58,0.42); color: #dffcf6; }
+        .past .t { font-size: 0.86rem; }
+        .past .len { margin-left: auto; font-size: 0.56rem; letter-spacing: 1.5px; color: rgba(140,205,197,0.56); }
+        .empty { font-size: 0.76rem; line-height: 1.7; color: rgba(210,185,150,0.6); letter-spacing: 0.4px; }
+
+        /* View-exhibition links on the featured card */
+        .view-links { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+        .view-link {
+            font-size: 0.66rem; letter-spacing: 1.5px; text-transform: uppercase; text-decoration: none;
+            color: rgba(224,246,240,0.92); border: 1px solid rgba(90,190,180,0.5);
+            padding: 7px 14px; border-radius: 3px; transition: color 0.2s, border-color 0.2s, background 0.2s;
+        }
+        .view-link:hover { color: #071a1a; background: rgba(150,220,210,0.92); border-color: rgba(150,220,210,0.92); }
+        .view-link.alt { font-size: 0.62rem; color: rgba(150,215,205,0.82); border-color: rgba(70,150,150,0.4); }
+        .view-link.alt:hover { color: #071a1a; background: rgba(150,220,210,0.75); }
+
+        /* ── RIGHT — concept shelf (orbs by score) ───────────────────── */
+        .shelf-note { font-size: 0.56rem; letter-spacing: 1.5px; color: rgba(210,180,140,0.45);
+                      margin: -8px 0 14px; text-transform: none; }
+        .shelf-row { position: relative; margin-bottom: 22px; }
+        .orbs { display: flex; justify-content: space-around; align-items: flex-end; gap: 6px;
+                min-height: 96px; padding: 0 4px; }
+        .plank {
+            height: 9px; border-radius: 2px;
+            background: linear-gradient(180deg, rgba(160,98,40,0.9), rgba(90,54,20,0.9));
+            box-shadow: 0 6px 14px rgba(0,0,0,0.5); }
+        .orb-wrap { display: flex; flex-direction: column; align-items: center; gap: 5px;
+                    text-decoration: none; width: 24%; }
+        .orb {
+            /* Each orb sets its own --hue inline (by emotion). The GLOSS is the point —
+               a pale near-white specular highlight + inset white + outer glow give the
+               lustre; that stays fixed, only the body hue changes with the emotion. */
+            --hue: 172;
+            border-radius: 50%;
+            background:
+                radial-gradient(circle at 38% 30%,
+                    hsla(var(--hue),45%,95%,0.95) 0%, hsla(var(--hue),72%,52%,0.72) 32%,
+                    hsla(var(--hue),62%,38%,0.55) 60%, hsla(var(--hue),52%,18%,0.5) 100%);
+            box-shadow: 0 0 14px hsla(var(--hue),70%,52%,0.35), inset 0 0 12px rgba(255,255,255,0.18);
+            transition: transform 0.25s ease, box-shadow 0.25s ease; flex: none;
+        }
+        .orb-wrap:hover .orb { transform: translateY(-4px) scale(1.06);
+            box-shadow: 0 0 24px hsla(var(--hue),85%,62%,0.6), inset 0 0 10px rgba(255,255,255,0.28); }
+        .orb-label { font-size: 0.62rem; letter-spacing: 0.4px; color: rgba(225,230,220,0.82);
+                     text-align: center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .orb-wrap:hover .orb-label { color: #eafffb; }
+        .orb-score { font-size: 0.5rem; letter-spacing: 1px; color: rgba(255,190,80,0.55); }
+        .shelf-pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 10px; }
+        .shelf-pager .pg { background: transparent; border: 1px solid rgba(200,140,55,0.35);
+            color: rgba(230,180,100,0.8); font-size: 0.8rem; width: 30px; height: 26px; border-radius: 4px;
+            cursor: pointer; transition: color 0.15s, border-color 0.15s; }
+        .shelf-pager .pg:hover:not([disabled]) { color: #ffcf6e; border-color: rgba(210,150,60,0.7); }
+        .shelf-pager .pg[disabled] { opacity: 0.3; cursor: default; }
+        .shelf-pager .pg-label { font-family: 'Courier New', monospace; font-size: 0.6rem;
+            letter-spacing: 1.5px; color: rgba(230,180,100,0.6); }
+
+        .note { font-size: 0.72rem; color: rgba(210,185,150,0.6); letter-spacing: 0.5px; }
+
+        .footer-credit { margin-top: 34px; font-size: 0.58rem; letter-spacing: 3px;
+            color: rgba(230,180,100,0.28); text-transform: uppercase; text-align: center; }
+        .footer-credit a { color: rgba(230,180,100,0.5); text-decoration: none; }
+        .footer-credit a:hover { color: rgba(255,205,110,1); }
+
+        @media (max-width: 760px) {
+            .gallery { grid-template-columns: 1fr; gap: 28px; }
+            .orb-label { font-size: 0.58rem; }
+        }
+    </style>
+</head>
+<body>
+<div class="wrap">
+
+    <a href="/hall/" class="crumb">◄ reading hall</a>
+    <div class="head">
+        <h1>CURATION GALLERY</h1>
+        <div class="sub">exhibitions on view · concepts ranked by score</div>
+    </div>
+
+    <div class="gallery">
+
+        <!-- LEFT — exhibitions -->
+        <section class="exhibits">
+            <div class="panel-title">Exhibitions <span class="jp">on view</span></div>
+            <div id="current"><p class="note">Loading exhibitions…</p></div>
+            <div class="panel-title" style="margin-top:26px">Past Exhibitions <span class="jp">past exhibitions</span></div>
+            <ul class="past" id="past"><li><p class="note">…</p></li></ul>
+        </section>
+
+        <!-- RIGHT — concept shelf, by score -->
+        <section class="shelf">
+            <div class="panel-title">By Score <span class="jp">concept shelf</span></div>
+            <div class="shelf-note">concepts ranked by salience — orb size ∝ score</div>
+            <div id="orbs"><p class="note">Loading the concept shelf…</p></div>
+            <div class="shelf-pager" id="shelf-pager"></div>
+        </section>
+
+    </div>
+
+    <div class="footer-credit">powered by <a href="https://github.com/henrigrohmann/AkashicTree" target="_blank" rel="noopener">AKASHA</a></div>
+
+</div>
+
+<script>
+(function () {
+    'use strict';
+    function rpc(method, params) {
+        return fetch('/rpc', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jsonrpc: '2.0', method: method, params: params, id: method }) })
+            .then(function (r) { return r.json(); })
+            .then(function (j) { if (j.error) throw new Error(j.error.message || 'rpc error'); return j.result; });
+    }
+    // Degradation-first: never leave a pane spinning forever. A slow/over-large
+    // backend read (e.g. an un-bounded no-ns scan) rejects after the deadline so the
+    // load's .catch renders a visible fallback instead of an endless "Loading…".
+    function withTimeout(p, ms, label) {
+        return new Promise(function (resolve, reject) {
+            var settled = false;
+            var t = setTimeout(function () {
+                if (!settled) { settled = true; reject(new Error((label || 'request') + ' timed out')); }
+            }, ms || 25000);
+            p.then(function (v) { if (!settled) { settled = true; clearTimeout(t); resolve(v); } },
+                   function (e) { if (!settled) { settled = true; clearTimeout(t); reject(e); } });
+        });
+    }
+    var _tok = null, _exp = 0, _p = null, KEY = 'akasha_guest_token', SKEW = 30000;
+    // A guest binding token (gbk:) has a FIXED lifetime (<=30 min) and is NOT renewed by
+    // activity, so a token cached in localStorage goes stale. Reusing a stale token made every
+    // read return -32001 and the page render empty on each reload — the real cause of the
+    // "references appear/disappear" intermittency. So: remember the token's expiry, never reuse
+    // a (near-)expired one, and mint a fresh token before the old one dies.
+    function _readTokCache() {
+        try {
+            var raw = localStorage.getItem(KEY); if (!raw) return null;
+            if (raw.charAt(0) === '{') { var o = JSON.parse(raw); return (o && o.key) ? o : null; }
+            return { key: raw, exp: 0 };                 // legacy plain-string token: expiry unknown
+        } catch (e) { return null; }
+    }
+    function _mintTok() {
+        _p = rpc('session.guest.create', {}).then(function (g) {
+            _p = null; _tok = g.binding_key;
+            _exp = (g && g.expires_at) ? g.expires_at * 1000 : (Date.now() + 25 * 60000);
+            try { localStorage.setItem(KEY, JSON.stringify({ key: _tok, exp: _exp })); } catch (e) {}
+            return _tok;
+        }).catch(function (e) { _p = null; throw e; });
+        return _p;
+    }
+    function getToken() {
+        var now = Date.now();
+        if (_tok && _exp - now > SKEW) return Promise.resolve(_tok);
+        if (_p) return _p;
+        if (!_tok) { var c = _readTokCache(); if (c && c.exp - now > SKEW) { _tok = c.key; _exp = c.exp; return Promise.resolve(_tok); } }
+        return _mintTok();                             // no token, or (near-)expired → mint fresh
+    }
+    function freshToken() { _tok = null; _exp = 0; _p = null; try { localStorage.removeItem(KEY); } catch (e) {} return getToken(); }
+    function isSessionErr(m) { m = (m || '').toLowerCase();
+        return m.indexOf('session') >= 0 || m.indexOf('token') >= 0 || m.indexOf('expired') >= 0 || m.indexOf('denied') >= 0; }
+    function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+    function atomHref(ref) { return '/a/' + encodeURIComponent(ref).replace(/%3A/gi, ':'); }
+
+    /* ── RIGHT: concept shelf, ranked by salience ─────────────────── */
+    // Emotion colour-coding. Each concept's orb hue comes from its dominant affect
+    // (Plutchik-ish palette). Prefer real backend affect — a `hue` or an `emotion` alias
+    // (concept-shelf-score-feed-spec §3); until the feed carries it, a stable per-word
+    // assignment keeps the shelf emotion-coloured. The gloss/texture is fixed in CSS.
+    var EMO_HUE = { joy: 45, trust: 110, fear: 165, surprise: 190, sadness: 220,
+                    disgust: 280, anger: 8, anticipation: 32, calm: 60 };
+    var EMO_KEYS = Object.keys(EMO_HUE);
+    function orbHue(c) {
+        if (c && c.hue != null) return c.hue;                          // real affect hue
+        if (c && c.emotion && EMO_HUE[c.emotion] != null) return EMO_HUE[c.emotion];  // real emotion
+        var s = (c && (c.term || c.name)) || '', h = 0;                // else: stable per-word
+        for (var i = 0; i < s.length; i++) h = (Math.imul(h, 31) + s.charCodeAt(i)) | 0;
+        return EMO_HUE[EMO_KEYS[Math.abs(h) % EMO_KEYS.length]];
+    }
+    function _isWordHead(c) {
+        var t = (c.term || c.name || ''), ch = t.charAt(0);
+        return !!t && (/[a-zA-Z]/.test(ch) || ch.charCodeAt(0) > 0x7f);
+    }
+    var _shelf = [], _shelfPage = 0, SHELF_PER_PAGE = 24;
+    var _shelfTries = 0, _SHELF_MAX = 4, _SHELF_KEY = 'akasha_shelf_v1';   // resilience: retry + last-good cache
+    function renderOrbs(concepts) {
+        // Defensive junk filter (backend also filters on the no-ns path) + score sort.
+        _shelf = (concepts || []).filter(_isWordHead)
+            .sort(function (a, b) { return (b.salience || 0) - (a.salience || 0); });
+        _shelfPage = 0;
+        drawShelfPage();
+    }
+    function drawShelfPage() {
+        var box = document.getElementById('orbs'), pager = document.getElementById('shelf-pager');
+        if (!_shelf.length) { box.innerHTML = '<p class="note">No concepts on the shelf yet.</p>'; if (pager) pager.innerHTML = ''; return; }
+        var maxS = _shelf[0].salience || 0;
+        var start = _shelfPage * SHELF_PER_PAGE;
+        var page = _shelf.slice(start, start + SHELF_PER_PAGE);
+        var html = '', row = [];
+        function flushRow() {
+            if (!row.length) return;
+            html += '<div class="shelf-row"><div class="orbs">' + row.join('') + '</div><div class="plank"></div></div>';
+            row = [];
+        }
+        page.forEach(function (c) {
+            var s = c.salience || 0;
+            var frac = maxS > 0 ? s / maxS : 0.5;
+            var d = Math.round(40 + 42 * frac);          // orb diameter 40–82px
+            var ref = c.name || c.key || c.term;
+            var scoreTxt = s > 0 ? s.toFixed(3) : '';
+            row.push(
+                '<a class="orb-wrap" href="' + atomHref(ref) + '" title="' + esc(c.term || ref) + (scoreTxt ? '  ·  ' + scoreTxt : '') + '">' +
+                    '<span class="orb" style="--hue:' + orbHue(c) + ';width:' + d + 'px;height:' + d + 'px"></span>' +
+                    '<span class="orb-label" style="max-width:' + (d + 34) + 'px">' + esc(c.term || ref) + '</span>' +
+                    (scoreTxt ? '<span class="orb-score">' + scoreTxt + '</span>' : '') +
+                '</a>');
+            if (row.length === 4) flushRow();
+        });
+        flushRow();
+        box.innerHTML = html;
+        var pages = Math.ceil(_shelf.length / SHELF_PER_PAGE);
+        if (pager) {
+            pager.innerHTML = pages > 1
+                ? '<button class="pg" id="pg-prev"' + (_shelfPage === 0 ? ' disabled' : '') + '>◂</button>' +
+                  '<span class="pg-label">' + (_shelfPage + 1) + ' / ' + pages + '</span>' +
+                  '<button class="pg" id="pg-next"' + (_shelfPage >= pages - 1 ? ' disabled' : '') + '>▸</button>'
+                : '';
+            var p = document.getElementById('pg-prev'), n = document.getElementById('pg-next');
+            if (p) p.onclick = function () { if (_shelfPage > 0) { _shelfPage--; drawShelfPage(); } };
+            if (n) n.onclick = function () { if (_shelfPage < pages - 1) { _shelfPage++; drawShelfPage(); } };
+        }
+    }
+    // The concept shelf ("references") must not flicker in and out: the reference feed can be
+    // momentarily slow (a no-ns salience scan under load), briefly empty (salience not warm yet,
+    // e.g. just after a server restart), or hit a stale guest token. Any of those used to
+    // dead-end the shelf. So: refresh a stale token once; retry ANY other failure AND an empty
+    // result a few times with backoff; cache the last good shelf and fall back to it rather than
+    // ever showing a blank. This is the "references appear intermittently" fix.
+    function loadConcepts(isRetry) {
+        getToken()
+            // order:'salience' → true top-by-score once the feed lands; until then op_reference
+            // falls back to alpha (per the spec), so this degrades cleanly, no breakage.
+            .then(function (tok) { return withTimeout(rpc('thesaurus.reference', { session_token: tok, order: 'salience', limit: 240 }), 20000, 'concept shelf'); })
+            .then(function (r) {
+                var list = (r && (r.concepts || r.entries)) || [];
+                if (!list.length && _shelfTries < _SHELF_MAX) {          // feed not warm yet → retry
+                    _shelfTries++; setTimeout(function () { loadConcepts(false); }, 700 * _shelfTries); return;
+                }
+                _shelfTries = 0;
+                if (list.length) { try { sessionStorage.setItem(_SHELF_KEY, JSON.stringify(list)); } catch (e) {} }
+                renderOrbs(list);
+            })
+            .catch(function (err) {
+                var msg = err && err.message ? err.message : '';
+                if (isSessionErr(msg) && !isRetry) { freshToken().then(function () { loadConcepts(true); }).catch(function () {}); return; }
+                if (_shelfTries < _SHELF_MAX) {                          // transient (timeout/busy) → retry
+                    _shelfTries++; setTimeout(function () { loadConcepts(isRetry); }, 700 * _shelfTries); return;
+                }
+                var cached = null;                                      // exhausted → last-good, never blank
+                try { cached = JSON.parse(sessionStorage.getItem(_SHELF_KEY) || 'null'); } catch (e) {}
+                if (cached && cached.length) { renderOrbs(cached); return; }
+                document.getElementById('orbs').innerHTML = '<p class="note">Could not load the concept shelf.</p>';
+            });
+    }
+
+    /* ── LEFT: exhibitions (current feature + recent exhibits, past features) ── */
+    // House feature — shown until authored curations are published to the graph
+    // (live curation.ls data overrides this the moment it exists).
+    var HOUSE = {
+        title: 'A Genealogy of Dreams', subtitle: 'Dreams unfulfilled, dreams fulfilled',
+        en: 'A Genealogy of Dreams · dreams unfulfilled, dreams fulfilled',
+        thesis: 'The dreams humankind has chased down the ages — some that fell, and some that flew. ' +
+                'A path traced from myth to machine.',
+        exhibits: [
+            { jp: 'The wish to fly — the wings of Icarus', en: 'The Wish to Fly — Icarus’s Wings', slug: 'sky-dreamers' }
+        ]
+    };
+    // The featured SERIES — "A Genealogy of Dreams" — is an umbrella over several
+    // published exhibits (each a scroll/kamishibai export under /curation/exports/).
+    // `order` gives the curator's reading order; `labels` the series-listing headword
+    // (falls back to the export's own title). Any published exhibit not named here is
+    // appended after, so new exports still surface without editing this map.
+    var SERIES = {
+        title: 'A Genealogy of Dreams', subtitle: 'Dreams unfulfilled, dreams fulfilled',
+        en: 'A Genealogy of Dreams · dreams unfulfilled, dreams fulfilled',
+        thesis: 'The dreams humankind has chased down the ages — some that fell, and some that flew. ' +
+                'A path traced from myth to machine.',
+        order: ['sky-dreamers', 'print-dreamers', 'beer-journey'],
+        labels: {
+            'sky-dreamers':   'The wish to fly — the wings of Icarus',
+            'print-dreamers': 'The dream of print — woodblock to offset',
+            'beer-journey':   'Beer — the beverage that heals labour'
+        }
+    };
+    function _orderExhibits(list) {
+        var by = {}; (list || []).forEach(function (e) { if (e && e.slug) by[e.slug] = e; });
+        var out = [];
+        SERIES.order.forEach(function (s) { if (by[s]) { out.push(by[s]); delete by[s]; } });
+        Object.keys(by).forEach(function (s) { out.push(by[s]); });   // any un-listed extras
+        return out;
+    }
+    // Published series: the umbrella feature + its installments, each linking INTO the
+    // exhibition viewer (/curation/exhibit/?slug=…) — never straight to an atom page.
+    function renderSeries(exhibits) {
+        var el = document.getElementById('current');
+        var ex = _orderExhibits(exhibits);
+        var sub = '<ul class="sub-ex"><li class="lead">Recent exhibitions · latest on view</li>';
+        ex.forEach(function (e, i) {
+            var fmt = preferredFmt(e);
+            var label = SERIES.labels[e.slug] || e.title || 'Untitled';
+            sub += '<li><a href="' + exhibitHref(e.slug, fmt) + '">' +
+                   '<span class="n">' + (i + 1) + '</span>' +
+                   '<span class="t">' + esc(label) + '</span>' +
+                   (e.count ? '<span class="p">' + e.count + ' scenes</span>' : '') +
+                   '</a></li>';
+        });
+        sub += '</ul>';
+        el.innerHTML = '<div class="feature"><span class="tag">Current Exhibition · now on view</span>' +
+            '<h3>' + esc(SERIES.title) + '<span class="feat-sub">' + esc(SERIES.subtitle) + '</span></h3>' +
+            '<div class="feat-en">' + esc(SERIES.en) + '</div>' +
+            '<p class="thesis">' + esc(SERIES.thesis) + '</p>' + sub + '</div>';
+        var pastEl = document.getElementById('past');
+        if (pastEl) pastEl.innerHTML = '<li><p class="empty">No past exhibitions yet.</p></li>';
+    }
+    function renderHouse() {
+        var el = document.getElementById('current');
+        var sub = '<ul class="sub-ex"><li class="lead">Recent exhibitions · latest on view</li>';
+        HOUSE.exhibits.forEach(function (ex, i) {
+            sub += '<li><a href="' + (ex.slug ? exhibitHref(ex.slug, 'scroll') : atomHref(ex.ref)) + '">' +
+                   '<span class="n">' + (i + 1) + '</span>' +
+                   '<span class="t">' + esc(ex.jp) + '</span>' +
+                   '<span class="p">' + esc(ex.en) + '</span></a></li>';
+        });
+        sub += '</ul>';
+        el.innerHTML = '<div class="feature"><span class="tag">Current Exhibition · now on view</span>' +
+            '<h3>' + esc(HOUSE.title) + '<span class="feat-sub">' + esc(HOUSE.subtitle) + '</span></h3>' +
+            '<div class="feat-en">' + esc(HOUSE.en) + '</div>' +
+            '<p class="thesis">' + esc(HOUSE.thesis) + '</p>' + sub + '</div>';
+    }
+    function renderCurrent(cur, steps) {
+        var el = document.getElementById('current');
+        if (!cur) { renderHouse(); return; }
+        var sub = '';
+        if (steps && steps.length) {
+            sub = '<ul class="sub-ex"><li class="lead">Recent exhibitions · latest on view</li>';
+            steps.slice(0, 6).forEach(function (st, i) {
+                var ref = st.name || st.key;
+                var term = (st.name ? st.name.split(':').pop() : (st.key || '')) || '—';
+                sub += '<li><a href="' + atomHref(ref) + '">' +
+                       '<span class="n">' + (i + 1) + '</span>' +
+                       '<span class="t">' + esc(term) + '</span>' +
+                       (st.preview ? '<span class="p">' + esc(st.preview) + '</span>' : '') +
+                       '</a></li>';
+            });
+            sub += '</ul>';
+        }
+        el.innerHTML = '<div class="feature"><span class="tag">Current Exhibition · now on view</span>' +
+            '<h3>' + esc(cur.title || 'Untitled feature') + '</h3>' +
+            (cur.thesis ? '<p class="thesis">' + esc(cur.thesis) + '</p>' : '') +
+            sub + '</div>';
+    }
+    function renderPast(list) {
+        var ul = document.getElementById('past');
+        if (!list.length) { ul.innerHTML = '<li><p class="empty">No past exhibitions yet.</p></li>'; return; }
+        ul.innerHTML = '';
+        list.forEach(function (c) {
+            var li = document.createElement('li');
+            var b = document.createElement('button');
+            b.innerHTML = '<span class="t">' + esc(c.title || 'Untitled') + '</span>' +
+                          '<span class="len">' + (c.length || 0) + ' steps</span>';
+            b.addEventListener('click', function () { selectFeature(c); });
+            li.appendChild(b); ul.appendChild(li);
+        });
+    }
+    function selectFeature(cur) {
+        renderCurrent(cur, null);           // show immediately; fill exhibits when narrate returns
+        getToken()
+            .then(function (tok) { return rpc('curation.narrate', { session_token: tok, curation_id: cur.curation_id }); })
+            .then(function (r) { renderCurrent(cur, (r && r.steps) || []); })
+            .catch(function () {});
+        try { document.getElementById('current').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e) {}
+    }
+    /* ── Published exhibitions (the curation → presentation → export artifacts) ──
+       A published exhibit is a static JSON under /curation/exports/. The publish step
+       maintains /curation/exports/index.json (slug, title, thesis, count, formats), so
+       the Room can list them and link into the exhibition viewer — no auth, no graph. */
+    function exhibitHref(slug, fmt) {
+        return '/curation/exhibit/?slug=' + encodeURIComponent(slug) + '&fmt=' + fmt;
+    }
+    function preferredFmt(ex) {
+        var f = (ex.formats && ex.formats.length) ? ex.formats : ['scroll'];
+        return f.indexOf('scroll') >= 0 ? 'scroll' : f[0];
+    }
+    function renderExhibitFeature(ex) {
+        var el = document.getElementById('current');
+        var fmt = preferredFmt(ex);
+        var links = '<a class="view-link" href="' + exhibitHref(ex.slug, fmt) + '">View the exhibition →</a>';
+        (ex.formats || []).forEach(function (f) {
+            if (f !== fmt) links += '<a class="view-link alt" href="' + exhibitHref(ex.slug, f) + '">' +
+                (f === 'kamishibai' ? '紙芝居' : esc(f)) + '</a>';
+        });
+        el.innerHTML = '<div class="feature"><span class="tag">Now on view</span>' +
+            '<h3><a href="' + exhibitHref(ex.slug, fmt) + '">' + esc(ex.title || 'Untitled') + '</a></h3>' +
+            (ex.thesis ? '<p class="thesis">' + esc(ex.thesis) + '</p>' : '') +
+            '<div class="view-links">' + links + '</div></div>';
+    }
+    function renderExhibitPast(list) {
+        var ul = document.getElementById('past');
+        if (!list.length) { ul.innerHTML = '<li><p class="empty">No other exhibitions yet.</p></li>'; return; }
+        ul.innerHTML = '';
+        list.forEach(function (ex) {
+            var li = document.createElement('li');
+            li.innerHTML = '<a class="past-exhibit" href="' + exhibitHref(ex.slug, preferredFmt(ex)) + '">' +
+                '<span class="t">' + esc(ex.title || 'Untitled') + '</span>' +
+                '<span class="len">' + (ex.count || 0) + ' scenes</span></a>';
+            ul.appendChild(li);
+        });
+    }
+
+    function loadFeatures(isRetry) {
+        // Prefer published exhibitions (static index, no auth) → they link to the viewer.
+        fetch('/curation/exports/index.json', { cache: 'no-cache' })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (idx) {
+                var ex = (idx && idx.exhibits) || [];
+                if (!ex.length) throw new Error('no published exhibits');
+                renderSeries(ex);
+            })
+            .catch(function () { loadCurationFeatures(isRetry); });   // fall back to live curations / HOUSE
+    }
+    function loadCurationFeatures(isRetry) {
+        getToken()
+            .then(function (tok) { return withTimeout(rpc('curation.ls', { session_token: tok }), 25000, 'curations'); })
+            .then(function (r) {
+                var list = (r && r.curations) || [];
+                if (!list.length) { renderCurrent(null, null); renderPast([]); return; }
+                selectFeature(list[0]);
+                renderPast(list.slice(1));
+            })
+            .catch(function (err) {
+                var msg = err && err.message ? err.message : '';
+                if (!isRetry && isSessionErr(msg)) { freshToken().then(function () { loadCurationFeatures(true); }).catch(function () {}); return; }
+                // curations may be unavailable to guests — show the graceful empty state
+                renderCurrent(null, null); renderPast([]);
+            });
+    }
+
+    loadConcepts(false);
+    loadFeatures(false);
+}());
+</script>
+<!-- pulse beacon (F18) — fire-and-forget access analytics; never breaks the page -->
+<script>
+(function () {
+  try {
+    var prev = ''; try { prev = sessionStorage.getItem('pulse_prev') || ''; } catch (e) {}
+    var concept = 'site:archives_curation';
+    var payload = { concept: concept, surface: 'curation', prev: prev,
+                    page_referrer: document.referrer || '' };
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon('/pulse', new Blob([JSON.stringify(payload)],
+                                              { type: 'application/json' }));
+    }
+    try { sessionStorage.setItem('pulse_prev', concept); } catch (e) {}
+  } catch (e) { /* analytics must never break a page */ }
+})();
+</script>
+</body>
+</html>

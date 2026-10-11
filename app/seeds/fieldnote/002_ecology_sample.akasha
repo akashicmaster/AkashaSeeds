@@ -1,0 +1,80 @@
+{
+  "metadata": {
+    "protocol": "akasha_capsule_v1.2",
+    "author": "system",
+    "timestamp": 1700000000.0,
+    "doc_type": "fieldnote",
+    "concept_id": "43458cca0542c3a507942da9ce7b6cc68ef842bb15e53884f636f529de8f9055",
+    "extracted_since": 0.0,
+    "seed": {
+      "kind": "sample",
+      "title": "Sample: Forest Inventory Transect",
+      "order": 2,
+      "category": "ecology",
+      "project": "Sample Project",
+      "region": "Region B",
+      "season": "2024-Autumn",
+      "locale": "en"
+    }
+  },
+  "atoms": {
+    "43458cca0542c3a507942da9ce7b6cc68ef842bb15e53884f636f529de8f9055": "Sample: Forest Inventory Transect",
+    "db3ba8d15e0495344ae2d7daa9909803e7a5f5a06f1feb0ed200b969760245ff": "50 m transect established along compass bearing 045°.",
+    "3e9209a83aa564c2815732e8e4bf051105b88291776db1192d7bb606fdc315c0": "Canopy dominated by Quercus robur; understorey sparse with Corylus avellana.",
+    "2627fd65ff0ea5d799f93ce8758ca338f745d510f4905ee60f8f30c5914888b9": "DBH measurements recorded for 23 trees; mean 42 cm, range 12–110 cm.",
+    "d44b39989a1b210a3d6822504bea5163b2a76f710445f0fa4f0d85f0817e3a62": "Stand age estimated at 80–120 years based on DBH distribution."
+  },
+  "links": [
+    {
+      "src": "43458cca0542c3a507942da9ce7b6cc68ef842bb15e53884f636f529de8f9055",
+      "dst": "db3ba8d15e0495344ae2d7daa9909803e7a5f5a06f1feb0ed200b969760245ff",
+      "rel": "sys:top",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "db3ba8d15e0495344ae2d7daa9909803e7a5f5a06f1feb0ed200b969760245ff",
+      "dst": "3e9209a83aa564c2815732e8e4bf051105b88291776db1192d7bb606fdc315c0",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "3e9209a83aa564c2815732e8e4bf051105b88291776db1192d7bb606fdc315c0",
+      "dst": "2627fd65ff0ea5d799f93ce8758ca338f745d510f4905ee60f8f30c5914888b9",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "2627fd65ff0ea5d799f93ce8758ca338f745d510f4905ee60f8f30c5914888b9",
+      "dst": "d44b39989a1b210a3d6822504bea5163b2a76f710445f0fa4f0d85f0817e3a62",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    }
+  ],
+  "atom_meta": {
+    "db3ba8d15e0495344ae2d7daa9909803e7a5f5a06f1feb0ed200b969760245ff": {
+      "role": "method",
+      "confidence": null,
+      "period": null
+    },
+    "3e9209a83aa564c2815732e8e4bf051105b88291776db1192d7bb606fdc315c0": {
+      "role": "observation",
+      "confidence": 0.95,
+      "period": null
+    },
+    "2627fd65ff0ea5d799f93ce8758ca338f745d510f4905ee60f8f30c5914888b9": {
+      "role": "observation",
+      "confidence": 1.0,
+      "period": null
+    },
+    "d44b39989a1b210a3d6822504bea5163b2a76f710445f0fa4f0d85f0817e3a62": {
+      "role": "interpretation",
+      "confidence": 0.7,
+      "period": "Late 19th–early 20th century"
+    }
+  },
+  "telemetry": {}
+}

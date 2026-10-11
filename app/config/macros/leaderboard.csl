@@ -1,0 +1,7 @@
+# leaderboard (P0-a §2.4 macro) — rank a sweep's evaluations (lens.rank algebra over
+# set:wb:<b>:sweep:<name>:evaluations, grouped on frame) and store the ranking as an epoch-keyed
+# artifact wb:<b>:leaderboard:<sweep>. Forward to the `sweep.leaderboard` operator. select_by=dev
+# report=<frame> — today both are the held-out `test` frame. Sweep name is `sweep=` under macro.run.
+#
+#!params bench,sweep,key=accuracy,select_by=dev,report=test
+sweep.leaderboard bench="$bench" name="$sweep" key="$key" select_by="$select_by" report="$report"

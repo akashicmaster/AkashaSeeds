@@ -4,15 +4,15 @@
 host that only offers **CGI** — no long-running httpd, no free choice of port
 (typical Japanese rental servers, cPanel shared hosting, etc.).
 
-**One-line summary:** serve `archives/` as plain static files and route the two
+**One-line summary:** serve `app/archives/` as plain static files and route the two
 JSON-RPC paths (`/rpc`, `/api/rpc`) to `services/cgi/akasha.cgi`. No daemon and
 no open port are required.
 
 > ⚠️ **Tier scope — this guide targets the Thesaurus / server tier, not the public seeds tier.**
 > It assumes bundled contents that ship only with the Thesaurus/enterprise tiers: the
-> `archives/` portal, the `.htaccess.example` rewrite rules, and the thesaurus concept
+> `app/archives/` portal, the `.htaccess.example` rewrite rules, and the thesaurus concept
 > methods (`thesaurus.view.atom`, `thesaurus.shelf.list`, …). The public **seeds** tier does
-> **not** bundle `archives/` or the `.htaccess` example, so those steps do not apply there —
+> **not** bundle `app/archives/` or the `.htaccess` example, so those steps do not apply there —
 > a seeds deployment exposes the kernel over `/api/rpc` (and MCP over `/api/mcp`) without the
 > public thesaurus portal. Use this guide when deploying a Thesaurus/server release.
 
@@ -124,7 +124,7 @@ CGI to those two paths.
 - **Static assets are served by your web server, not Akasha.** The archives
   portal is designed for this (it degrades gracefully if the client-side chart
   library is unavailable — see the graceful-degradation notes in the archives
-  pages). `/cosmos/` and `/docs/` live outside `archives/`; symlink them into the
+  pages). `/cosmos/` and `/docs/` live outside `app/archives/`; symlink them into the
   doc root if you want them published too.
 - **Concurrency.** Each request is its own process opening the SQLite cell in WAL
   mode: concurrent reads are fine; a burst of writes serialises. This suits a

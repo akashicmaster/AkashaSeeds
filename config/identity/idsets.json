@@ -1,0 +1,182 @@
+{
+  "_comment": [
+    "THE ID-SET TABLE — the whole of the platform's permission model, on one page, as data.",
+    "",
+    "Source: `ruling-id-sets-one-gate-2026-09-22.md` §1 (revision 09-22), verbatim. No code names",
+    "a row: the gate reads this file, intersects `may` with `on`, asks the facts, and answers.",
+    "",
+    "The shape is IAM's: a ROLE (what kind of principal), GROUPS (where it belongs), PERMISSIONS",
+    "(what it may do, on what). A named bundle of the three is an ID SET. An ID set is assigned to",
+    "a client; an agent that connects through a client INHERITS the client's ID set and has no",
+    "assignment of its own. `chairman`, `scribe`, `broadcaster`, `decider`, `responsible`,",
+    "`admit`, `owned avatar` — all of it collapses into this table.",
+    "",
+    "A new kind of participant is a NEW ROW, not new code — and `resident` is that claim being",
+    "made good: the consumer-app account was a participant the seven rows had no row for, and it",
+    "cost one row of data and no code.",
+    "",
+    "THE 09-22 REVISION, and what measuring produced it. `read` is explicit on every row that acts",
+    "on a target — a programme could not read the episode it airs, a researcher not the bench it",
+    "works on. `run` is on `librarian` and `telemetry`: a curation sweep and a feed pull are jobs,",
+    "and a job is a `run`. `provision` is on `researcher` for its own bench: a laboratory's",
+    "societies and casts are provisioned by the researcher who owns it, never by a member.",
+    "",
+    "SAY AS ONESELF. Step 4 admits a cast that is one of the target's declared roles OR the",
+    "speaker's own identity, so a human member needs no cast of its own and no `provision`. The",
+    "casts provisioning creates belong to the WORKLOAD; the right to speak as them is step 4, not",
+    "ownership. That is why `_owned_cast` is gone.",
+    "",
+    "COLUMNS",
+    "  role   — what kind of principal this is: admin | librarian | agent | user | guest.",
+    "  groups — where it belongs. `all` every group; `own` the groups and benches its own",
+    "           assignment lines name; `source` the feeds; `none` nowhere.",
+    "  may    — the actions. Eight, and there are no others: read · say · run · record ·",
+    "           annotate · publish · provision · admin.",
+    "  on     — where those actions reach. `*` everything; `assigned` the target its own",
+    "           assignment line names, and anything beneath it; `public` what the public Set",
+    "           holds; `feeds` the source feeds.",
+    "",
+    "`job.submit` IS NOT AN ACTION. A run is a job: whoever may `run` may submit the job that",
+    "runs it, and nothing else. The `TRUST_INTERNAL`-only submit path is deleted with the rest.",
+    "",
+    "AN ABSENT IDENTITY IS A GUEST, not an error (§4 step 1). There is no `no_idset` refusal: an",
+    "unknown caller gets the `guest` row, so an unknown identity and an anonymous one cannot be",
+    "told apart by what they are allowed to do."
+  ],
+  "version": 5,
+  "actions": [
+    "read",
+    "say",
+    "run",
+    "record",
+    "annotate",
+    "publish",
+    "provision",
+    "admin"
+  ],
+  "fallback": "guest",
+  "idsets": [
+    {
+      "role": "admin",
+      "principal": "admin",
+      "groups": "all",
+      "may": [
+        "read",
+        "say",
+        "run",
+        "record",
+        "annotate",
+        "publish",
+        "provision",
+        "admin"
+      ],
+      "on": "*",
+      "note": "Everything, everywhere. `admin on <group>` scopes the same row to one group — the line narrows the row, which is why there is no group-administrator row."
+    },
+    {
+      "role": "librarian",
+      "principal": "librarian",
+      "groups": "all",
+      "may": [
+        "read",
+        "run",
+        "record",
+        "annotate",
+        "publish",
+        "provision"
+      ],
+      "on": "*",
+      "note": "Everything but `say` and `admin`. A curation sweep is a job and a job is a `run`; what a librarian may not do is speak as anyone, or write an assignment line — the one thing that would let it widen itself."
+    },
+    {
+      "role": "programme",
+      "principal": "agent",
+      "groups": "own",
+      "may": [
+        "read",
+        "run",
+        "say",
+        "annotate",
+        "publish"
+      ],
+      "on": "assigned",
+      "note": "A workload's client, assigned by provisioning to its own workload. It reads its own episode, runs, speaks as the casts that workload declares, annotates and publishes its turns. It does not `record` outside them and it does not provision: the operator prepares, the client speaks."
+    },
+    {
+      "role": "researcher",
+      "principal": "user",
+      "groups": "own",
+      "may": [
+        "read",
+        "run",
+        "say",
+        "record",
+        "annotate",
+        "provision"
+      ],
+      "on": "assigned",
+      "note": "A person on a bench. A laboratory's societies and casts are provisioned by the researcher who owns the bench — never by a member. It does not `publish`: putting a result in front of the public is a separate consent."
+    },
+    {
+      "role": "resident",
+      "principal": "user",
+      "groups": "own",
+      "may": [
+        "read",
+        "say",
+        "run",
+        "record",
+        "annotate",
+        "publish",
+        "provision"
+      ],
+      "on": "own",
+      "note": "A person in their OWN CELL — the consumer-app account, the seeds user. Sovereign there (everything but `admin`) and reaching nothing outside it. Without this row a plain user was `member` (read + say) and could create nothing of their own: 564 of 864 methods are `record`, so `recipe.new`, `note.new`, `rec.new` and `fieldnote.new` were closed to the very account `auth.register` exists to make. Having a cell is not participation; participating elsewhere is a further line."
+    },
+    {
+      "role": "member",
+      "principal": "user",
+      "groups": "own",
+      "may": [
+        "read",
+        "say"
+      ],
+      "on": "assigned",
+      "note": "A person in a society. Reads and speaks in its groups, and nothing else — it joins (an assignment line) and speaks. It needs no cast of its own: step 4 admits the speaker's own identity."
+    },
+    {
+      "role": "guest",
+      "principal": "guest",
+      "groups": "none",
+      "may": [
+        "read"
+      ],
+      "on": "public",
+      "note": "Anonymous, and the fallback for any identity with no line. Reads what the public Set holds. No `annotate`: a guest may not add provenance, a link or a claim to anything."
+    },
+    {
+      "role": "telemetry",
+      "principal": "agent",
+      "groups": "own",
+      "may": [
+        "read",
+        "run",
+        "record"
+      ],
+      "on": "assigned",
+      "note": "The machine that reports. It reads and runs its feed pulls and records where its lines say, and can reach nothing else — a compromised sensor writes rows nobody acted on. `assigned` since 2026-10-02 (§5.1): a declared feed's client holds it on the workload's own two places; `system.telemetry` holds it `on feeds` (the gate's named target for the source feeds), which is exactly the reach the row's old `on: feeds` gave. A cell's bare `system.telemetry telemetry` line is rewritten to `on feeds` at first load (`adopt_bare_on`)."
+    },
+    {
+      "role": "consumer",
+      "principal": "agent",
+      "groups": "none",
+      "may": [
+        "read",
+        "run"
+      ],
+      "on": "assigned",
+      "facts": false,
+      "note": "A workload's client on a resource its declaration requires: it may read it and run jobs over it, never write to it. Provisioning writes one line per `source:pool:` / `model:` entry of `requires` (`<client> consumer on <resource>`) and removes it when the requirement goes. `facts: false`: a job over an input is not the workload's own run, so the run facts (declared, armed, source_ready, headroom) are not asked of the pool."
+    }
+  ]
+}

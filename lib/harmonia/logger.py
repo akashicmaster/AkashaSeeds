@@ -17,9 +17,64 @@ clients from reading internal system traces.
 """
 
 import logging
+import logging.handlers
 import os
 import sys
 from typing import Optional, Any
+
+# R9 — a daemon log is bounded: 50 MB per file, 5 rolled backups. An unbounded log on a tight VPS
+# fills the disk and takes the single writer down (the same failure class as the DEBUG-flood the
+# system.log level guard already prevents). One knob, applied to every physical log sink.
+LOG_MAX_BYTES = int(os.environ.get("AKASHA_LOG_MAX_BYTES", str(50 * 1024 * 1024)))
+LOG_BACKUPS = int(os.environ.get("AKASHA_LOG_BACKUPS", "5"))
+
+
+class RotatingFileHandler(logging.handlers.RotatingFileHandler):
+    """A RotatingFileHandler that ANNOUNCES each rollover with a `[log] rotated` line, so a rotation
+    is legible in the very file it just rotated into rather than happening silently (R9)."""
+
+    def doRollover(self):
+        super().doRollover()
+        try:
+            logging.getLogger("Akasha.Log").info(
+                "[log] rotated %s (kept %d backups, %d MB cap)",
+                self.baseFilename, self.backupCount, self.maxBytes // (1024 * 1024))
+        except Exception:
+            pass
+
+
+def rotating_handler(path: str, level, formatter, max_bytes: int = None,
+                     backups: int = None) -> logging.Handler:
+    """A bounded (rotating) file handler for a physical log sink — the drop-in for `logging.FileHandler`
+    everywhere a daemon writes a growing log (R9)."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    h = RotatingFileHandler(path, maxBytes=(LOG_MAX_BYTES if max_bytes is None else max_bytes),
+                            backupCount=(LOG_BACKUPS if backups is None else backups), encoding="utf-8")
+    h.setLevel(level)
+    h.setFormatter(formatter)
+    return h
+
+
+def rotate_if_big(path: str, max_bytes: int = None, backups: int = None) -> bool:
+    """Pre-launch rotation for a subprocess stdout redirect (cell-daemon.log / web-portal.log), which
+    is a plain file handed to Popen and so cannot use a logging handler. If it is over the cap, shift
+    path→.1→…→.N (dropping the oldest) and print a `[log] rotated` line to stderr. Bounds the file at
+    each (re)launch — the honest bound for a redirect without a wrapper process."""
+    mb = LOG_MAX_BYTES if max_bytes is None else max_bytes
+    n = LOG_BACKUPS if backups is None else backups
+    try:
+        if not os.path.exists(path) or os.path.getsize(path) < mb:
+            return False
+        for i in range(n - 1, 0, -1):
+            src, dst = "%s.%d" % (path, i), "%s.%d" % (path, i + 1)
+            if os.path.exists(src):
+                os.replace(src, dst)
+        os.replace(path, "%s.1" % path)
+        print("[log] rotated %s (kept %d backups, %d MB cap)" % (path, n, mb // (1024 * 1024)),
+              file=sys.stderr)
+        return True
+    except Exception:
+        return False
 
 # Optional import for immersive terminal output
 try:
@@ -66,10 +121,7 @@ def get_harmonia_logger(cell_id: str, cell_root: str, master_log_path: str) -> l
 
     # 1. Master System Log (Physical Survival Record)
     try:
-        os.makedirs(os.path.dirname(master_log_path), exist_ok=True)
-        master_handler = logging.FileHandler(master_log_path, encoding='utf-8')
-        master_handler.setFormatter(file_formatter)
-        master_handler.setLevel(logging.INFO)
+        master_handler = rotating_handler(master_log_path, logging.INFO, file_formatter)
         logger.addHandler(master_handler)
     except Exception as e:
         print(f"{Colors.WARNING}[Warning] Failed to mount Master Log: {e}{Colors.ENDC}", file=sys.stderr)
@@ -77,10 +129,7 @@ def get_harmonia_logger(cell_id: str, cell_root: str, master_log_path: str) -> l
     # 2. Cell Activity Log (Physical Audit Record)
     cell_log_path = os.path.join(cell_root, "logs", "activity.log")
     try:
-        os.makedirs(os.path.dirname(cell_log_path), exist_ok=True)
-        cell_handler = logging.FileHandler(cell_log_path, encoding='utf-8')
-        cell_handler.setFormatter(file_formatter)
-        cell_handler.setLevel(logging.DEBUG)
+        cell_handler = rotating_handler(cell_log_path, logging.DEBUG, file_formatter)
         logger.addHandler(cell_handler)
     except Exception as e:
         print(f"{Colors.WARNING}[Warning] Failed to mount Cell Log for {cell_id}: {e}{Colors.ENDC}", file=sys.stderr)

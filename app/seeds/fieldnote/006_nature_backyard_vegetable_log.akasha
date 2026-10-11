@@ -1,0 +1,80 @@
+{
+  "metadata": {
+    "protocol": "akasha_capsule_v1.2",
+    "author": "system",
+    "timestamp": 1700000000.0,
+    "doc_type": "fieldnote",
+    "concept_id": "f0ea821ac6393619f64d37238cb9811fc6d9ba362eccb234a4ab8bb0e791dd3c",
+    "extracted_since": 0.0,
+    "seed": {
+      "kind": "sample",
+      "title": "Sample: Backyard Vegetable Log",
+      "order": 6,
+      "category": "nature",
+      "project": "Kitchen Garden",
+      "region": "Home Plot",
+      "season": "2026-Spring",
+      "locale": "en"
+    }
+  },
+  "atoms": {
+    "f0ea821ac6393619f64d37238cb9811fc6d9ba362eccb234a4ab8bb0e791dd3c": "Sample: Backyard Vegetable Log",
+    "8e5077984d6f8b3d2c2c4767dc5a5ee339085b5cb310eec0e3bd3b9e2c8fb2d0": "First tomato flowers opened this morning.",
+    "f56f7658fb132519239260ecfc796e2ea8dfd4984eb11e15af449fc777a7eb4a": "Added crushed eggshells and compost around base of plants.",
+    "8256eb4db270c75a3bbf2b427432a8f16de45cfc8a2001a5b3ce2d2a257e51e6": "Heavy rain overnight followed by strong morning humidity.",
+    "99c6f2a257f7f24a3c52640ce59e35560387ad08cd8da41f612ab3fa8c12ec91": "Leaf curling may indicate overwatering rather than nutrient deficiency."
+  },
+  "links": [
+    {
+      "src": "f0ea821ac6393619f64d37238cb9811fc6d9ba362eccb234a4ab8bb0e791dd3c",
+      "dst": "8e5077984d6f8b3d2c2c4767dc5a5ee339085b5cb310eec0e3bd3b9e2c8fb2d0",
+      "rel": "sys:top",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "8e5077984d6f8b3d2c2c4767dc5a5ee339085b5cb310eec0e3bd3b9e2c8fb2d0",
+      "dst": "f56f7658fb132519239260ecfc796e2ea8dfd4984eb11e15af449fc777a7eb4a",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "f56f7658fb132519239260ecfc796e2ea8dfd4984eb11e15af449fc777a7eb4a",
+      "dst": "8256eb4db270c75a3bbf2b427432a8f16de45cfc8a2001a5b3ce2d2a257e51e6",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "8256eb4db270c75a3bbf2b427432a8f16de45cfc8a2001a5b3ce2d2a257e51e6",
+      "dst": "99c6f2a257f7f24a3c52640ce59e35560387ad08cd8da41f612ab3fa8c12ec91",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    }
+  ],
+  "atom_meta": {
+    "8e5077984d6f8b3d2c2c4767dc5a5ee339085b5cb310eec0e3bd3b9e2c8fb2d0": {
+      "role": "observation",
+      "confidence": 1.0,
+      "period": "Tomato Bed"
+    },
+    "f56f7658fb132519239260ecfc796e2ea8dfd4984eb11e15af449fc777a7eb4a": {
+      "role": "action",
+      "confidence": 1.0,
+      "period": "Soil Care"
+    },
+    "8256eb4db270c75a3bbf2b427432a8f16de45cfc8a2001a5b3ce2d2a257e51e6": {
+      "role": "weather",
+      "confidence": 1.0,
+      "period": "Night Conditions"
+    },
+    "99c6f2a257f7f24a3c52640ce59e35560387ad08cd8da41f612ab3fa8c12ec91": {
+      "role": "interpretation",
+      "confidence": 0.6,
+      "period": "Plant Health"
+    }
+  },
+  "telemetry": {}
+}

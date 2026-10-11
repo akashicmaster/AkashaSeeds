@@ -1,0 +1,9 @@
+# timeline (G4 §3.3 macro) — a clock's coordinates in order, each with its members. A coordinate is a
+# Set, so this is the generic ordered rendering: `clock=world:default` is the shared world's history
+# (env + sync records, plus the tick-only coordinates the old world.axis dropped); `clock=wb:<bench>`
+# is a bench's execution + thought record in the order it happened; `clock=wf:<bench>:<branch>` is the
+# plan in order. Coarser than the Set primitives, so it is a MACRO — never a kernel handler. This
+# replaces world.axis (kept one release as an alias that runs this macro).
+#
+#!params clock=world:default,from=1,to=
+cronon.timeline clock="$clock" from="$from" to="$to"

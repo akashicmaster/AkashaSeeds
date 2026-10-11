@@ -1,0 +1,20 @@
+{
+  "_comment": "The reviewed schema policy for ONE corpus — the 'LLM reads the schema' step of the Source-Data Ingestion Principle, held as DATA beside the corpus's own declaration rather than as a dict inside the generic generator. Read by `python scripts/corpus_to_ak.py --corpus mobility`. Adding a dataset is a file here, not an edit there.",
+
+  "id_field": "ID",
+  "_id_field_note": "the REAL id column — the upstream manifest's `respondent_id` is absent from the rows",
+
+  "source": "source:src:mobility_eu_travel_survey_2014",
+  "pool": "source:pool:mobility:eu_travel_survey_2014:v1_1",
+
+  "_index_fields_note": "coded/categorical → grouping Sets, so a group-by is a Set read and never a JSON parse. A FOCUSED set of analytical dimensions, not every column: any other coded field stays queryable by parse-on-demand from the raw JSON (cached by analysis.*), so this list is a size lever, not a completeness constraint. ~8 fields → ~9 set.adds per row.",
+  "index_fields": [
+    "Country", "Gender", "Age", "Work_status", "Income_level",
+    "Car_driving_license", "Know_what_car_sharing_is", "Preference_tolls_or_traffic_limitation"
+  ],
+
+  "_text_fields_note": "free-text / natural language → weavable txt: atoms (the Weaver's legitimate targets; they carry no raw marker).",
+  "text_fields": [
+    "Would_subsribe_car_sharing_if_available"
+  ]
+}

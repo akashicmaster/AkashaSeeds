@@ -18,7 +18,8 @@ an agent layer (what characters believe, fear, desire, and do) and a world layer
 (where they live, what rules govern that place, and what events alter its state).
 
 All concept models are registered automatically via the **Concept Model Plugin Registry**
-(`lib/akasha/concepts/registry.py`). See `docs/concept-model-spec.md §7` for the plugin
+(`lib/akasha/concepts/registry.py`), which discovers the application's models in `app/concepts/`.
+See `docs/concept-model/concept-model-spec.md §7` for the
 authoring guide.
 
 ---
@@ -383,7 +384,7 @@ This pattern is especially useful in game design: the game engine calls `cast.re
 
 ## 2. World
 
-**File:** `lib/akasha/concepts/world.py`  
+**File:** `app/concepts/world.py`  
 **Prefix:** `world`  
 **CLI prefix:** `wd.*`  
 **Version:** 1.0.1
@@ -407,13 +408,13 @@ Layer 2  WorldConcept — topology, laws, events, history
 The author records what changed as a consequence of events. No automatic state propagation happens. The workflow is:
 
 ```
-world.event "The king died" intensity=0.8         → event_id
-world.place.state <castle_id> "succession_crisis" event_id=<event_id>
-world.law.change  <law_id>    "destabilized"       event_id=<event_id>
+topos.event "The king died" intensity=0.8         → event_id
+topos.place.state <castle_id> "succession_crisis" event_id=<event_id>
+topos.law.change  <law_id>    "destabilized"       event_id=<event_id>
 ```
 
 **History subset design:**  
-`history` intentionally overlaps `events`, `place_states`, and `law_states`. All three are added to `set:world:{id}:history` by their respective operators. This lets `world.diagnose` query a unified change timeline without cross-joining three sets.
+`history` intentionally overlaps `events`, `place_states`, and `law_states`. All three are added to `set:world:{id}:history` by their respective operators. This lets `topos.diagnose` query a unified change timeline without cross-joining three sets.
 
 ### 2.2 Cortex Topology
 
@@ -461,47 +462,47 @@ WorldRoot  (concept="world", role="root")
 
 | Method | IAM | Description |
 |--------|-----|-------------|
-| `world.new` | write | Create a new world |
-| `world.open` | read | Open an existing world |
-| `world.ls` | read | List all worlds |
-| `world.map` | read | Full topology snapshot |
-| `world.rm` | drop | Delete world root (shallow — subordinates not removed) |
-| `world.place.add` | write | Add a place |
-| `world.place.state` | write | Record a place state change (event-sourced) |
-| `world.object.add` | write | Add an object to a place |
-| `world.prop.add` | write | Add a prop / suggester to a place |
-| `world.collect.add` | write | Create a collection |
-| `world.collect.put` | write | Add any accessible atom to a collection |
-| `world.connect` | write | Connect two places (structural, not temporal) |
-| `world.portal.add` | write | Add a portal to a place |
-| `world.law.add` | write | Add a law |
-| `world.law.change` | write | Record a law state change (event-sourced) |
-| `world.hidden.add` | write | Add a hidden layer element |
-| `world.event` | write | Record a world event |
-| `world.diagnose` | read | Diagnose tensions in the world |
+| `topos.new` | write | Create a new world |
+| `topos.open` | read | Open an existing world |
+| `topos.ls` | read | List all worlds |
+| `topos.map` | read | Full topology snapshot |
+| `topos.rm` | drop | Delete world root (shallow — subordinates not removed) |
+| `topos.place.add` | write | Add a place |
+| `topos.place.state` | write | Record a place state change (event-sourced) |
+| `topos.object.add` | write | Add an object to a place |
+| `topos.prop.add` | write | Add a prop / suggester to a place |
+| `topos.collect.add` | write | Create a collection |
+| `topos.collect.put` | write | Add any accessible atom to a collection |
+| `topos.connect` | write | Connect two places (structural, not temporal) |
+| `topos.portal.add` | write | Add a portal to a place |
+| `topos.law.add` | write | Add a law |
+| `topos.law.change` | write | Record a law state change (event-sourced) |
+| `topos.hidden.add` | write | Add a hidden layer element |
+| `topos.event` | write | Record a world event |
+| `topos.diagnose` | read | Diagnose tensions in the world |
 
 ### 2.4 CLI Shorthand Reference
 
 | CLI | Full method | Key args |
 |-----|-------------|----------|
-| `wd.new` | `world.new` | `title`, `description`, `time_type` |
-| `wd.open` | `world.open` | `world_id` |
-| `wd.ls` | `world.ls` | — |
-| `wd.map` | `world.map` | — |
-| `wd.rm` | `world.rm` | — |
-| `wd.place` | `world.place.add` | `name`, `place_type`, `category` |
-| `wd.state` | `world.place.state` | `place_id`, `state`, `event_id?` |
-| `wd.obj` | `world.object.add` | `place_id`, `name` |
-| `wd.prop` | `world.prop.add` | `place_id`, `item`, `suggests?` |
-| `wd.col` | `world.collect.add` | `label`, `collection_type` |
-| `wd.put` | `world.collect.put` | `collect_id`, `member_id` |
-| `wd.link` | `world.connect` | `from_id`, `to_id`, `connection_type` |
-| `wd.portal` | `world.portal.add` | `place_id`, `direction` |
-| `wd.law` | `world.law.add` | `law_type`, `content` |
-| `wd.amend` | `world.law.change` | `law_id`, `new_state`, `event_id?` |
-| `wd.hide` | `world.hidden.add` | `hint`, `confidence?` |
-| `wd.event` | `world.event` | `description`, `intensity` |
-| `wd.dx` | `world.diagnose` | `limit?` |
+| `wd.new` | `topos.new` | `title`, `description`, `time_type` |
+| `wd.open` | `topos.open` | `world_id` |
+| `wd.ls` | `topos.ls` | — |
+| `wd.map` | `topos.map` | — |
+| `wd.rm` | `topos.rm` | — |
+| `wd.place` | `topos.place.add` | `name`, `place_type`, `category` |
+| `wd.state` | `topos.place.state` | `place_id`, `state`, `event_id?` |
+| `wd.obj` | `topos.object.add` | `place_id`, `name` |
+| `wd.prop` | `topos.prop.add` | `place_id`, `item`, `suggests?` |
+| `wd.col` | `topos.collect.add` | `label`, `collection_type` |
+| `wd.put` | `topos.collect.put` | `collect_id`, `member_id` |
+| `wd.link` | `topos.connect` | `from_id`, `to_id`, `connection_type` |
+| `wd.portal` | `topos.portal.add` | `place_id`, `direction` |
+| `wd.law` | `topos.law.add` | `law_type`, `content` |
+| `wd.amend` | `topos.law.change` | `law_id`, `new_state`, `event_id?` |
+| `wd.hide` | `topos.hidden.add` | `hint`, `confidence?` |
+| `wd.event` | `topos.event` | `description`, `intensity` |
+| `wd.dx` | `topos.diagnose` | `limit?` |
 
 ### 2.5 Key Design Decisions
 
@@ -509,13 +510,13 @@ WorldRoot  (concept="world", role="root")
 Prop and Portal `suggests` values are stored as plain strings in atom metadata. Registering them as concept_words would create alias collisions with vocabulary shared by other concept models (e.g., `concept:word:village` would conflict if FieldNote also defines a "village" concept). The `sys:derived_from` link pattern is used only for structural roles (place, object, law, event) that are specific to WorldConcept.
 
 **Connections and Collections are structural (timeline=False):**  
-`world.connect` and `world.collect.add` do not append to the temporal timeline. They express topology (the graph of the world), not events in the world's history. All other atom types are temporal by default.
+`topos.connect` and `topos.collect.add` do not append to the temporal timeline. They express topology (the graph of the world), not events in the world's history. All other atom types are temporal by default.
 
 **Cross-concept collection membership:**  
-`world.collect.put` accepts any accessible atom as a `member_id`, including atoms from CastConcept or other concept models. Access is checked via IAM scopes at the time of the call. Cross-session sharing requires explicit scope grants at atom creation time.
+`topos.collect.put` accepts any accessible atom as a `member_id`, including atoms from CastConcept or other concept models. Access is checked via IAM scopes at the time of the call. Cross-session sharing requires explicit scope grants at atom creation time.
 
 **Law state change is event-sourced:**  
-`world.law.change` does not mutate the original law atom. It appends a `law_state` atom, preserving the full history of law changes for audit and rollback.
+`topos.law.change` does not mutate the original law atom. It appends a `law_state` atom, preserving the full history of law changes for audit and rollback.
 
 **Law types and thresholds:**
 
@@ -528,7 +529,7 @@ Prop and Portal `suggests` values are stored as plain strings in atom metadata. 
 | `belief` | 0.30 | Shared beliefs, easily shifted |
 
 **Hidden Layer:**  
-Hidden atoms are intentionally not Places. They represent undetermined zones hinted at but not yet materialised in the fiction. When discovered (via Cast Policy or story event), the author creates a real Place via `world.place.add` and links it to the hidden atom.
+Hidden atoms are intentionally not Places. They represent undetermined zones hinted at but not yet materialised in the fiction. When discovered (via Cast Policy or story event), the author creates a real Place via `topos.place.add` and links it to the hidden atom.
 
 ### 2.6 Workflow Example
 
@@ -548,8 +549,8 @@ akasha/user $ wd.event description="Dam collapsed" intensity=0.9 place_id=c3d4..
   "event_id": "f7a8...de04",
   "force": 0.95,
   "manual_next_steps": [
-    "world.place.state <place_id> <state> event_id=<event_id>",
-    "world.law.change  <law_id>   <new_state> event_id=<event_id>"
+    "topos.place.state <place_id> <state> event_id=<event_id>",
+    "topos.law.change  <law_id>   <new_state> event_id=<event_id>"
   ]
 }
 

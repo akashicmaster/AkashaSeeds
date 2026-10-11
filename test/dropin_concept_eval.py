@@ -79,10 +79,14 @@ def test_derivation():
     actions = reg.get_method_actions()
     specs = reg.get_command_specs()
 
-    # (d) IAM action by convention: 'note'/'tally' → write (not read verbs); 'show' → read.
-    check("action derived: dropinfoo.note → write", actions.get("dropinfoo.note") == "write",
+    # (d) The gate ACTION by convention: 'note'/'tally' are not read verbs, so they derive the
+    #     fail-safe write-class action; 'show' is curated, so it derives `read`. The token is
+    #     `record` since the one-gate order — `write` is not one of the eight, and a derived op
+    #     emitting it reached the gate as `unknown_action`, which refuses with a term that names
+    #     nothing an operator can act on.
+    check("action derived: dropinfoo.note → record", actions.get("dropinfoo.note") == "record",
           actions.get("dropinfoo.note"))
-    check("action derived: dropinfoo.tally → write", actions.get("dropinfoo.tally") == "write",
+    check("action derived: dropinfoo.tally → record", actions.get("dropinfoo.tally") == "record",
           actions.get("dropinfoo.tally"))
     check("action derived: dropinfoo.show → read (curated read verb)",
           actions.get("dropinfoo.show") == "read", actions.get("dropinfoo.show"))

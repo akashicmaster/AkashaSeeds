@@ -1,0 +1,80 @@
+{
+  "metadata": {
+    "protocol": "akasha_capsule_v1.2",
+    "author": "system",
+    "timestamp": 1700000000.0,
+    "doc_type": "fieldnote",
+    "concept_id": "c34a5db6df700a39bda34866d9fbaeb0642b75ef39e3fce7c13b1ce103edd779",
+    "extracted_since": 0.0,
+    "seed": {
+      "kind": "sample",
+      "title": "Sample: Birdwatching Journal",
+      "order": 7,
+      "category": "nature",
+      "project": "Morning Woodland Survey",
+      "region": "Cedar Grove",
+      "season": "2026-Autumn",
+      "locale": "en"
+    }
+  },
+  "atoms": {
+    "c34a5db6df700a39bda34866d9fbaeb0642b75ef39e3fce7c13b1ce103edd779": "Sample: Birdwatching Journal",
+    "9f9090000526e328691c211f8c5b400f5cadb20888d0551c95dfbb6e93e55306": "Two Eurasian jays observed near northern cedar line.",
+    "1eacc9daa77c3c3fc017c4d04def705032bab1b89f63e8e5a1095b5baba28a3d": "Repeated harsh alarm calls heard from upper canopy.",
+    "0cdd5527f001d6b273badf03dff0959aa88859859c514050b004a266e0d19dec": "Birds repeatedly returned to same moss-covered branch.",
+    "d5c30960fb1b09cf66c5fc1d1e8e492be02bfd10acf8ed935e2520be20804a8f": "Calling behavior may correlate with approaching rainfall or predator awareness."
+  },
+  "links": [
+    {
+      "src": "c34a5db6df700a39bda34866d9fbaeb0642b75ef39e3fce7c13b1ce103edd779",
+      "dst": "9f9090000526e328691c211f8c5b400f5cadb20888d0551c95dfbb6e93e55306",
+      "rel": "sys:top",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "9f9090000526e328691c211f8c5b400f5cadb20888d0551c95dfbb6e93e55306",
+      "dst": "1eacc9daa77c3c3fc017c4d04def705032bab1b89f63e8e5a1095b5baba28a3d",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "1eacc9daa77c3c3fc017c4d04def705032bab1b89f63e8e5a1095b5baba28a3d",
+      "dst": "0cdd5527f001d6b273badf03dff0959aa88859859c514050b004a266e0d19dec",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    },
+    {
+      "src": "0cdd5527f001d6b273badf03dff0959aa88859859c514050b004a266e0d19dec",
+      "dst": "d5c30960fb1b09cf66c5fc1d1e8e492be02bfd10acf8ed935e2520be20804a8f",
+      "rel": "sys:next",
+      "author": "system",
+      "timestamp": 1700000000.0
+    }
+  ],
+  "atom_meta": {
+    "9f9090000526e328691c211f8c5b400f5cadb20888d0551c95dfbb6e93e55306": {
+      "role": "sighting",
+      "confidence": 1.0,
+      "period": "06:12"
+    },
+    "1eacc9daa77c3c3fc017c4d04def705032bab1b89f63e8e5a1095b5baba28a3d": {
+      "role": "sound",
+      "confidence": 0.9,
+      "period": "Pre-Rain Activity"
+    },
+    "0cdd5527f001d6b273badf03dff0959aa88859859c514050b004a266e0d19dec": {
+      "role": "observation",
+      "confidence": 0.8,
+      "period": "Feeding Pattern"
+    },
+    "d5c30960fb1b09cf66c5fc1d1e8e492be02bfd10acf8ed935e2520be20804a8f": {
+      "role": "interpretation",
+      "confidence": 0.6,
+      "period": "Behavior"
+    }
+  },
+  "telemetry": {}
+}

@@ -1,0 +1,60 @@
+{
+  "status": "ok",
+  "count": 6,
+  "feeds": [
+    {
+      "id": "feed:aircraft",
+      "kind": "kind:air:aircraft",
+      "interval": 30,
+      "retain": "3h",
+      "last_pull": "2026-08-17T13:09:28Z",
+      "subjects": 6,
+      "observations": 6
+    },
+    {
+      "id": "feed:eonet",
+      "kind": "kind:disaster:event",
+      "interval": 1800,
+      "retain": "72h",
+      "last_pull": "2026-08-17T12:09:27Z",
+      "subjects": 4,
+      "observations": 4
+    },
+    {
+      "id": "feed:iss",
+      "kind": "kind:orbit:satellite",
+      "interval": 60,
+      "retain": "6h",
+      "last_pull": "2026-08-17T13:00:27Z",
+      "subjects": 1,
+      "observations": 10
+    },
+    {
+      "id": "feed:sea_level",
+      "kind": "kind:ocean:tide",
+      "interval": 900,
+      "retain": "48h",
+      "last_pull": "2026-08-17T13:09:28Z",
+      "subjects": 4,
+      "observations": 4
+    },
+    {
+      "id": "feed:ships",
+      "kind": "kind:marine:vessel",
+      "interval": 120,
+      "retain": "12h",
+      "last_pull": "2026-08-17T13:09:28Z",
+      "subjects": 4,
+      "observations": 4
+    },
+    {
+      "id": "feed:usgs_eq",
+      "kind": "kind:seismic:quake",
+      "interval": 300,
+      "retain": "48h",
+      "last_pull": "2026-08-17T12:59:27Z",
+      "subjects": 6,
+      "observations": 6
+    }
+  ]
+}

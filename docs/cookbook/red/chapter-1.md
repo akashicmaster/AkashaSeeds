@@ -916,8 +916,8 @@ They are listed for reference only — nothing in them is required to complete t
 |---|---|
 | `docs/users/cli-quick-reference.md` | Complete command reference for `rec.*`, `table.*`, `lens.*`, `quadrant.*`, and `tree` |
 | `docs/cookbook/quadrant-scatter.md` | Detailed walkthrough of `quadrant.plot` with additional scatter plot examples |
-| `lib/akasha/concepts/rec.py` | Source implementation of RecConcept and all `rec.*` operators |
-| `lib/akasha/concepts/table.py` | Source implementation of TableConcept and all `table.*` operators |
+| `app/concepts/rec.py` | Source implementation of RecConcept and all `rec.*` operators |
+| `app/concepts/table.py` | Source implementation of TableConcept and all `table.*` operators |
 | `lib/akasha/concepts/lens.py` | Source implementation of LensConcept, SourceScanner, and `lens.*` operators |
-| `lib/akasha/concepts/quadrant.py` | Source implementation of QuadrantConcept and `quadrant.plot` |
+| `app/concepts/quadrant.py` | Source implementation of QuadrantConcept and `quadrant.plot` |
 | `docs/concept-model/concept-model-spec.md` | Full specification of the concept model architecture (BaseConcept, dispatch, IAM) |
